@@ -53,7 +53,6 @@ export class Renderer {
     };
     load('plateau', 'assets/plateau.jpg', true);
     load('bumper', 'assets/bumper.png');
-    load('sling', 'assets/lance_pierre.jpg');
     load('victoire', 'assets/fanny_victoire.png');
     load('lancer', 'assets/fanny_lancer.png');
   }
@@ -237,11 +236,31 @@ export class Renderer {
     // lance-pierres
     T.slings.forEach((b, i) => {
       const hit = now - (sim.flash[`sling${i}`] ?? -1e9) < 90;
-      if (this.art.sling) this.decal(b.vertices, this.art.sling, i === 1, hit);
-      else this.poly(b.vertices, hit ? '#fff3a0' : C.lavender, '#3d2a63');
+      const pts = b.vertices.map((v) => [v.x, v.y]);
+      this.plastic(pts, 5);
+      // boule de pétanque gravée au centre de gravité (stries + reflet)
+      const gx = pts.reduce((t, p) => t + p[0], 0) / pts.length, gy = pts.reduce((t, p) => t + p[1], 0) / pts.length;
+      const br = 6.5;
+      const gb = ctx.createRadialGradient(gx - 2, gy - 2, 1, gx, gy, br);
+      gb.addColorStop(0, '#ffffff'); gb.addColorStop(0.45, '#b9bec6'); gb.addColorStop(1, '#4c535e');
+      ctx.beginPath(); ctx.arc(gx, gy, br, 0, Math.PI * 2); ctx.fillStyle = gb; ctx.fill();
+      ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 1; ctx.stroke();
+      ctx.save(); ctx.beginPath(); ctx.arc(gx, gy, br, 0, Math.PI * 2); ctx.clip();
+      ctx.strokeStyle = 'rgba(40,40,50,0.6)'; ctx.lineWidth = 0.8;
+      for (const d of [-2.5, 2.5]) { ctx.beginPath(); ctx.ellipse(gx + d, gy, 1.6, br, 0.5, 0, Math.PI * 2); ctx.stroke(); }
+      ctx.restore();
+      if (hit) { this.roundedPath(pts, 5); ctx.fillStyle = 'rgba(255,246,190,0.55)'; ctx.fill(); }
+      // élastique blanc et butoir rouge au milieu (la face qui frappe)
       const { A, C: Cc } = b.plugin;
-      ctx.strokeStyle = hit ? '#fff' : '#f4f4f4'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 6;
       ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(Cc[0], Cc[1]); ctx.stroke();
+      ctx.strokeStyle = hit ? '#fffbe6' : '#f4f1ea'; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(Cc[0], Cc[1]); ctx.stroke();
+      const mx = (A[0] + Cc[0]) / 2, my = (A[1] + Cc[1]) / 2, dx = Cc[0] - A[0], dy = Cc[1] - A[1], l = Math.hypot(dx, dy);
+      ctx.strokeStyle = hit ? '#ffd23f' : '#e8392c'; ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.moveTo(mx - dx / l * 9, my - dy / l * 9); ctx.lineTo(mx + dx / l * 9, my + dy / l * 9); ctx.stroke();
+      for (const p of [A, Cc]) { ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, Math.PI * 2); ctx.fillStyle = '#e6e9ee'; ctx.fill(); ctx.strokeStyle = '#4c535e'; ctx.lineWidth = 1; ctx.stroke(); }
     });
 
     // cibles tombantes
