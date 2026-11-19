@@ -61,7 +61,8 @@ function arp(notes, step = 0.09, type = 'square', vol = 0.18) {
 const buffers = {};
 const SON_GAIN = { [SND.FLIP]: 0.5, [SND.BUMPER]: 0.8, [SND.SLING]: 0.7 };
 function loadSounds() {
-  for (const id of Object.values(SND)) {
+  const last = SND.V_CITY_1 + 5;                       // escales 1 à 6 = pistes 39 à 44
+  for (let id = 1; id <= last; id++) {
     if (id === SND.MUSIQUE_GENERIQUE || id === SND.MUSIQUE_THEME) continue;
     fetch(`assets/sons/${String(id).padStart(4, '0')}.mp3`)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject()))
@@ -71,11 +72,16 @@ function loadSounds() {
   }
 }
 
+let voice = null;   // voix de Fanny : une seule à la fois, la nouvelle coupe l'ancienne
 function playBuffer(id) {
   const src = ac.createBufferSource(), g = ac.createGain();
+  if (id >= SND.V_START) {
+    try { voice?.stop(); } catch {}
+    voice = src;
+  }
   src.buffer = buffers[id];
   src.playbackRate.value = id === SND.BUMPER || id === SND.FLIP ? 0.96 + Math.random() * 0.08 : 1;
-  g.gain.value = (SON_GAIN[id] ?? 1) * 2.2;
+  g.gain.value = (SON_GAIN[id] ?? 1) * (id >= SND.V_START ? 2.6 : 2.2);
   src.connect(g); g.connect(master);
   src.start();
 }

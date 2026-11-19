@@ -139,5 +139,8 @@ Il reste environ 12 broches libres (A7–A15, D53) pour des ajouts.
 Les sons du jeu web sont synthétisés en attendant les vrais fichiers ; leur numéro
 (`SND` dans `js/rules.js`) est déjà le numéro de piste du DFPlayer.
 
-- Voix de Fanny (annonces : « Multiball ! », « Jackpot ! », escales…) : **VoiceStudio**.
-- Musiques d'ambiance façon flipper des années 70 : **YuE2**.
+- Bruitages (pistes 1 à 21) : synthèse physique, `outils/bruitages.py`.
+- Musiques (22 générique, 23 thème) : **YuE2**, `outils/musique_yue2.py`.
+- Voix de Fanny (24 à 44 : « Carreau ! », « Triplette ! », escales…) : **VoiceStudio**, voix clonée sur le chant
+  du générique, `outils/voix_fanny.py`. Le DFPlayer ne joue qu'une piste à la fois : sur la réplique, la voix
+  passe avant le bruitage (ou un second DFPlayer sur Serial2, D16/D17, pour superposer musique et voix).

@@ -58,6 +58,5 @@ Ambiance d'été provençal, ode à la pétanque, avec une touche d'humour.
 | `outils/habillage_krea2.py` | Plateau, fronton, bumpers, rampe, lance-pierres, sprites de Fanny avec Krea 2 (client ComfyUI de chat-studio, ADN « Fanny Pin-up Rétro » + style « Comics Moderne Cell-Shading ») → `assets/brut/` |
 | `outils/preparer_assets.py` | Choix des variantes → `assets/` (recadrage, disque des bumpers, détourage du fond vert) |
 | `outils/bruitages.py` | Bruitages par synthèse physique, sans IA : boules d'acier, carillons des années 70, bobines, knocker |
-| `outils/musique_yue2.py` | Générique et thème façon variété des années 70 avec YuE2 |
-
-Les voix de Fanny (VoiceStudio) restent à faire.
+| `outils/musique_yue2.py` | Générique et thème façon variété des années 70 avec YuE2 (pistes 22, 23) |
+| `outils/voix_fanny.py` | Voix de Fanny : demucs isole son chant dans le générique, VoiceStudio la clone (voix de synthèse) et dit les répliques de `outils/voix_fanny.json` (pistes 24 à 44) |

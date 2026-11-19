@@ -37,6 +37,10 @@ export const SND = {
   STANDUP: 10, SAUCER: 11, MULTIBALL: 12, JACKPOT: 13, CITY: 14, GRAND_CHELEM: 15, EXTRA: 16,
   BALL_SAVE: 17, DRAIN: 18, BONUS: 19, GAME_OVER: 20, LAUNCH: 21,
   MUSIQUE_GENERIQUE: 22, MUSIQUE_THEME: 23,   // musiques YuE2 (en boucle)
+  // voix de Fanny (outils/voix_fanny.json) : une seule voix à la fois
+  V_START: 24, V_MULTIBALL: 25, V_JACKPOT: 26, V_CARREAU: 27, V_BIBERON: 28, V_BOUCHON: 29, V_TRIPLETTE: 30,
+  V_GRAND_CHELEM: 31, V_EXTRA: 32, V_BALL_SAVE: 33, V_MB_LIT: 34, V_BONUS_MULT: 35, V_DRAIN: 36,
+  V_GAME_OVER: 37, V_RECORD: 38, V_CITY_1: 39,   // escales 1 à 6 : 39 à 44
 };
 
 export const CITIES = ['MARSEILLE', 'PARIS', 'LONDRES', 'NEW YORK', 'TOKYO', 'RIO', 'SYDNEY'];
@@ -110,6 +114,7 @@ export class Rules {
     this.mode = 'play';
     this.ball = 1;
     this.hw.sound(SND.START);
+    this.hw.sound(SND.V_START);
     this.say('FANNY PETANQUE WORLD TOUR', 3000);
     this.serveBall(false);
   }
@@ -155,6 +160,7 @@ export class Rules {
     if (record) this.highScore = this.score;
     this.hw.sound(SND.GAME_OVER);
     this.say(record ? 'NOUVEAU RECORD' : 'FIN DE PARTIE', 4000);
+    this.hw.sound(record ? SND.V_RECORD : SND.V_GAME_OVER);
     this.hw.event?.('gameOver', { score: this.score, record });
     this.after(4000, () => { this.mode = 'attract'; });
   }
@@ -222,6 +228,7 @@ export class Rules {
       if (this.mult < MAX_MULT) {
         this.mult++;
         this.say(`BONUS X${this.mult}`, 1800);
+        this.hw.sound(SND.V_BONUS_MULT);
       } else {
         this.add(10000, 0);
         this.say('10000', 1200);
@@ -248,6 +255,7 @@ export class Rules {
     this.targets = [false, false, false];
     this.add(3000, 300);
     this.say('TRIPLETTE', 1500);
+    this.hw.sound(SND.V_TRIPLETTE);
     this.hw.sound(SND.LANES_DONE);
     this.pointLit = true;
     const next = this.letters.indexOf(false);
@@ -267,7 +275,8 @@ export class Rules {
       this.pointLit = false;
       this.add(5000, 500);
       this.say('BIBERON', 1500);
-    } else this.say('TIR AU BOUCHON', 1500);
+      this.hw.sound(SND.V_BIBERON);
+    } else { this.say('TIR AU BOUCHON', 1500); this.hw.sound(SND.V_BOUCHON); }
     this.carreauUntil = this.now + CARREAU_MS;    // le carreau s'allume sur TIRER
   }
 
@@ -279,6 +288,7 @@ export class Rules {
       this.add(pts, 1000);
       this.say(`CARREAU ${pts}`, 1800);
       this.hw.sound(SND.JACKPOT);
+      this.hw.sound(SND.V_CARREAU);
       const next = this.letters.indexOf(false);
       if (next >= 0) this.lightLetter(next);
       return;
@@ -317,6 +327,7 @@ export class Rules {
     } else if (!this.mbLit) {
       this.mbLit = true;
       this.say('MULTIBALL AU CERCLE', 2200);
+      this.hw.sound(SND.V_MB_LIT);
     } else {
       this.add(5000, 500);
     }
@@ -334,6 +345,7 @@ export class Rules {
     if (this.mbLit && !this.multiball) {
       this.say('TRIPLETTE MULTIBALL', 2500);
       this.hw.sound(SND.MULTIBALL);
+      this.hw.sound(SND.V_MULTIBALL);
       hold = 2000;
       this.after(hold, () => this.startMultiball());
     } else {
@@ -360,6 +372,7 @@ export class Rules {
       this.say(`JACKPOT ${this.jackpot}`, 1800);
       this.jackpot += JACKPOT_STEP;
       this.hw.sound(SND.JACKPOT);
+      this.hw.sound(SND.V_JACKPOT);
     } else {
       this.hw.sound(SND.RAMP);
     }
@@ -369,14 +382,16 @@ export class Rules {
       this.add(50000, 5000);
       this.say('GRAND CHELEM', 2500);
       this.hw.sound(SND.GRAND_CHELEM);
+      this.hw.sound(SND.V_GRAND_CHELEM);
       if (!this.extraAwarded) {
         this.extraAwarded = true;
         this.extraBalls++;
-        this.after(2500, () => { this.say('EXTRA BALL', 2000); this.hw.sound(SND.EXTRA); });
+        this.after(2500, () => { this.say('EXTRA BALL', 2000); this.hw.sound(SND.EXTRA); this.hw.sound(SND.V_EXTRA); });
       }
     } else {
       if (!this.multiball) this.say(CITIES[this.city], 1500);
       this.hw.sound(SND.CITY);
+      if (!this.multiball) this.hw.sound(SND.V_CITY_1 + this.city - 1);
     }
   }
 
@@ -392,6 +407,7 @@ export class Rules {
     if (this.now < this.ballSaveUntil) {
       this.say('FANNY TE LA REND', 1500);
       this.hw.sound(SND.BALL_SAVE);
+      this.hw.sound(SND.V_BALL_SAVE);
       this.serveBall(true);
       return;
     }
@@ -401,6 +417,7 @@ export class Rules {
     }
     if (this.ballsInPlay === 0) {
       this.hw.sound(SND.DRAIN);
+      this.hw.sound(SND.V_DRAIN);
       this.endOfBall();
     }
   }
