@@ -223,10 +223,12 @@ export class Renderer {
     }
     ctx.textBaseline = 'alphabetic';
 
+    // pièce du bouchon : une seule pièce en U aux coins arrondis
+    if (GEO.bouchonPiece) this.plastic(GEO.bouchonPiece, 9);
     // murs et poteaux
     for (const b of T.walls) {
       if (b.plugin && b.plugin.hidden) continue;
-      if (b.plugin && b.plugin.housing) this.poly(b.vertices, C.blue, '#0f2a50', 2);
+      if (b.plugin && b.plugin.housing) this.plastic(b.vertices.map((v) => [v.x, v.y]), 6);
       else this.poly(b.vertices, C.chrome, C.chromeDark);
     }
     // portillon
@@ -408,6 +410,54 @@ export class Renderer {
     verts.forEach((v, i) => (i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)));
     ctx.closePath();
     ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // Contour aux coins arrondis (rayon limité à la moitié des côtés voisins).
+  roundedPath(pts, r) {
+    const ctx = this.ctx, n = pts.length;
+    const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    ctx.beginPath();
+    ctx.moveTo(...mid(pts[n - 1], pts[0]));
+    for (let i = 0; i < n; i++) {
+      const p = pts[i], q = pts[(i + 1) % n], o = pts[(i - 1 + n) % n];
+      const lim = Math.min(Math.hypot(p[0] - o[0], p[1] - o[1]), Math.hypot(q[0] - p[0], q[1] - p[1])) / 2;
+      ctx.arcTo(p[0], p[1], ...mid(p, q), Math.min(r, lim));
+    }
+    ctx.closePath();
+  }
+
+  // Plastique sérigraphié façon années 70, teintes provençales : fond lavande → indigo, rayons de soleil, pois crème,
+  // liseré ocre et trait noir, coins arrondis.
+  plastic(pts, r = 6) {
+    const ctx = this.ctx;
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2, R = Math.hypot(x1 - x0, y1 - y0);
+    ctx.save();
+    this.roundedPath(pts, r);
+    ctx.save();
+    ctx.clip();
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, '#7d6bb8'); g.addColorStop(1, '#3f3a7c');
+    ctx.fillStyle = g; ctx.fillRect(x0 - 2, y0 - 2, x1 - x0 + 4, y1 - y0 + 4);
+    ctx.fillStyle = 'rgba(242,182,50,0.18)';                       // rayons de soleil
+    for (let k = 0; k < 16; k += 2) {
+      const a0 = (k * Math.PI) / 8, a1 = ((k + 1) * Math.PI) / 8;
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a0) * R, cy + Math.sin(a0) * R); ctx.lineTo(cx + Math.cos(a1) * R, cy + Math.sin(a1) * R);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,244,214,0.40)';                      // pois
+    for (let y = Math.floor(y0 / 10) * 10, row = 0; y < y1 + 10; y += 10, row++) {
+      for (let x = Math.floor(x0 / 10) * 10 + (row % 2) * 5; x < x1 + 10; x += 10) {
+        ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#e9b44c'; ctx.lineWidth = 4; ctx.stroke();
+    ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.restore();
   }
 
   poly(verts, fill, stroke, lw = 1.5) {

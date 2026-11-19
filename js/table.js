@@ -303,11 +303,12 @@ export function buildTable(engine) {
   {
     const L = GEO.bouchonLane, w = L.half + 3;
     const P = (base, k, along = 0) => [base.x + L.v.x * k + L.u.x * along, base.y + L.v.y * k + L.u.y * along];
-    T.walls.push(add(seg(...P(L.M, -w), ...P(L.B, -w, 14), 6)));
-    T.walls.push(add(seg(...P(L.M, w), ...P(L.B, w, 14), 6)));
+    const cache = { plugin: { hidden: true } };   // dessinés ensemble comme une seule pièce (GEO.bouchonPiece)
+    T.walls.push(add(seg(...P(L.M, -w), ...P(L.B, -w, 14), 6, cache)));
+    T.walls.push(add(seg(...P(L.M, w), ...P(L.B, w, 14), 6, cache)));
     const peak = P(L.B, 0, 30);
-    T.walls.push(add(seg(...P(L.B, -w, 14), ...peak, 6)));
-    T.walls.push(add(seg(...peak, ...P(L.B, w, 14), 6)));
+    T.walls.push(add(seg(...P(L.B, -w, 14), ...peak, 6, cache)));
+    T.walls.push(add(seg(...peak, ...P(L.B, w, 14), 6, cache)));
     for (const k of [-w, w]) T.walls.push(add(Bodies.circle(...P(L.M, k), 4, { ...STATIC, label: 'wall' })));
     // blocs pleins de part et d'autre du couloir : aucune poche où une bille pourrait se coincer,
     // toits en pente qui renvoient la bille vers l'entrée de rampe puis le plateau
@@ -322,9 +323,14 @@ export function buildTable(engine) {
     ];
     for (const pts of blocks) {
       const blk = polyBody(pts, { ...STATIC, label: 'wall' });
-      blk.plugin = { housing: true };
+      blk.plugin = { hidden: true };
       T.walls.push(add(blk));
     }
+    // contour unique de la pièce (en U autour du couloir), dessiné avec des coins arrondis ;
+    // arrondis aussi dans la physique aux deux coins saillants
+    GEO.bouchonPiece = [[-2, 312], roofR, Q(R.T, -wr), Q(R.M, -wr), P(L.M, w), P(L.B, w, 14),
+      P(L.B, -w, 14), P(L.M, -w), [-2, 478]];
+    for (const c of [roofR, Q(R.M, -wr)]) T.walls.push(add(Bodies.circle(...c, 6, { ...STATIC, label: 'wall', plugin: { hidden: true } })));
   }
 
   // --- paroi des cibles rondes (mur gauche) : bloc plein, haut et bas en pente ; les cibles sont
