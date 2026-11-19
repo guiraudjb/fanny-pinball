@@ -1,7 +1,7 @@
 // Rendu canvas du plateau. Les lampes sont dessinées depuis LAMP_LAYOUT, dont l'ordre
 // est aussi l'ordre des LED sur la bande WS2812B de la réplique (index 0, 1, 2, …).
 
-import { W, H, GEO, BALL_R, CX } from './table.js';
+import { W, H, GEO, BALL_R, CX, pointAt } from './table.js';
 import { CITIES } from './rules.js';
 
 const C = {
@@ -53,7 +53,6 @@ export class Renderer {
     };
     load('plateau', 'assets/plateau.jpg', true);
     load('bumper', 'assets/bumper.png');
-    load('rampe', 'assets/rampe.jpg');
     load('sling', 'assets/lance_pierre.jpg');
     load('victoire', 'assets/fanny_victoire.png');
     load('lancer', 'assets/fanny_lancer.png');
@@ -447,43 +446,61 @@ export class Renderer {
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
   }
 
+  // Rampe en plastique transparent façon années 80 : ombre portée sur le plateau, liseré rouge et jaune
+  // aux couleurs de Fanny, rails chromés, chevrons à l'entrée, « WORLD TOUR » le long de l'arrondi du haut.
   ramp(path, hit) {
     const ctx = this.ctx, pts = path.pts;
     const off = BALL_R + 6;
-    const side = (sign) => pts.map((p, i) => {
+    const side = (sign, o = off) => pts.map((p, i) => {
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1;
-      return { x: p.x - (dy / l) * off * sign, y: p.y + (dx / l) * off * sign };
+      return { x: p.x - (dy / l) * o * sign, y: p.y + (dx / l) * o * sign };
     });
+    const line = (ps) => { ctx.beginPath(); ps.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y))); };
+    const band = (a, b) => { line(a); [...b].reverse().forEach((p) => ctx.lineTo(p.x, p.y)); ctx.closePath(); };
     const l = side(1), r = side(-1);
-    ctx.beginPath();
-    l.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-    [...r].reverse().forEach((p) => ctx.lineTo(p.x, p.y));
-    ctx.closePath();
-    if (this.art.rampe) {
-      if (!this.rampPattern) {
-        this.rampPattern = ctx.createPattern(this.art.rampe, 'repeat');
-        const k = (2 * off) / this.art.rampe.height;
-        this.rampPattern.setTransform(new DOMMatrix().scale(k, k));
-      }
-      ctx.save(); ctx.clip();
-      ctx.globalAlpha = 0.92; ctx.fillStyle = this.rampPattern; ctx.fillRect(0, 0, W, H);
-      if (hit) { ctx.globalAlpha = 0.45; ctx.fillStyle = '#fff6c0'; ctx.fillRect(0, 0, W, H); }
-      ctx.restore();
-    } else {
-      ctx.fillStyle = hit ? 'rgba(255,240,170,0.45)' : 'rgba(170,220,255,0.28)';
-      ctx.fill();
+    ctx.save();
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    // ombre de la rampe surélevée
+    ctx.save(); ctx.translate(5, 7); band(l, r); ctx.fillStyle = 'rgba(20,10,0,0.28)'; ctx.fill(); ctx.restore();
+    // plastique transparent
+    band(l, r);
+    ctx.fillStyle = hit ? 'rgba(255,240,170,0.55)' : 'rgba(205,235,255,0.30)';
+    ctx.fill();
+    // liserés : rouge cerise au bord, jaune soleil à l'intérieur
+    for (const sg of [1, -1]) {
+      band(side(sg, off - 1), side(sg, off - 6)); ctx.fillStyle = '#e8392c'; ctx.fill();
+      band(side(sg, off - 6), side(sg, off - 9)); ctx.fillStyle = '#ffd23f'; ctx.fill();
     }
-    ctx.strokeStyle = hit ? '#fff' : 'rgba(225,235,245,0.95)';
-    ctx.lineWidth = 2.5;
+    // reflet du plastique
+    line(side(1, off * 0.35)); ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2; ctx.stroke();
+    // rails chromés
     for (const rail of [l, r]) {
-      ctx.beginPath();
-      rail.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-      ctx.stroke();
+      line(rail); ctx.strokeStyle = '#4c535e'; ctx.lineWidth = 3.5; ctx.stroke();
+      line(rail); ctx.strokeStyle = hit ? '#fffbe6' : '#e6e9ee'; ctx.lineWidth = 1.8; ctx.stroke();
     }
-    ctx.lineWidth = 1.2;
-    for (let i = 0; i < pts.length; i += 5) {
-      ctx.beginPath(); ctx.moveTo(l[i].x, l[i].y); ctx.lineTo(r[i].x, r[i].y); ctx.stroke();
+    // chevrons jaunes à l'entrée (sens de montée)
+    for (const s0 of [26, 46, 66]) {
+      const p = pointAt(path, s0), q = pointAt(path, s0 + 8);
+      const ang = Math.atan2(q.y - p.y, q.x - p.x);
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(ang);
+      ctx.beginPath(); ctx.moveTo(-4, -8); ctx.lineTo(5, 0); ctx.lineTo(-4, 8);
+      ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 6; ctx.stroke();
+      ctx.strokeStyle = '#ffd23f'; ctx.lineWidth = 3.5; ctx.stroke();
+      ctx.restore();
     }
+    // « WORLD TOUR » le long de l'arrondi du haut, lettres orientées selon la rampe
+    const texte = '★ WORLD TOUR ★';
+    const top = pts.reduce((m, p) => (p.y < m.y ? p : m), pts[0]);
+    const pas = 13, s0 = top.s - (pas * (texte.length - 1)) / 2;
+    ctx.font = 'italic 900 12px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    [...texte].forEach((ch, i) => {
+      const p = pointAt(path, s0 + i * pas);
+      ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(Math.atan2(p.dy, p.dx));
+      ctx.lineWidth = 3; ctx.strokeStyle = '#1f4e8c'; ctx.strokeText(ch, 0, 0.5);
+      ctx.fillStyle = hit ? '#fff6c0' : '#ffffff'; ctx.fillText(ch, 0, 0.5);
+      ctx.restore();
+    });
+    ctx.restore();
   }
 }
