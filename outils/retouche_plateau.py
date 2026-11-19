@@ -4,7 +4,8 @@ près du soleil. Contour tracé à la main autour de son liseré ; son ancienne 
 lavande située juste au-dessus.
 
     python3 outils/retouche_plateau.py          # assets/brut/plateau_11.png → assets/brut/plateau_11c.png
-    python3 outils/preparer_assets.py plateau=11c
+    python3 outils/lissage_krea2.py             # facultatif : fondu Krea 2 → plateau_11k.png
+    python3 outils/preparer_assets.py plateau=11c  (ou 11k)
 """
 from pathlib import Path
 
@@ -33,8 +34,14 @@ def main():
     # poser dans l'arbre, un peu plus petite et inclinée
     c2 = cig.resize((int(cig.width * 0.85), int(cig.height * 0.85)), Image.LANCZOS)
     c2 = c2.rotate(-12, expand=True, resample=Image.BICUBIC)
-    out.paste(c2, (DEST[0] - c2.width // 2, DEST[1] - c2.height // 2), c2)
+    pos = (DEST[0] - c2.width // 2, DEST[1] - c2.height // 2)
+    out.paste(c2, pos, c2)
     out.save(BRUT / "plateau_11c.png")
+    # masques pour le lissage Krea 2 (outils/lissage_krea2.py) : nouvelle place, ancienne place
+    haut = Image.new("L", im.size, 0)
+    haut.paste(c2.getchannel("A"), pos)
+    haut.save(BRUT / "plateau_11c_masque_haut.png")
+    m.save(BRUT / "plateau_11c_masque_bas.png")
     print("ok", BRUT / "plateau_11c.png")
 
 
