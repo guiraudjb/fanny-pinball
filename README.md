@@ -1,12 +1,9 @@
 # Fanny Pinball
 
-Flipper web en HTML5/JavaScript avec Fanny, la championne de pétanque, en vedette.
-
-Jouable directement dans le navigateur, sans installation.
-
-## État
-
-Projet en démarrage.
+Flipper web avec Fanny, championne de pétanque : **Fanny Pétanque World Tour**.
+Prototype HTML5 + [Matter.js](https://brm.io/matter-js/), pensé dès le départ pour une
+**réplique physique** pilotée par un Arduino Mega 2560 Pro (afficheurs TM1637, LED WS2812B,
+boutons d'arcade, pièces imprimées en 3D) : voir [docs/MATERIEL.md](docs/MATERIEL.md).
 
 ## Lancer en local
 
@@ -14,4 +11,53 @@ Projet en démarrage.
 python3 -m http.server 8000
 ```
 
-puis ouvrir http://localhost:8000
+puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://`).
+
+## Règles (esprit flipper des années 70)
+
+- **F-A-N-N-Y** : abattre les 5 cibles allume **le Cercle** ; une bille dans le Cercle allumé
+  lance le **multiball Triplette** (3 billes).
+- **T-O-U-R** : les couloirs du haut et les bumpers (tous les 3 coups) allument les lettres ;
+  TOUR complet = bonus ×2, ×3 … ×5. **Changement de couloir** : chaque appui sur un batteur
+  décale les lettres allumées.
+- **Le Cercle** est un trou d'éjection en haut à droite.
+- **Couloir du bouchon** (haut gauche, tir de la palette droite) : le cochonnet allume le
+  **CARREAU** sur TIRER pendant 20 s (lettre + 10 000 × n). POINTER puis BOUCHON = **BIBERON**.
+- **Trois cibles rondes** du mur gauche : les trois = **TRIPLETTE** (lettre + boule pointée).
+- **Rampe** : chaque passage allume l'escale suivante du World Tour (Marseille → Sydney) ;
+  en multiball, chaque rampe rapporte le **jackpot**. 7 escales = Grand Chelem + bille supplémentaire.
+- 3 billes, sauvetage de bille 8 s, bonus de fin de bille × multiplicateur.
+
+## Commandes
+
+| Action | Clavier | Tactile |
+|---|---|---|
+| Flipper gauche | Maj gauche, ← | moitié gauche du plateau |
+| Flipper droit | Maj droite, → | moitié droite du plateau |
+| Lancer | Espace, ↓ | couloir de lancement |
+| Nouvelle partie | Entrée | bouton Jouer |
+| Pause / son | P / M | |
+
+## Organisation du code
+
+| Fichier | Rôle |
+|---|---|
+| `js/table.js` | Géométrie en millimètres réels et corps Matter.js |
+| `js/rules.js` | Règles : contacts → bobines, lampes, afficheurs, sons (à porter en C++ sur le Mega) |
+| `js/sim.js` | Physique : transforme les chocs en contacts, exécute les bobines |
+| `js/render.js` | Dessin du plateau ; `LAMP_LAYOUT` = ordre des LED WS2812B |
+| `js/segfont.js` | Police 7 segments identique aux TM1637 |
+| `js/audio.js` | Bruitages `assets/sons/00NN.mp3` (= pistes du DFPlayer), musique ; synthèse en repli |
+
+## Habillage et sons
+
+Ambiance d'été provençal, ode à la pétanque, avec une touche d'humour.
+
+| Outil | Rôle |
+|---|---|
+| `outils/habillage_krea2.py` | Plateau, fronton, bumpers, rampe, lance-pierres, sprites de Fanny avec Krea 2 (client ComfyUI de chat-studio, ADN « Fanny Pin-up Rétro » + style « Comics Moderne Cell-Shading ») → `assets/brut/` |
+| `outils/preparer_assets.py` | Choix des variantes → `assets/` (recadrage, disque des bumpers, détourage du fond vert) |
+| `outils/bruitages.py` | Bruitages par synthèse physique, sans IA : boules d'acier, carillons des années 70, bobines, knocker |
+| `outils/musique_yue2.py` | Générique et thème façon variété des années 70 avec YuE2 |
+
+Les voix de Fanny (VoiceStudio) restent à faire.

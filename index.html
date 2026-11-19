@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fanny Pinball</title>
+<meta name="description" content="Flipper web Fanny Pétanque World Tour — prototype Matter.js, pensé pour une réplique physique Arduino.">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<main class="cabinet">
+  <section class="backglass" aria-label="Fronton">
+    <div class="art">
+      <img id="fanny" src="assets/fronton.jpg" alt="Fanny Pétanque World Tour : Fanny, pin-up de la pétanque, devant le globe" onload="this.parentNode.classList.add('has-art')" onerror="this.remove()">
+      <div class="title"><span>Fanny</span><small>Pétanque World Tour</small></div>
+    </div>
+    <div class="displays">
+      <canvas id="disp-score" class="seg seg-score" aria-label="Score"></canvas>
+      <canvas id="disp-info" class="seg seg-info" aria-label="Bille, escale et multiplicateur"></canvas>
+    </div>
+    <p id="city" class="city"></p>
+    <div class="buttons">
+      <button id="start" type="button">Jouer</button>
+      <button id="mute" type="button">Son : oui</button>
+    </div>
+    <details class="help">
+      <summary>Commandes</summary>
+      <ul>
+        <li><kbd>Maj gauche</kbd> / <kbd>←</kbd> : flipper gauche</li>
+        <li><kbd>Maj droite</kbd> / <kbd>→</kbd> : flipper droit</li>
+        <li><kbd>Espace</kbd> / <kbd>↓</kbd> : lanceur</li>
+        <li><kbd>Entrée</kbd> : nouvelle partie · <kbd>P</kbd> : pause · <kbd>M</kbd> : son</li>
+        <li>Tactile : moitié gauche / droite du plateau, couloir de droite pour lancer</li>
+      </ul>
+      <p>Avant le lancement, les flippers déplacent le couloir allumé (tir parfait).</p>
+      <p>F‑A‑N‑N‑Y ouvre le Cercle · 2 boules placées = multiball Triplette · 2 rampes = escale suivante · couloirs T‑O‑U‑R = bonus ×.</p>
+    </details>
+  </section>
+  <section id="playfield" class="playfield">
+    <canvas id="table" aria-label="Plateau du flipper"></canvas>
+  </section>
+</main>
+<script src="vendor/matter.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
