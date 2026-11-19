@@ -8,8 +8,9 @@ Les dossiers de travail sont sous ~/Projets (monté en NFS sur les nœuds GPU).
     python3 outils/musique_yue2.py generique     # un seul
     python3 outils/musique_yue2.py --graine 7
 
-Sortie : assets/brut/musique/<morceau>_<graine>/… (audio.flac) — à écouter et choisir, puis
-outils/preparer_sons.py le convertit en pistes DFPlayer.
+Sortie : assets/brut/musique/<morceau>_<graine>/… (audio.flac) — à écouter et choisir, puis convertir en
+pistes DFPlayer (générique = 0022, thème = 0023) :
+    ffmpeg -i audio.flac -af loudnorm=I=-16:TP=-1.5:LRA=11 -ac 2 -b:a 160k assets/sons/0022.mp3
 """
 import argparse
 import json

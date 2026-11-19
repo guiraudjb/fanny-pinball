@@ -62,6 +62,7 @@ const buffers = {};
 const SON_GAIN = { [SND.FLIP]: 0.5, [SND.BUMPER]: 0.8, [SND.SLING]: 0.7 };
 function loadSounds() {
   for (const id of Object.values(SND)) {
+    if (id === SND.MUSIQUE_GENERIQUE || id === SND.MUSIQUE_THEME) continue;
     fetch(`assets/sons/${String(id).padStart(4, '0')}.mp3`)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject()))
       .then((b) => ac.decodeAudioData(b))
@@ -79,14 +80,15 @@ function playBuffer(id) {
   src.start();
 }
 
-// Musique : générique à l'accueil, thème en partie (assets/sons/musique_*.mp3, YuE2).
+// Musique : générique à l'accueil, thème en partie (pistes 0022 / 0023, YuE2).
 const music = { el: null, which: null };
 export function playMusic(which) {
   if (music.which === which) return;
   music.which = which;
   if (music.el) { music.el.pause(); music.el = null; }
   if (!which) return;
-  const el = new Audio(`assets/sons/musique_${which}.mp3`);
+  const n = which === 'theme' ? SND.MUSIQUE_THEME : SND.MUSIQUE_GENERIQUE;
+  const el = new Audio(`assets/sons/${String(n).padStart(4, '0')}.mp3`);
   el.loop = true; el.volume = muted ? 0 : 0.35;
   el.play().catch(() => {});
   music.el = el;
