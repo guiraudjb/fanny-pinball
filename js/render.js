@@ -473,9 +473,10 @@ export class Renderer {
       }
     }
     ctx.restore();
+    this.roundedPath(pts, r);   // les rayons et les pois ont remplacé le tracé : on le refait
     ctx.lineJoin = 'round';
-    ctx.strokeStyle = '#e9b44c'; ctx.lineWidth = 4; ctx.stroke();
-    ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 8.5; ctx.stroke();
+    ctx.strokeStyle = '#e9b44c'; ctx.lineWidth = 6.5; ctx.stroke();
     ctx.restore();
   }
 
