@@ -52,7 +52,6 @@ export class Renderer {
       img.src = src;
     };
     load('plateau', 'assets/plateau.jpg', true);
-    load('bumper', 'assets/bumper.png');
     load('victoire', 'assets/fanny_victoire.png');
     load('lancer', 'assets/fanny_lancer.png');
   }
@@ -312,17 +311,7 @@ export class Renderer {
         ctx.fillStyle = 'rgba(255,240,150,0.6)';
         ctx.beginPath(); ctx.arc(b.position.x, b.position.y, b.circleRadius + 8, 0, Math.PI * 2); ctx.fill();
       }
-      if (this.art.bumper) {
-        const r = b.plugin.cap || b.circleRadius, x = b.position.x, y = b.position.y;
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.beginPath(); ctx.arc(x + 3, y + 4, r, 0, Math.PI * 2); ctx.fill();
-        ctx.save();
-        ctx.translate(x, y); ctx.rotate(i * 2.1 + (hit ? 0.15 : 0));
-        ctx.drawImage(this.art.bumper, -r, -r, 2 * r, 2 * r);
-        ctx.restore();
-        ctx.strokeStyle = hit ? '#fff6a0' : C.chrome; ctx.lineWidth = hit ? 4 : 2.5;
-        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.stroke();
-      } else this.boule(b.position.x, b.position.y, b.plugin.cap || b.circleRadius, hit ? '#fffbe6' : '#c7ccd4', '#4c535e', true);
+      this.popBumper(b.position.x, b.position.y, b.plugin.cap || b.circleRadius, hit, i);
     });
 
     // flippers
@@ -429,6 +418,51 @@ export class Renderer {
     verts.forEach((v, i) => (i ? ctx.lineTo(v.x, v.y) : ctx.moveTo(v.x, v.y)));
     ctx.closePath();
     ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 2; ctx.stroke();
+  }
+
+  // Chapeau de pop bumper vu de dessus, assorti aux plastiques : jupe chromée, chapeau lavande à
+  // rayons ocre, liseré ocre cerné, couronne d'étoiles et de pois, boule de pétanque gravée au centre.
+  popBumper(x, y, r, hit, i) {
+    const ctx = this.ctx, TAU = Math.PI * 2;
+    ctx.save();
+    ctx.fillStyle = 'rgba(20,10,0,0.35)';                                   // ombre
+    ctx.beginPath(); ctx.arc(x + 3, y + 4, r, 0, TAU); ctx.fill();
+    const jupe = ctx.createRadialGradient(x - r * 0.3, y - r * 0.3, r * 0.2, x, y, r);   // jupe chromée
+    jupe.addColorStop(0, '#f4f6f8'); jupe.addColorStop(1, '#6b727c');
+    ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fillStyle = jupe; ctx.fill();
+    const rc = r - 4;                                                        // chapeau en plastique
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rc);
+    g.addColorStop(0, hit ? '#fff3b0' : '#9d8bd6'); g.addColorStop(1, hit ? '#f2b632' : '#3f3a7c');
+    ctx.beginPath(); ctx.arc(x, y, rc, 0, TAU); ctx.fillStyle = g; ctx.fill();
+    ctx.save(); ctx.clip();
+    ctx.fillStyle = hit ? 'rgba(255,255,255,0.35)' : 'rgba(242,182,50,0.30)';   // rayons de soleil
+    const rot = i * 0.4;
+    for (let k = 0; k < 24; k += 2) {
+      const a0 = rot + (k * TAU) / 24, a1 = rot + ((k + 1) * TAU) / 24;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.arc(x, y, rc, a0, a1); ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+    ctx.lineWidth = 4.5; ctx.strokeStyle = '#2b1a10';                       // liseré ocre cerné
+    ctx.beginPath(); ctx.arc(x, y, rc, 0, TAU); ctx.stroke();
+    ctx.lineWidth = 2.8; ctx.strokeStyle = '#e9b44c'; ctx.stroke();
+    // couronne : quatre étoiles jaunes, pois crème entre elles
+    const rt = rc - 7;
+    for (let k = 0; k < 16; k++) {
+      const a = rot + (k * TAU) / 16, px = x + Math.cos(a) * rt, py = y + Math.sin(a) * rt;
+      if (k % 4 === 0) {
+        ctx.beginPath();
+        for (let j = 0; j < 10; j++) {
+          const rr = j % 2 ? 2.2 : 5, b = a + (j * Math.PI) / 5;
+          ctx.lineTo(px + Math.cos(b) * rr, py + Math.sin(b) * rr);
+        }
+        ctx.closePath(); ctx.fillStyle = '#ffd23f'; ctx.fill();
+        ctx.lineWidth = 1; ctx.strokeStyle = '#2b1a10'; ctx.stroke();
+      } else {
+        ctx.beginPath(); ctx.arc(px, py, 1.6, 0, TAU); ctx.fillStyle = '#fff4d6'; ctx.fill();
+      }
+    }
+    ctx.restore();
+    this.boule(x, y, rc * 0.48, hit ? '#fffbe6' : '#d4d8de', '#4c535e', true);   // boule au centre
   }
 
   // Contour aux coins arrondis (rayon limité à la moitié des côtés voisins).
