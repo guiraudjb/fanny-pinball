@@ -5,6 +5,9 @@ Prototype HTML5 + [Matter.js](https://brm.io/matter-js/), pensé dès le départ
 **réplique physique** pilotée par un Arduino Mega 2560 Pro (afficheurs TM1637, LED WS2812B,
 boutons d'arcade, pièces imprimées en 3D) : voir [docs/MATERIEL.md](docs/MATERIEL.md).
 
+- [Cahier des charges](docs/CAHIER_DES_CHARGES.md) : les exigences du projet et leur état.
+- [Progression](docs/PROGRESSION.md) : les étapes franchies et ce qui reste à faire.
+
 ## Lancer en local
 
 ```sh
