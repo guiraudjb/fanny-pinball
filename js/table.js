@@ -37,13 +37,22 @@ const kL = (guideEnd.x - SEP_X) / dir.x;
 const guideKnee = { x: SEP_X, y: guideEnd.y - dir.y * kL };
 
 // Lance-pierre : bord bas parallèle au guide, à une largeur de couloir (34 mm) au-dessus.
+// Deux couloirs de retour côte à côte (comme les Williams des années 80) : le séparateur DIV_X
+// s'arrête sur la ligne du lance-pierre, les deux couloirs se rejoignent sur le guide du flipper.
 const INLANE = 34;
 const slingOff = GUIDE_T / 2 + INLANE;
 const slingP0 = { x: guideKnee.x + nrm.x * slingOff, y: guideKnee.y + nrm.y * slingOff };
 const slingLine = (x) => slingP0.y + ((x - slingP0.x) / dir.x) * dir.y;
-const SL_X1 = SEP_X + GUIDE_T / 2 + INLANE; // bord vertical du lance-pierre
-const SL_X2 = 140;
-const SLING = [[SL_X1, 715], [SL_X1, slingLine(SL_X1)], [SL_X2, slingLine(SL_X2)]];
+const DIV_X = SEP_X + GUIDE_T / 2 + INLANE + GUIDE_T / 2;   // séparateur retour 1 / retour 2
+const SL_X1 = DIV_X + GUIDE_T / 2 + INLANE; // bord vertical du lance-pierre
+// Face (caoutchouc) entre les deux poteaux : 101 mm, l'entraxe du mécanisme Williams 500-5849
+// (gabarit Pinball Makers). Angle de face conservé (≈ 60,8° sur l'horizontale, comme l'ancienne
+// face de 127 mm), pied posé sur la ligne parallèle au guide.
+const SL_FACE = 101;
+const SL_ANG = deg(60.83);
+const SL_X2 = SL_X1 + SL_FACE * Math.cos(SL_ANG);
+const SL_Y1 = slingLine(SL_X2) - SL_FACE * Math.sin(SL_ANG);
+const SLING = [[SL_X1, SL_Y1], [SL_X1, slingLine(SL_X1)], [SL_X2, slingLine(SL_X2)]];
 
 // Couloir d'entrée de rampe : bouche M, axe u (de la bouche vers le fond) orienté pour que
 // le tir de la palette droite y entre dans l'axe.
@@ -60,6 +69,9 @@ function rampEntry(side, M, len, half) {
 
 const DROP_DIR = { x: Math.cos(deg(75)), y: Math.sin(deg(75)) }; // 75° comme la banque H-O-L-E de Black Hole
 const DROP_BANK = { x0: 396, y0: 472, dir: DROP_DIR, n: { x: -DROP_DIR.y, y: DROP_DIR.x } }; // n : face avant
+// Pas et taille des cibles : banque de 5 Williams (plan DWG Pinball Makers) — pas 1-1/4" = 31,75 mm,
+// cible 22,5 × 8,1 mm (au lieu du pas de 28 mm relevé sur Black Hole, une Gottlieb).
+const DROP_PITCH = 31.75;
 
 // Couloir du bouchon : de sa bouche M jusqu'au cochonnet B, axe u tourné vers le milieu de la palette
 // droite levée ; parois à ±HALF (bille 27 mm dans un couloir de 38 mm).
@@ -86,6 +98,11 @@ export const GEO = {
     [[SEP_X, 700], [guideKnee.x, guideKnee.y], [guideEnd.x, guideEnd.y]],
     [[mx(SEP_X), 700], [mx(guideKnee.x), guideKnee.y], [mx(guideEnd.x), guideEnd.y]],
   ],
+  // séparateurs entre les deux couloirs de retour : du poteau du haut jusqu'à la ligne du lance-pierre
+  dividers: [
+    [[DIV_X, 700], [DIV_X, slingLine(DIV_X)]],
+    [[mx(DIV_X), 700], [mx(DIV_X), slingLine(DIV_X)]],
+  ],
   deflectors: [
     [[0, 465], [32, 500]],
   ],
@@ -106,8 +123,8 @@ export const GEO = {
   // adossée à un bloc plein (aucune bille ne peut passer derrière)
   dropBank: DROP_BANK,
   drops: ['F', 'A', 'N', 'N', 'Y'].map((letter, i) => ({
-    letter, x: DROP_BANK.x0 + DROP_BANK.dir.x * 28 * i, y: DROP_BANK.y0 + DROP_BANK.dir.y * 28 * i,
-    w: 24, h: 10, angle: Math.atan2(DROP_BANK.dir.y, DROP_BANK.dir.x),
+    letter, x: DROP_BANK.x0 + DROP_BANK.dir.x * DROP_PITCH * i, y: DROP_BANK.y0 + DROP_BANK.dir.y * DROP_PITCH * i,
+    w: 22.5, h: 8.1, angle: Math.atan2(DROP_BANK.dir.y, DROP_BANK.dir.x),
   })),
   // trois cibles rondes à la verticale contre le mur gauche (montées à fleur d'une paroi pleine)
   leftWall: { x: 30, y1: 520, y2: 640 },
@@ -127,7 +144,7 @@ export const GEO = {
   rampEntries: [rampEntry('L', { x: 160, y: 450 }, 85, 26)], // entrée de 52 mm (Black Knight : 50 à 56 mm)
   // une seule rampe, qui exploite l'arrondi supérieur du plateau
   ramps: { L: null },
-  inlaneTop: { x: (SEP_X + GUIDE_T / 2 + SL_X1) / 2, y: 690 },
+  inlaneTop: { x: (SEP_X + DIV_X) / 2, y: 690 },  // haut du couloir de retour extérieur (sortie de rampe)
   drainY: H + 8,
   cities: ['Marseille', 'Paris', 'Londres', 'New York', 'Tokyo', 'Rio', 'Sydney'],
 };
@@ -159,6 +176,18 @@ GEO.ramps.L = buildRamp();
 // ---------------------------------------------------------------------------
 
 const STATIC = { isStatic: true, restitution: 0.3, friction: 0.02 };
+
+// Corps rond fixe : Matter.js le remplace par un polygone ; à peu de côtés, l'un d'eux peut être
+// horizontal en haut (méplat de 5,6 mm sur une cible de r 11) où une bille lâchée sans vitesse
+// s'arrête. On prend 32 côtés et on tourne le polygone pour qu'un sommet soit en haut.
+function roundBody(x, y, r, opts) {
+  const b = Bodies.circle(x, y, r, opts, 32);
+  const n = b.vertices.length;
+  const top = b.vertices.reduce((m, v) => (v.y < m.y ? v : m));
+  const flat = b.vertices.filter((v) => Math.abs(v.y - top.y) < 1e-6).length > 1;
+  if (flat) Body.rotate(b, Math.PI / n);
+  return b;
+}
 
 function seg(x1, y1, x2, y2, t = 8, extra = {}) {
   const dx = x2 - x1, dy = y2 - y1;
@@ -224,7 +253,7 @@ export function buildTable(engine) {
   // --- couloir du lanceur
   const ls = GEO.laneSep;
   T.walls.push(add(Bodies.rectangle(ls.x, (ls.y1 + ls.y2) / 2, ls.t, ls.y2 - ls.y1, { ...STATIC, label: 'wall' })));
-  T.walls.push(add(Bodies.circle(ls.x, ls.y1, ls.t / 2, { ...STATIC, label: 'wall' })));
+  T.walls.push(add(roundBody(ls.x, ls.y1, ls.t / 2, { ...STATIC, label: 'wall' })));
   const p = GEO.plunger;
   T.walls.push(add(Bodies.rectangle(p.x, p.top + 20, W - PLAY_R - 4, 40, { ...STATIC, restitution: 0.05, label: 'plunger' })));
   // portillon à sens unique (catégorie à part, activé par bille — voir sim.js)
@@ -241,7 +270,11 @@ export function buildTable(engine) {
   // --- séparateurs de couloirs bas (dans le prolongement des flippers)
   for (const s of GEO.separators) {
     for (let i = 0; i < s.length - 1; i++) T.walls.push(add(seg(...s[i], ...s[i + 1], GUIDE_T)));
-    T.walls.push(add(Bodies.circle(s[0][0], s[0][1], 5, { ...STATIC, label: 'wall' })));
+    T.walls.push(add(roundBody(s[0][0], s[0][1], 5, { ...STATIC, label: 'wall' })));
+  }
+  for (const [a, b] of GEO.dividers) {
+    T.walls.push(add(seg(...a, ...b, GUIDE_T)));
+    for (const p of [a, b]) T.walls.push(add(roundBody(p[0], p[1], GUIDE_T / 2 + 1, { ...STATIC, label: 'wall' })));
   }
 
   // --- lance-pierres
@@ -265,14 +298,14 @@ export function buildTable(engine) {
 
   // --- bumpers (boules)
   GEO.bumpers.forEach((b, i) => {
-    T.bumpers.push(add(Bodies.circle(b.x, b.y, b.r, { ...STATIC, restitution: 0.5, label: 'bumper', plugin: { idx: i, cap: b.cap } })));
+    T.bumpers.push(add(roundBody(b.x, b.y, b.r, { ...STATIC, restitution: 0.5, label: 'bumper', plugin: { idx: i, cap: b.cap } })));
   });
 
   // --- couloirs du haut T O U R
   for (const post of GEO.lanePosts) {
     T.walls.push(add(Bodies.rectangle(post.x, (post.y1 + post.y2) / 2, 6, post.y2 - post.y1, { ...STATIC, label: 'wall' })));
-    T.walls.push(add(Bodies.circle(post.x, post.y1, 3, { ...STATIC, label: 'wall' })));
-    T.walls.push(add(Bodies.circle(post.x, post.y2, 3, { ...STATIC, label: 'wall' })));
+    T.walls.push(add(roundBody(post.x, post.y1, 3, { ...STATIC, label: 'wall' })));
+    T.walls.push(add(roundBody(post.x, post.y2, 3, { ...STATIC, label: 'wall' })));
   }
   GEO.lanes.forEach((l, i) => {
     T.lanes.push(add(Bodies.rectangle(l.x, l.y, 30, 10, { isStatic: true, isSensor: true, label: 'lane', plugin: { idx: i } })));
@@ -296,7 +329,7 @@ export function buildTable(engine) {
 
   // --- cibles fixes POINTER / TIRER
   GEO.standups.forEach((s, i) => {
-    T.standups.push(add(Bodies.circle(s.x, s.y, s.r, { ...STATIC, restitution: 0.45, label: 'standup', plugin: { idx: i, id: s.id } })));
+    T.standups.push(add(roundBody(s.x, s.y, s.r, { ...STATIC, restitution: 0.45, label: 'standup', plugin: { idx: i, id: s.id } })));
   });
 
   // --- couloir du bouchon : deux parois, fond en pointe derrière le cochonnet (rien de plat vers le haut)
@@ -309,7 +342,7 @@ export function buildTable(engine) {
     const peak = P(L.B, 0, 30);
     T.walls.push(add(seg(...P(L.B, -w, 14), ...peak, 6, cache)));
     T.walls.push(add(seg(...peak, ...P(L.B, w, 14), 6, cache)));
-    for (const k of [-w, w]) T.walls.push(add(Bodies.circle(...P(L.M, k), 4, { ...STATIC, label: 'wall' })));
+    for (const k of [-w, w]) T.walls.push(add(roundBody(...P(L.M, k), 4, { ...STATIC, label: 'wall' })));
     // blocs pleins de part et d'autre du couloir : aucune poche où une bille pourrait se coincer,
     // toits en pente qui renvoient la bille vers l'entrée de rampe puis le plateau
     const R = GEO.rampEntries[0], wr = R.half + 3;
@@ -330,7 +363,22 @@ export function buildTable(engine) {
     // arrondis aussi dans la physique aux deux coins saillants
     GEO.bouchonPiece = [[-2, 312], roofR, Q(R.T, -wr), Q(R.M, -wr), P(L.M, w), P(L.B, w, 14),
       P(L.B, -w, 14), P(L.M, -w), [-2, 478]];
-    for (const c of [roofR, Q(R.M, -wr)]) T.walls.push(add(Bodies.circle(...c, 6, { ...STATIC, label: 'wall', plugin: { hidden: true } })));
+    // cercle inscrit dans le coin (tangent aux deux faces) : centré sur le coin, il dépassait du toit
+    // et formait un petit barrage où la bille s'arrêtait (lâcher en grille du 20/11)
+    const inset = (c, p1, p2, r) => {
+      const a = [p1[0] - c[0], p1[1] - c[1]], b = [p2[0] - c[0], p2[1] - c[1]];
+      const la = Math.hypot(...a), lb = Math.hypot(...b);
+      const ua = [a[0] / la, a[1] / la], ub = [b[0] / lb, b[1] / lb];
+      const bis = [ua[0] + ub[0], ua[1] + ub[1]], lbis = Math.hypot(...bis);
+      const half = Math.acos(Math.max(-1, Math.min(1, ua[0] * ub[0] + ua[1] * ub[1]))) / 2;
+      const d = r / Math.sin(half);
+      return [c[0] + (bis[0] / lbis) * d, c[1] + (bis[1] / lbis) * d];
+    };
+    const corners = [
+      inset(roofR, [-2, 312], Q(R.M, wr), 6),
+      inset(Q(R.M, -wr), Q(R.T, -wr), P(L.M, w), 6),
+    ];
+    for (const c of corners) T.walls.push(add(roundBody(...c, 6, { ...STATIC, label: 'wall', plugin: { hidden: true } })));
   }
 
   // --- paroi des cibles rondes (mur gauche) : bloc plein, haut et bas en pente ; les cibles sont

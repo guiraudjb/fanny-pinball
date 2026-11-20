@@ -33,6 +33,10 @@ button:hover { filter: brightness(1.15); }
 kbd { background: #3a2a20; border-radius: 3px; padding: 0 4px; font-size: 12px; }
 .playfield { flex: 1; min-width: 0; display: flex; justify-content: center; align-items: flex-start; }
 #table { display: block; touch-action: none; border-radius: 6px; box-shadow: 0 0 0 4px #4a3020, 0 10px 40px #000; }
+#table[hidden], .view3d[hidden] { display: none; }
+.view3d { position: relative; touch-action: none; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 4px #4a3020, 0 10px 40px #000; }
+.view3d canvas { display: block; }
+#overlay3d { position: absolute; inset: 0; pointer-events: none; }
 @media (max-width: 760px) {
   .cabinet { flex-direction: column; padding: 8px 16px; gap: 8px; height: auto; min-height: 100dvh; }
   .backglass { width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

@@ -21,6 +21,7 @@ lampes, mêmes pistes sonores.
 | Thème pétanque, avec Fanny, championne pin-up rétro | ✅ |
 | Gameplay **simple, esprit flipper des années 70** : peu de règles, lisibles | ✅ |
 | Rampe, bonus, multiball | ✅ |
+| Une lettre T-O-U-R ne s'allume **que** par le passage dans son couloir (ni bumpers, ni TRIPLETTE, ni CARREAU) | ✅ |
 | **Changement de couloir** : les appuis sur les batteurs décalent les lettres T-O-U-R allumées | ✅ |
 | Haut du plateau garni : chemins et bonus à prendre (tir au carreau, tir au bouchon…) | ✅ |
 | Cibles rondes verticales sur le côté gauche, à gauche de la lumière POINTER | ✅ |
@@ -36,6 +37,8 @@ lampes, mêmes pistes sonores.
 | Cibles tombantes en diagonale | ✅ |
 | **Une seule rampe**, sur l'arrondi du haut, entrée visée par le flipper droit, parcours de gauche à droite | ✅ |
 | Le lancement retombe dans les couloirs du haut / les bumpers | ✅ |
+| **Trois couloirs** de chaque côté en bas (sortie + deux couloirs de retour), lance-pierres rapprochés du centre | ✅ |
+| Lance-pierres à l'entraxe du mécanisme Williams 500-5849 (face de 101 mm) | ✅ |
 | **Aucune bille coincée** (vérifié par lâchers de billes en grille et parties automatiques) | ✅ |
 
 ## 4. Règles de jeu (boucle complète)
@@ -61,6 +64,7 @@ lampes, mêmes pistes sonores.
 | **Composition vintage** aux couleurs flashy de Fanny ; **ambiance estivale**, clin d'œil à la pétanque | ✅ |
 | « Une œuvre d'art, une ode à la pétanque », avec une **touche d'humour** | ✅ |
 | Plateau, rampe, bumpers, lance-pierres habillés | ✅ |
+| **Vue 3D** façon Visual Pinball (plateau incliné, volumes, ombres, bille d'acier), vue 2D conservée | étape 1 ✅ |
 | **Fronton** « Fanny Pétanque World Tour » | ✅ |
 | Cigale à lunettes dans l'arbre près du soleil, intégration lissée par IA (inpainting Krea 2 dans ComfyUI) | ✅ |
 | Pièces en plastique **sans angles vifs** ; la pièce au-dessus du cochonnet d'un seul tenant, arrondie | ✅ |
@@ -92,5 +96,6 @@ Plans et modèle 3D : [CONSTRUCTION.md](CONSTRUCTION.md).
 ## 8. Contraintes de réalisation
 
 - Dépôt **public** : le code, les images de Fanny, les sons et les musiques y sont publiés.
+- Page publiée sur GitHub Pages en **application installable (PWA)**, jouable hors ligne.
 - Tout ce qui peut se faire **sans IA** (calcul, géométrie, synthèse sonore, retouche) se fait sans IA.
 - Outils locaux uniquement (Krea 2 / ComfyUI, YuE2, VoiceStudio, demucs sur les machines du labo).

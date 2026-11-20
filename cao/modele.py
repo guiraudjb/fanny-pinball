@@ -141,6 +141,8 @@ ruban("sep_lanceur", "Séparateur du couloir de lancement", [(ls["x"], ls["y1"])
 # --- guides des couloirs de retour (dans le prolongement des flippers)
 for i, s in enumerate(GEO["separators"]):
     ruban(f"guide_retour_{'GD'[i]}", f"Guide de couloir de retour {'gauche droit'.split()[i]}", s, 8)
+for i, s in enumerate(GEO.get("dividers", [])):
+    ruban(f"separateur_retour_{'GD'[i]}", f"Séparateur des couloirs de retour {'gauche droit'.split()[i]}", s, 8)
 # --- déflecteur
 for i, d in enumerate(GEO["deflectors"]):
     ruban(f"deflecteur_{i + 1}", "Déflecteur latéral", d, 8)
@@ -172,7 +174,7 @@ POTEAU_D = 10
 poteaux = []
 for s in GEO["slings"]:
     poteaux += [tuple(p) for p in s["pts"]]
-for s in GEO["separators"]:
+for s in GEO["separators"] + GEO.get("dividers", []):
     poteaux.append(tuple(s[0]))
 for i, p in enumerate(poteaux):
     piece(id=f"poteau_{i + 1}", nom="Poteau Ø 10 (anneau caoutchouc acheté)", type="poteau", x=p[0], y=p[1], d=POTEAU_D,
@@ -216,9 +218,10 @@ for i, s in enumerate(GEO["slings"]):
 
 # --- flippers (achetés)
 for f in GEO["flippers"]:
-    trou(f"flipper_{f['side']}", "bague du flipper", f["px"], f["py"], d=V(MECA["flipper_bague"]), src="HYP")
+    trou(f"flipper_{f['side']}", "bague du flipper", f["px"], f["py"], d=V(MECA["flipper_bague"]), src=MECA["flipper_bague"]["src"])
+    fz = V(MECA["flipper_zone"])
     piece(id=f"meca_flipper_{f['side']}", nom=f"Mécanisme de flipper {'gauche' if f['side'] == 'L' else 'droit'} (acheté)",
-          type="zone", x=f["px"] + (55 if f["side"] == "L" else -55), y=f["py"] + 10, dims=V(MECA["flipper_zone"]), angle=0,
+          type="zone", x=f["px"] + (1 if f["side"] == "L" else -1) * fz["centre"][0], y=f["py"] + fz["centre"][1], dims=fz["dims"], angle=0,
           achat=True, matiere="acheté")
     piece(id=f"palette_{f['side']}", nom="Palette de flipper 3\" (achetée)", type="palette", flip=f, achat=True, matiere="acheté")
 
@@ -240,7 +243,7 @@ for i, b in enumerate(GEO["bumpers"]):
 l, w = V(MECA["drop_lumiere"])
 for i, d in enumerate(GEO["drops"]):
     trou(f"drop_{d['letter']}{i + 1}", f"lumière de la cible tombante {d['letter']}", d["x"], d["y"], forme="oblong", l=l, w=w,
-         angle=math.degrees(d["angle"]), src="HYP")
+         angle=math.degrees(d["angle"]), src=MECA["drop_lumiere"]["src"])
     piece(id=f"cible_drop_{i + 1}", nom=f"Cible tombante {d['letter']} (achetée)", type="drop", x=d["x"], y=d["y"],
           angle=d["angle"], achat=True, matiere="acheté")
 d0, d4 = GEO["drops"][0], GEO["drops"][-1]

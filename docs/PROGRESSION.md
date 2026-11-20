@@ -89,6 +89,41 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 - 12 planches cotées en PDF : [CONSTRUCTION.md](CONSTRUCTION.md).
 - Recherche d'une caisse nue dans le commerce : seulement aux États-Unis ou en version « flipper virtuel ». La caisse se construit aux cotes WPC.
 
+## Couloirs du bas et lance-pierres (20/11)
+
+- Trois couloirs de chaque côté : sortie, et deux couloirs de retour séparés par un poteau, qui se rejoignent sur le guide du flipper. Les lance-pierres se rapprochent du centre (bord vertical de x 78 à x 120).
+- La face des lance-pierres passe de 127 à 101 mm entre poteaux, l'entraxe du mécanisme Williams 500-5849. L'angle de la face est conservé.
+- Les deux arrondis de l'entrée de rampe sont maintenant inscrits dans les coins. L'ancien cercle dépassait du toit et retenait la bille.
+- Le lâcher en grille a été refait après ces changements.
+
+## T-O-U-R (20/11)
+
+- Vérification : chaque capteur de couloir ne se déclenche que si la bille passe dans ce couloir (59 passages simulés, aucun faux contact).
+- Les lettres allumées « sans passage » venaient des règles : bumpers (tous les 3 coups), TRIPLETTE et CARREAU allumaient la lettre suivante. Ces trois sources sont retirées. Seul le passage dans le couloir allume sa lettre. Le changement de couloir aux batteurs est conservé.
+
+## Plans DWG Pinball Makers (20/11)
+
+- LibreDWG 0.14 compilé en local, sans sudo. Les 8 DWG sont convertis en DXF et relevés (détail dans [CONSTRUCTION.md](CONSTRUCTION.md)).
+- Ne sont plus des hypothèses : la bague des flippers (Ø 12,7), la platine des flippers (128,6 × 97,6), la banque de cibles (171,5 × 89) et les lumières des cibles (23,5 × 9).
+- Cibles F-A-N-N-Y au pas Williams de 31,75 mm au lieu de 28 mm. Nouveau lâcher en grille, cibles levées puis baissées : aucune bille coincée.
+
+## Application installable (20/11)
+
+- Manifeste, service worker (cache complet, jeu hors ligne, plein écran) et icônes tirées du sprite de Fanny, sans IA.
+- `outils/pwa.py` : à relancer avant chaque commit qui touche aux fichiers servis.
+
+## Vue 3D, étape 1 (20/11)
+
+- Three.js r170 copié dans `vendor/` (licence MIT, `vendor/three.LICENSE`). Il n'est chargé que si la vue 3D est demandée.
+- La physique ne change pas : `js/render3d.js` ne fait que dessiner. Le moteur 2D peint le plateau (illustration, lampes, Cercle, tablier) dans une texture posée sur un plateau incliné à 6,5°.
+- En volume : parois chromées, poteaux à anneau de caoutchouc, plastiques sérigraphiés (même dessin qu'en 2D), lance-pierres avec caoutchouc qui s'éclaire au choc, bumpers à chapeau peint, cibles tombantes et rondes, cochonnets, flippers, lanceur.
+- La rampe est surélevée avec le profil de la CAO : montée à 14°, 62 mm au-dessus du plateau, descente sur 300 mm. Elle a des rails chromés et des poteaux de support.
+- Caisse en bois et barre de verrouillage. Ombres portées, bille d'acier qui reflète l'environnement.
+- Caméra à la place du joueur, cadrée automatiquement. Le toucher est ramené aux coordonnées du plateau ; l'aller-retour écran ↔ table est exact.
+- Bouton « Vue » et touche V. La 3D est la vue par défaut quand le navigateur gère WebGL 2, et le choix est mémorisé.
+- Sur la carte graphique Intel HD 510 de Pilote2 : environ 31 images/s en 3D contre 44 en 2D.
+- Étapes suivantes : (2) halo des lampes, rampe plus travaillée, reflets ; (3) pièces importées de la CAO, réglage de la caméra, version légère pour téléphone.
+
 ## Reste à faire
 
 | Sujet | Détail |

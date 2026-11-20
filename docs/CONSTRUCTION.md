@@ -84,9 +84,22 @@ Les gabarits de perçage STL de [Pinball Makers](https://pinballmakers.com/wiki/
 | Lance-pierre : contacts à lames | 4 passages Ø 12,7 | 2 passe-fils Ø 8 |
 | Lance-pierre : poteaux | Ø 6,1, distants de 100,9 | — |
 
-Le gabarit du lance-pierre est posé sur les deux poteaux de la face du jeu, centré au milieu. **La face du jeu mesure 127 mm contre 101 mm pour le mécanisme Williams.** Il faudra soit raccourcir les lance-pierres dans `js/table.js`, soit garder des poteaux plus écartés que ceux du gabarit (le bras frappe alors le caoutchouc en son milieu, ce qui reste correct).
+Le gabarit du lance-pierre est posé sur les deux poteaux de la face du jeu, centré au milieu. La face du jeu mesure 101 mm entre les poteaux, comme le mécanisme Williams 500-5849 (raccourcie le 20/11, angle de face conservé).
 
-Les plans DWG du même site (flippers A-15205, banque de 5 cibles tombantes, rollover A-12688, trough, cible fixe B-12001-4) n'ont pas pu être lus : aucun convertisseur DWG n'est installé (LibreDWG ou ODA File Converter le permettraient).
+Les plans DWG du même site ont été convertis en DXF avec LibreDWG 0.14, compilé en local car il n'existe pas de paquet Debian 13. Le relevé est fait par `assets/brut/analyse_dxf.py` (source « DWG » dans `cao/cotes.py`). Les plans sont en pouces, sauf la banque de 5, qui est en mm.
+
+| Pièce | Cote relevée | Usage |
+|---|---|---|
+| Flipper A-15205 : bague | trou **Ø 1/2" (12,7)** traversant, avant-trou Ø 1/8" | perçage du plateau |
+| Flipper A-15205 : platine | **5,06 × 3,84" (128,6 × 97,6)**, centre à 38,9 mm vers la pointe et 9,9 mm vers l'avant de l'axe ; 8 vis | encombrement sous le plateau |
+| Banque de 5 cibles tombantes | pas **31,75 mm (1-1/4")**, cible **22,5 × 8,1**, platine **171,5 × 89** | pas des cibles du jeu passé de 28 à 31,75 mm |
+| Bumper Williams/Bally | base Ø 3" (76,2), tiges Ø 3/8" à ± 0,6875" (entraxe 34,9), 3 vis Ø 3/32" | confirme les cotes « PM » |
+| Lance-pierre 500-5849 | 2 trous Ø 1/2" à 2,125" (54 mm), lumière du bras 0,5 × 0,62" | confirme le gabarit « PM » |
+| Rollover A-12688 | fente 3/16 × 1-3/8" (4,8 × 34,9), 2 vis | pour des contacts de couloir à fil |
+| Cible fixe B-12001-4 | face 1-1/16" (27), fente 3/16", 2 vis à 3/8" d'entraxe | cible achetable à la place d'une cible imprimée |
+| Trough 4 billes 500-6119-14 | logement 8,86 × 1,5" (225 × 38) | sous le plateau |
+
+Les encombrements des bobines de bumper et de lance-pierre ne figurent pas sur ces gabarits et restent à confirmer (HYP).
 
 ## Cotes encore à confirmer (en orange sur les plans)
 

@@ -9,7 +9,7 @@ commerce.
 
 | Élément du jeu | Réalisation physique |
 |---|---|
-| Échelle | 1 unité du jeu = 1 mm. Plateau standard 514 × 1067 mm (20,25" × 42"), bille de flipper 27 mm (1-1/16"), flippers de 63 mm d'axe à pointe, axes écartés de 174 mm à 180 mm du bas, angles 31° / 19°, bumpers à anneau Ø 57 mm et chapeau Ø 68 mm, banque de cibles à 75° au pas de 28 mm, entrée de rampe de 52 mm — cotes relevées dans les tables VPX Black Knight (1980), Black Hole (1981) et Top Score (1975) |
+| Échelle | 1 unité du jeu = 1 mm. Plateau standard 514 × 1067 mm (20,25" × 42"), bille de flipper 27 mm (1-1/16"), flippers de 63 mm d'axe à pointe, axes écartés de 174 mm à 180 mm du bas, angles 31° / 19°, bumpers à anneau Ø 57 mm et chapeau Ø 68 mm, banque de cibles à 75° (Black Hole) au pas Williams de 31,75 mm, entrée de rampe de 52 mm — cotes relevées dans les tables VPX Black Knight (1980), Black Hole (1981) et Top Score (1975) |
 | Règles (`js/rules.js`) | Code à porter presque ligne à ligne en C++ sur le Mega |
 | Contacts | Un contact = une entrée du Mega (INPUT_PULLUP, contact vers la masse) |
 | Flippers, bumpers, lance-pierres | Le Mega tire la bobine dès que le bouton ou le contact se ferme |
@@ -21,7 +21,7 @@ commerce.
 | Multiball | Le Cercle réexpulse toujours la bille (verrou virtuel) ; les 2 autres billes sortent du bac et sont lancées automatiquement |
 | Cibles F-A-N-N-Y | Banque de 5 cibles tombantes en diagonale contre le mur droit (75°), tournée vers le flipper gauche, adossée à un bloc plein ; une seule bobine de remise |
 | Rampe | Une seule rampe, à la manière des premières tables à rampe (Black Knight, 1980) : entrée à gauche au tiers de la hauteur, passage au-dessus des couloirs T-O-U-R en suivant l'arrondi du haut, descente à droite vers le couloir de retour droit. Fil d'acier cintré ou tronçons imprimés |
-| Couloirs du bas | Guides de couloir de retour dans le prolongement exact du dessus des flippers ; couloirs de 34 mm pour la bille de 27 mm |
+| Couloirs du bas | Trois couloirs de chaque côté : sortie (vers le drain) et deux couloirs de retour côte à côte, qui se rejoignent sur le guide placé dans le prolongement exact du dessus du flipper ; couloirs de 34 mm pour la bille de 27 mm, séparateurs de 8 mm terminés par des poteaux |
 | Lancement | Puissance fixe (bobine) réglée pour suivre l'arrondi du haut et retomber dans les couloirs T-O-U-R / les bumpers |
 | Lampes | Une LED WS2812B par lampe, dans l'ordre de `LAMP_LAYOUT` (`js/render.js`) |
 | Afficheurs | 2 × TM1637 4 chiffres pour le score (8 chiffres), 1 × TM1637 pour « bille + multiplicateur » ; même police 7 segments que `js/segfont.js` |

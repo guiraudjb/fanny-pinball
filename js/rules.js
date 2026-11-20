@@ -12,12 +12,12 @@
 //     Le multiball se rallume ensuite plus difficilement : F-A-N-N-Y deux fois, puis trois…
 //   • Multiball : chaque rampe = JACKPOT (+5 000 à chaque fois, +10 000 par F-A-N-N-Y ; la valeur reste
 //     acquise d'un multiball à l'autre). Trois jackpots allument le SUPER JACKPOT au Cercle (3 × jackpot).
-//   • Bumpers (tous les 3 coups) et couloirs du haut allument T-O-U-R ; TOUR complet = bonus ×2, ×3 … ×5,
+//   • Seul le passage dans un couloir du haut allume sa lettre T-O-U-R ; TOUR complet = bonus ×2, ×3 … ×5,
 //     puis au ×5 : EXTRA BALL allumée au Cercle. Changement de couloir : chaque appui sur un batteur
 //     décale les lettres allumées.
-//   • Couloir du BOUCHON (haut gauche) : allume le CARREAU sur TIRER pendant 20 s (carreau = lettre + k × 10 000).
+//   • Couloir du BOUCHON (haut gauche) : allume le CARREAU sur TIRER pendant 20 s (carreau = k × 10 000).
 //     POINTER puis BOUCHON = BIBERON (+5 000).
-//   • Trois cibles rondes du mur gauche : les trois = TRIPLETTE (+3 000, lettre T-O-U-R, boule pointée).
+//   • Trois cibles rondes du mur gauche : les trois = TRIPLETTE (+3 000, boule pointée).
 //   • Rampe : allume l'escale suivante du World Tour ; 7 escales = GRAND CHELEM (+50 000) + EXTRA BALL.
 //   • EXTRA BALL : deux au plus par partie ; au-delà, l'extra ball allumée vaut 25 000.
 //   • 3 billes, sauvetage de bille 8 s ; bonus de fin de bille décompté × multiplicateur.
@@ -68,7 +68,6 @@ export const CITIES = ['MARSEILLE', 'PARIS', 'LONDRES', 'NEW YORK', 'TOKYO', 'RI
 const BALLS_PER_GAME = 3;
 const BALL_SAVE_MS = 8000;
 const MB_BALL_SAVE_MS = 10000;
-const BUMPER_HITS_PER_LETTER = 3;
 const MAX_MULT = 5;
 const JACKPOT_START = 20000;
 const JACKPOT_STEP = 5000;
@@ -124,7 +123,6 @@ export class Rules {
     this.mult = 1;
     this.bonus = 0;
     this.letters = [false, false, false, false];
-    this.bumperHits = 0;
     this.drops = [false, false, false, false, false]; // true = tombée
     this.pointLit = false;
     this.carreauUntil = 0;
@@ -358,7 +356,7 @@ export class Rules {
     this.hw.coil(COIL.LAUNCH);
   }
 
-  // --- T O U R : lettres allumées par les couloirs du haut et par les bumpers
+  // --- T O U R : lettres allumées uniquement par le passage dans les couloirs du haut
   lightLetter(i) {
     if (this.letters[i]) return false;
     this.letters[i] = true;
@@ -385,7 +383,7 @@ export class Rules {
   }
 
   // --- jeu de boules : POINTER, BOUCHON, TIRER (carreau)
-  // trois cibles rondes du mur gauche : les trois = TRIPLETTE (lettre T-O-U-R + boule pointée)
+  // trois cibles rondes du mur gauche : les trois = TRIPLETTE (boule pointée)
   hitTarget(i) {
     this.add(300, 30);
     this.hw.sound(SND.STANDUP);
@@ -398,8 +396,6 @@ export class Rules {
     this.hw.sound(SND.V_TRIPLETTE);
     this.hw.sound(SND.LANES_DONE);
     this.pointLit = true;
-    const next = this.letters.indexOf(false);
-    if (next >= 0) this.lightLetter(next);
   }
 
   hitPointer() {
@@ -429,8 +425,6 @@ export class Rules {
       this.say(`CARREAU ${pts}`, 1800);
       this.hw.sound(SND.JACKPOT);
       this.hw.sound(SND.V_CARREAU);
-      const next = this.letters.indexOf(false);
-      if (next >= 0) this.lightLetter(next);
       return;
     }
     this.add(500, 50);
@@ -445,12 +439,6 @@ export class Rules {
   hitBumper() {
     this.add(100, 10);
     this.hw.sound(SND.BUMPER);
-    this.bumperHits++;
-    if (this.bumperHits >= BUMPER_HITS_PER_LETTER) {
-      this.bumperHits = 0;
-      const next = this.letters.indexOf(false);
-      if (next >= 0) this.lightLetter(next);
-    }
   }
 
   // --- F A N N Y : allume le multiball au Cercle

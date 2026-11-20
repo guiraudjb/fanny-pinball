@@ -8,6 +8,19 @@ boutons d'arcade, pièces imprimées en 3D) : voir [docs/MATERIEL.md](docs/MATER
 - [Cahier des charges](docs/CAHIER_DES_CHARGES.md) : les exigences du projet et leur état.
 - [Progression](docs/PROGRESSION.md) : les étapes franchies et ce qui reste à faire.
 
+## Jouer en ligne, installer l'application
+
+**https://guiraudjb.github.io/fanny-pinball/**
+
+La page est une application installable (PWA) : « Installer l'application » dans Chrome/Edge,
+ou « Sur l'écran d'accueil » dans Safari. Le jeu entier (≈ 6,5 Mo, sons compris) est mis en cache à
+la première visite et se joue ensuite hors ligne, en plein écran.
+
+Après toute modification des fichiers servis, relancer `python3 outils/pwa.py` avant le commit :
+il régénère les icônes et la liste du service worker (`sw.js`), dont la version est l'empreinte des
+fichiers. Les joueurs reçoivent ainsi la nouvelle version au chargement suivant. En local
+(`localhost`, `127.0.0.1`), le service worker n'est pas enregistré, sauf avec `?sw=1`.
+
 ## Lancer en local
 
 ```sh
@@ -23,13 +36,13 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 - **Jackpot** : en multiball, chaque rampe rapporte le jackpot (20 000, +5 000 à chaque fois,
   +10 000 par F-A-N-N-Y ; la valeur reste acquise pour le multiball suivant). Trois jackpots
   allument le **super jackpot** au Cercle (3 × le jackpot).
-- **T-O-U-R** : les couloirs du haut et les bumpers (tous les 3 coups) allument les lettres ;
+- **T-O-U-R** : seul le passage dans un couloir du haut allume sa lettre ;
   TOUR complet = bonus ×2, ×3 … ×5, et le ×5 allume l'**extra ball** au Cercle (lampe EB).
   **Changement de couloir** : chaque appui sur un batteur décale les lettres allumées.
 - **Le Cercle** est un trou d'éjection en haut à droite.
 - **Couloir du bouchon** (haut gauche, tir de la palette droite) : le cochonnet allume le
-  **CARREAU** sur TIRER pendant 20 s (lettre + 10 000 × n). POINTER puis BOUCHON = **BIBERON**.
-- **Trois cibles rondes** du mur gauche : les trois = **TRIPLETTE** (lettre + boule pointée).
+  **CARREAU** sur TIRER pendant 20 s (10 000 × n). POINTER puis BOUCHON = **BIBERON**.
+- **Trois cibles rondes** du mur gauche : les trois = **TRIPLETTE** (boule pointée).
 - **Rampe** : chaque passage allume l'escale suivante du World Tour (Marseille → Sydney) ;
   en multiball, chaque rampe rapporte le **jackpot**. 7 escales = Grand Chelem (+50 000) + **extra ball**.
 - **Extra ball** : deux au plus par partie (lampe REJOUE) ; au-delà, elle vaut 25 000.
@@ -57,6 +70,7 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 | Nouvelle partie | Entrée | bouton Jouer |
 | Pièce (crédit) | C | |
 | Pause / son | P / M | |
+| Vue 3D / 2D | V | bouton Vue |
 
 ## Organisation du code
 
@@ -65,7 +79,8 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 | `js/table.js` | Géométrie en millimètres réels et corps Matter.js |
 | `js/rules.js` | Règles : contacts → bobines, lampes, afficheurs, sons (à porter en C++ sur le Mega) |
 | `js/sim.js` | Physique : transforme les chocs en contacts, exécute les bobines |
-| `js/render.js` | Dessin du plateau ; `LAMP_LAYOUT` = ordre des LED WS2812B |
+| `js/render.js` | Dessin du plateau en 2D ; `LAMP_LAYOUT` = ordre des LED WS2812B ; `drawFloor()` peint aussi la texture du plateau 3D |
+| `js/render3d.js` | Vue 3D (Three.js r170, `vendor/`, chargé à la demande) : plateau incliné, volumes, ombres, bille d'acier ; même physique |
 | `js/segfont.js` | Police 7 segments identique aux TM1637 |
 | `js/audio.js` | Bruitages `assets/sons/00NN.mp3` (= pistes du DFPlayer), musique ; synthèse en repli |
 

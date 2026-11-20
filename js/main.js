@@ -6,6 +6,9 @@ import { unlockAudio, play, toggleMute, playMusic } from './audio.js';
 import { W, H, GEO } from './table.js';
 
 const canvas = document.getElementById('table');
+const view3dEl = document.getElementById('view3d');
+const viewBtn = document.getElementById('view');
+const playfieldEl = document.getElementById('playfield');
 const dispScore = document.getElementById('disp-score');
 const dispInfo = document.getElementById('disp-info');
 const cityEl = document.getElementById('city');
@@ -20,8 +23,8 @@ const hw = {
   sound: (id) => {
     play(id);
     // Fanny surgit sur les grands moments (sprites Krea 2, facultatifs)
-    if (id === SND.JACKPOT || id === SND.MULTIBALL || id === SND.GRAND_CHELEM) renderer?.fanny('victoire');
-    else if (id === SND.START || id === SND.EXTRA) renderer?.fanny('lancer', 1800);
+    if (id === SND.JACKPOT || id === SND.MULTIBALL || id === SND.GRAND_CHELEM) view?.fanny('victoire');
+    else if (id === SND.START || id === SND.EXTRA) view?.fanny('lancer', 1800);
   },
   event: (name, data) => {
     if (name === 'gameOver') try { localStorage.setItem('fanny-pinball-hi', String(rules.highScore)); } catch {}
@@ -37,6 +40,30 @@ sim = new Sim((id, closed = true) => {
   if (id === SW.DRAIN && rules.mode !== 'play') sim.clear();
 });
 const renderer = new Renderer(canvas, sim);
+
+// ------------------------------------------------------------ vue 2D / 3D
+// La vue 3D (Three.js) n'est chargée qu'à la première demande ; la physique est la même.
+let renderer3d = null;
+let view = renderer;
+const has3d = (() => { try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; } })();
+let mode3d = false;
+async function setView(want3d) {
+  if (want3d && !has3d) want3d = false;
+  if (want3d && !renderer3d) {
+    try {
+      const { Renderer3D } = await import('./render3d.js');
+      renderer3d = new Renderer3D(document.getElementById('table3d'), document.getElementById('overlay3d'), sim);
+    } catch (e) { console.error('vue 3D indisponible', e); want3d = false; }
+  }
+  mode3d = want3d;
+  view = mode3d ? renderer3d : renderer;
+  canvas.hidden = mode3d;
+  view3dEl.hidden = !mode3d;
+  viewBtn.textContent = mode3d ? 'Vue : 3D' : 'Vue : 2D';
+  viewBtn.hidden = !has3d;
+  try { localStorage.setItem('fanny-pinball-vue', mode3d ? '3d' : '2d'); } catch {}
+  layout();
+}
 
 // ------------------------------------------------------------ commandes
 // Codes physiques (e.code) : indépendants de la disposition AZERTY/QWERTY.
@@ -71,7 +98,7 @@ function nudge() {
   if (paused || rules.mode !== 'play') return;
   if (!sim.nudge()) return;
   play(SND.NUDGE);
-  canvas.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-5px)' }, { transform: 'translateY(0)' }],
+  (mode3d ? view3dEl : canvas).animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-5px)' }, { transform: 'translateY(0)' }],
     { duration: 140, easing: 'ease-out' });
 }
 
@@ -87,6 +114,7 @@ window.addEventListener('keydown', (e) => {
   if (KEYS.launch.includes(e.code)) { rules.onSwitch(SW.LAUNCH); e.preventDefault(); }
   if (e.code === 'KeyP' || e.code === 'Escape') paused = !paused;
   if (e.code === 'KeyM') muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui';
+  if (e.code === 'KeyV') setView(!mode3d);
 });
 window.addEventListener('keyup', (e) => {
   if (KEYS.left.includes(e.code)) setFlipper('L', false);
@@ -96,12 +124,15 @@ window.addEventListener('blur', () => { setFlipper('L', false); setFlipper('R', 
 
 // tactile : moitié gauche / moitié droite = flippers, couloir de lancement = lanceur
 const touches = new Map();
-canvas.addEventListener('pointerdown', (e) => {
-  unlockAudio(); audioReady = true;
-  canvas.setPointerCapture(e.pointerId);
+function toTable(e) {
+  if (mode3d) return renderer3d.toTable(e.clientX, e.clientY);
   const r = canvas.getBoundingClientRect();
-  const x = ((e.clientX - r.left) / r.width) * W;
-  const y = ((e.clientY - r.top) / r.height) * H;
+  return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
+}
+for (const el of [canvas, view3dEl]) el.addEventListener('pointerdown', (e) => {
+  unlockAudio(); audioReady = true;
+  el.setPointerCapture(e.pointerId);
+  const { x, y } = toTable(e);
   if (rules.mode === 'attract' || rules.mode === 'over') { pressStart(); return; }
   let what;
   if (x > GEO.playRight - 10 && y > 700) { what = 'launch'; rules.onSwitch(SW.LAUNCH); }
@@ -116,16 +147,21 @@ const release = (e) => {
     if (![...touches.values()].includes(what)) setFlipper(what, false);
   }
 };
-canvas.addEventListener('pointerup', release);
-canvas.addEventListener('pointercancel', release);
+for (const el of [canvas, view3dEl]) { el.addEventListener('pointerup', release); el.addEventListener('pointercancel', release); }
 
 startBtn.addEventListener('click', () => { pressStart(); startBtn.blur(); });
+viewBtn.addEventListener('click', () => { setView(!mode3d); viewBtn.blur(); });
 muteBtn.addEventListener('click', () => { unlockAudio(); audioReady = true; muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui'; muteBtn.blur(); });
 
 // ------------------------------------------------------------ mise en page
 function layout() {
-  const wrap = document.getElementById('playfield');
-  const availH = wrap.clientHeight, availW = wrap.clientWidth;
+  const availH = playfieldEl.clientHeight, availW = playfieldEl.clientWidth;
+  if (mode3d) {
+    const w = Math.floor(Math.min(availW, availH * 0.8)), h = Math.floor(availH);
+    view3dEl.style.width = `${w}px`; view3dEl.style.height = `${h}px`;
+    renderer3d.resize(w, h);
+    return;
+  }
   const k = Math.min(availW / W, availH / H);
   canvas.style.width = `${Math.floor(W * k)}px`;
   canvas.style.height = `${Math.floor(H * k)}px`;
@@ -133,6 +169,11 @@ function layout() {
 }
 window.addEventListener('resize', layout);
 layout();
+{
+  let pref = null;
+  try { pref = localStorage.getItem('fanny-pinball-vue'); } catch {}
+  setView(pref ? pref === '3d' : has3d);    // 3D par défaut quand le navigateur la permet
+}
 
 // ------------------------------------------------------------ boucle
 let last = performance.now();
@@ -145,12 +186,12 @@ function frame(t) {
     sim.step(dt);
     rules.tick(sim.time);
   }
-  renderer.draw(rules);
+  view.draw(rules);
 
   if (rules.score > lastScore && rules.mode === 'play') {
     const gain = rules.score - lastScore;
     const b = sim.ballViews()[0];
-    if (b && gain >= 1000) renderer.popup(b.x, b.y - 18, `+${gain.toLocaleString('fr-FR')}`);
+    if (b && gain >= 1000) view.popup(b.x, b.y - 18, `+${gain.toLocaleString('fr-FR')}`);
   }
   lastScore = rules.score;
 
@@ -173,4 +214,4 @@ function frame(t) {
 requestAnimationFrame(frame);
 
 // accès console pour le réglage
-window.fanny = { sim, rules };
+window.fanny = { sim, rules, get view() { return view; }, setView };

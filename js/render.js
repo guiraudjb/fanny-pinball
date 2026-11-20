@@ -37,6 +37,8 @@ export const LAMP_LAYOUT = [
   ['extraLit', GEO.saucer.x - 34, GEO.saucer.y + 30, 8, '#ff5252', 'EB'],
 ];
 
+export { C as COLORS };
+
 export class Renderer {
   constructor(canvas, sim) {
     this.canvas = canvas;
@@ -191,16 +193,13 @@ export class Renderer {
   }
 
   // ------------------------------------------------------------ image
-  draw(rules) {
-    const ctx = this.ctx, s = this.scale, sim = this.sim, T = sim.T;
-    const now = sim.time;
+  // Ce qui est peint SUR le plateau : illustration, lampes (inserts), trou du Cercle.
+  // Sert aussi de texture au plateau de la vue 3D (render3d.js).
+  drawFloor(lamps, blinkOn) {
+    const ctx = this.ctx, s = this.scale;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.bg, 0, 0, this.canvas.width, this.canvas.height);
     ctx.setTransform(s, 0, 0, s, 0, 0);
-
-    // lampes
-    const lamps = rules.lamps();
-    const blinkOn = Math.floor(performance.now() / 220) % 2 === 0;
     for (const [name, x, y, r, col, label] of LAMP_LAYOUT) {
       const st = lamps[name] || 0;
       const lit = st === 1 || (st === 2 && blinkOn);
@@ -221,6 +220,18 @@ export class Renderer {
       }
     }
     ctx.textBaseline = 'alphabetic';
+    // le Cercle (trou)
+    ctx.fillStyle = '#120a05';
+    ctx.beginPath(); ctx.arc(GEO.saucer.x, GEO.saucer.y, GEO.saucer.ring, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = C.chrome; ctx.lineWidth = 3; ctx.stroke();
+  }
+
+  draw(rules) {
+    const ctx = this.ctx, sim = this.sim, T = sim.T;
+    const now = sim.time;
+    const lamps = rules.lamps();
+    const blinkOn = Math.floor(performance.now() / 220) % 2 === 0;
+    this.drawFloor(lamps, blinkOn);
 
     // pièce du bouchon : une seule pièce en U aux coins arrondis
     if (GEO.bouchonPiece) this.plastic(GEO.bouchonPiece, 9);
@@ -299,11 +310,6 @@ export class Renderer {
       this.boule(b.position.x, b.position.y, b.circleRadius, hit ? '#ffe08a' : jack ? '#e8392c' : '#d9822b',
         jack ? '#7a120c' : '#7a3c0e', false);
     });
-
-    // le Cercle (trou)
-    ctx.fillStyle = '#120a05';
-    ctx.beginPath(); ctx.arc(GEO.saucer.x, GEO.saucer.y, GEO.saucer.ring, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = C.chrome; ctx.lineWidth = 3; ctx.stroke();
 
     // bumpers = boules de pétanque
     T.bumpers.forEach((b, i) => {

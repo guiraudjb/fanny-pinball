@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Fanny Pinball</title>
 <meta name="description" content="Flipper web Fanny Pétanque World Tour — prototype Matter.js, pensé pour une réplique physique Arduino.">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#170d07">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fanny Pinball">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icone-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -22,6 +30,7 @@
     <div class="buttons">
       <button id="start" type="button">Jouer</button>
       <button id="mute" type="button">Son : oui</button>
+      <button id="view" type="button" title="Touche V">Vue : 2D</button>
     </div>
     <details class="help">
       <summary>Commandes</summary>
@@ -29,7 +38,7 @@
         <li><kbd>Maj gauche</kbd> / <kbd>←</kbd> : flipper gauche</li>
         <li><kbd>Maj droite</kbd> / <kbd>→</kbd> : flipper droit</li>
         <li><kbd>Espace</kbd> / <kbd>↓</kbd> : lanceur</li>
-        <li><kbd>Entrée</kbd> : nouvelle partie · <kbd>P</kbd> : pause · <kbd>M</kbd> : son</li>
+        <li><kbd>Entrée</kbd> : nouvelle partie · <kbd>P</kbd> : pause · <kbd>M</kbd> : son · <kbd>V</kbd> : vue 3D / 2D</li>
         <li>Tactile : moitié gauche / droite du plateau, couloir de droite pour lancer</li>
       </ul>
       <p>Avant le lancement, les flippers déplacent le couloir allumé (tir parfait).</p>
@@ -38,9 +47,21 @@
   </section>
   <section id="playfield" class="playfield">
     <canvas id="table" aria-label="Plateau du flipper"></canvas>
+    <div id="view3d" class="view3d" hidden>
+      <canvas id="table3d" aria-label="Plateau du flipper en 3D"></canvas>
+      <canvas id="overlay3d" aria-hidden="true"></canvas>
+    </div>
   </section>
 </main>
 <script src="vendor/matter.min.js"></script>
 <script type="module" src="js/main.js"></script>
+<script>
+// application installable : service worker hors développement local (sauf ?sw=1),
+// pour ne pas figer les modules pendant les tests
+if ('serviceWorker' in navigator
+    && (!/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || new URLSearchParams(location.search).has('sw'))) {
+  addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
 </body>
 </html>

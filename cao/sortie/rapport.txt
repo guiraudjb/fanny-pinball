@@ -2,6 +2,8 @@ arche                        ok           194.1 cm³
 sep_lanceur                  ok           108.8 cm³
 guide_retour_G               ok           60.1 cm³
 guide_retour_D               ok           60.1 cm³
+separateur_retour_G          ok           24.8 cm³
+separateur_retour_D          ok           24.8 cm³
 deflecteur_1                 ok           13.6 cm³
 guide_tour_1                 ok           10.4 cm³
 guide_tour_2                 ok           10.4 cm³
@@ -10,7 +12,7 @@ guide_tour_4                 ok           10.4 cm³
 guide_tour_5                 ok           10.4 cm³
 entree_rampe                 ok           45.9 cm³
 piece_bouchon                ok           330.4 cm³
-bloc_fanny                   ok           339.4 cm³
+bloc_fanny                   ok           357.9 cm³
 mur_cibles                   ok           116.6 cm³
 poteau_1                     ok           2.8 cm³
 poteau_2                     ok           2.8 cm³
@@ -20,13 +22,15 @@ poteau_5                     ok           2.8 cm³
 poteau_6                     ok           2.8 cm³
 poteau_7                     ok           2.8 cm³
 poteau_8                     ok           2.8 cm³
-plastique_sling_G            ok           12.8 cm³
+poteau_9                     ok           2.8 cm³
+poteau_10                    ok           2.8 cm³
+plastique_sling_G            ok           9.1 cm³
 meca_sling_G                 ok           432.0 cm³
-plastique_sling_D            ok           12.8 cm³
+plastique_sling_D            ok           9.1 cm³
 meca_sling_D                 ok           432.0 cm³
-meca_flipper_L               ok           1188.0 cm³
+meca_flipper_L               ok           753.1 cm³
 palette_L                    ok           32.9 cm³
-meca_flipper_R               ok           1188.0 cm³
+meca_flipper_R               ok           753.1 cm³
 palette_R                    ok           32.9 cm³
 bumper_1                     ok           82.9 cm³
 meca_bumper_1                ok           399.0 cm³
@@ -39,7 +43,7 @@ cible_drop_2                 ok           3.5 cm³
 cible_drop_3                 ok           3.5 cm³
 cible_drop_4                 ok           3.5 cm³
 cible_drop_5                 ok           3.5 cm³
-meca_drop                    ok           765.0 cm³
+meca_drop                    ok           915.8 cm³
 cible_pointer                ok           21.1 cm³
 cible_tirer                  ok           21.1 cm³
 cible_bouchon                ok           20.4 cm³
