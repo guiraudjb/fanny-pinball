@@ -180,13 +180,15 @@ let last = performance.now();
 let lastScore = 0;
 let lastDisp = '';
 function frame(t) {
-  const dt = Math.min(50, t - last);
+  const dt = Math.min(100, t - last);   // rattrape le temps réel jusqu'à 10 images/s
   last = t;
   if (!paused) {
     sim.step(dt);
     rules.tick(sim.time);
   }
-  view.draw(rules);
+  try { view.draw(rules); } catch (e) {   // un défaut de dessin ne doit jamais arrêter la partie
+    if (!frame.drawErr) { frame.drawErr = true; console.error('dessin', e); }
+  }
 
   if (rules.score > lastScore && rules.mode === 'play') {
     const gain = rules.score - lastScore;

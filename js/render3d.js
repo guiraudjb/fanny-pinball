@@ -7,7 +7,7 @@
 
 import * as THREE from '../vendor/three.module.min.js';
 import { W, H, GEO, BALL_R, pointAt } from './table.js';
-import { Renderer } from './render.js';
+import { Renderer, LAMP_LAYOUT } from './render.js';
 
 const PENTE = (6.5 * Math.PI) / 180;      // pente du plateau (cao/cotes.py)
 const H_PAROI = 32;                        // parois et guides imprimés
@@ -139,8 +139,6 @@ export class Renderer3D {
       woodDark: new THREE.MeshStandardMaterial({ color: 0x2b1a10, roughness: 0.8 }),
       plasticSide: new THREE.MeshStandardMaterial({ color: 0x3f3a7c, roughness: 0.4 }),
       gate: new THREE.MeshStandardMaterial({ color: 0x9aa0aa, metalness: 0.8, roughness: 0.35 }),
-      rampe: new THREE.MeshPhysicalMaterial({ color: 0xcde8ff, roughness: 0.08, transmission: 0, transparent: true,
-        opacity: 0.32, side: THREE.DoubleSide, depthWrite: false }),
     };
   }
 
@@ -155,9 +153,51 @@ export class Renderer3D {
     const geo = new THREE.PlaneGeometry(W, H);
     geo.rotateX(Math.PI);                            // face vers le haut (−z), v = 0 en bas du plateau
     geo.translate(W / 2, H / 2, 0);
-    this.floor = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: this.floorTex, roughness: 0.55, metalness: 0 }));
+    // plateau verni : vernis brillant (clearcoat) sur l'illustration mate. La texture est peinte lampes
+    // éteintes, une seule fois : les lampes sont des pastilles posées dessus (aucun envoi de texture en jeu).
+    this.floorMat = new THREE.MeshPhysicalMaterial({
+      map: this.floorTex, roughness: 0.6, metalness: 0, clearcoat: 0.9, clearcoatRoughness: 0.12,
+    });
+    this.floor = new THREE.Mesh(geo, this.floorMat);
     this.floor.receiveShadow = true;
     this.table.add(this.floor);
+
+    // halos des lampes : sprites additifs au-dessus des inserts allumés
+    const gc = document.createElement('canvas'); gc.width = gc.height = 64;
+    const gg = gc.getContext('2d');
+    const rg = gg.createRadialGradient(32, 32, 0, 32, 32, 32);
+    rg.addColorStop(0, 'rgba(255,255,255,1)'); rg.addColorStop(0.25, 'rgba(255,255,255,0.55)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+    gg.fillStyle = rg; gg.fillRect(0, 0, 64, 64);
+    this.glowTex = canvasTexture(gc);
+    this.glow = (color, size, x, y, z) => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color, blending: THREE.AdditiveBlending,
+        transparent: true, depthWrite: false }));
+      sp.scale.set(size, size, 1);
+      sp.position.set(x, y, -z);
+      sp.renderOrder = 3;
+      sp.visible = false;
+      this.table.add(sp);
+      return sp;
+    };
+    // lampes : insert allumé (pastille lumineuse à plat, insensible à l'ombre) + halo au-dessus
+    const disc = new THREE.CircleGeometry(1, 32);
+    disc.rotateX(Math.PI);                           // face vers le haut (−z)
+    const ic = document.createElement('canvas'); ic.width = ic.height = 64;
+    const ig = ic.getContext('2d');
+    const ir = ig.createRadialGradient(32, 32, 0, 32, 32, 32);
+    ir.addColorStop(0, 'rgba(255,255,255,1)'); ir.addColorStop(0.45, 'rgba(255,255,255,0.9)'); ir.addColorStop(1, 'rgba(255,255,255,0)');
+    ig.fillStyle = ir; ig.fillRect(0, 0, 64, 64);
+    const insertTex = canvasTexture(ic);
+    this.lampGlows = LAMP_LAYOUT.map(([name, x, y, r, col]) => {
+      const ins = new THREE.Mesh(disc, new THREE.MeshBasicMaterial({ map: insertTex, color: col, transparent: true,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+      ins.scale.set(r * 1.3, r * 1.3, 1);
+      ins.position.set(x, y, -0.4);
+      ins.renderOrder = 1;
+      ins.visible = false;
+      this.table.add(ins);
+      return { name, ins, sp: this.glow(col, r * 4.4, x, y, 4) };
+    });
   }
 
   // caisse en bois autour du plateau et barre de verrouillage
@@ -232,6 +272,7 @@ export class Renderer3D {
       band.castShadow = true;
       this.table.add(band);
       for (const p of [A, C]) this.table.add(cylinder(3.5, H_PAROI + 2, this.mat.chrome, p[0], p[1]));
+      band.userData.sp = this.glow(0xfff0b0, 70, (A[0] + C[0]) / 2, (A[1] + C[1]) / 2, 16);
       return band;
     });
 
@@ -256,7 +297,7 @@ export class Renderer3D {
       capMesh.position.set(b.position.x, b.position.y, -(26 + 4.5));
       capMesh.castShadow = true;
       this.table.add(base, capMesh);
-      return { topMat, tex };
+      return { topMat, tex, sp: this.glow(0xffd36a, cap * 3.4, b.position.x, b.position.y, 38) };
     });
 
     // cibles fixes (cochonnets en bois peint)
@@ -335,13 +376,14 @@ export class Renderer3D {
     this.balls = [];
   }
 
-  // rampe : fond transparent, flancs, rails chromés, poteaux de support
+  // Rampe en plastique transparent : décor appliqué sur la longueur (liserés rouge et jaune, chevrons à l'entrée,
+  // « WORLD TOUR » sur l'arrondi), flancs teintés, rails chromés, lèvre d'entrée, poteaux de support.
   buildRamp() {
     const path = this.sim.ramps.L;
     if (!path) return;
     this.rampPath = path;
     const L = path.length, half = RAMPE.larg / 2;
-    const pos = [], idx = [];
+    const pos = [], uv = [], idxFond = [], idxFlanc = [];
     const rails = [[], []];
     const pts = path.pts;
     pts.forEach((p, i) => {
@@ -351,29 +393,70 @@ export class Renderer3D {
       for (const [k, sg] of [[0, 1], [1, -1]]) {
         const x = p.x + nx * half * sg, y = p.y + ny * half * sg;
         pos.push(x, y, -z, x, y, -(z + RAMPE.flanc));
+        const v = k === 0 ? 0 : 1;                  // v = 0 : côté droit du sens de montée
+        uv.push(p.s / L, v, p.s / L, v);
         rails[k].push(new THREE.Vector3(x, y, -(z + RAMPE.flanc)));
       }
     });
     // sommets par point : [g bas, g haut, d bas, d haut]
     for (let i = 0; i < pts.length - 1; i++) {
       const o = i * 4, n = o + 4;
-      idx.push(o, n, o + 2, n, n + 2, o + 2);          // fond
-      idx.push(o, o + 1, n, o + 1, n + 1, n);            // flanc gauche
-      idx.push(o + 2, n + 2, o + 3, n + 2, n + 3, o + 3); // flanc droit
+      idxFond.push(o, n, o + 2, n, n + 2, o + 2);
+      idxFlanc.push(o, o + 1, n, o + 1, n + 1, n, o + 2, n + 2, o + 3, n + 2, n + 3, o + 3);
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    geo.setIndex(idx);
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex([...idxFond, ...idxFlanc]);
+    geo.addGroup(0, idxFond.length, 0);
+    geo.addGroup(idxFond.length, idxFlanc.length, 1);
     geo.computeVertexNormals();
-    this.rampMat = this.mat.rampe;
-    const mesh = new THREE.Mesh(geo, this.rampMat);
+
+    // décor du fond, dessiné en millimètres : x = abscisse le long de la rampe, y = travers
+    const cv = document.createElement('canvas');
+    cv.width = 4096; cv.height = 128;
+    const g = cv.getContext('2d');
+    g.scale(cv.width / L, cv.height / RAMPE.larg);
+    g.fillStyle = 'rgba(205,235,255,0.30)'; g.fillRect(0, 0, L, RAMPE.larg);
+    for (const [y0, h, col] of [[0, 4, '#e8392c'], [4, 2.5, '#ffd23f'], [RAMPE.larg - 4, 4, '#e8392c'], [RAMPE.larg - 6.5, 2.5, '#ffd23f']]) {
+      g.fillStyle = col; g.fillRect(0, y0, L, h);
+    }
+    g.lineJoin = 'round'; g.lineCap = 'round';
+    for (const s0 of [26, 46, 66]) {                 // chevrons dans le sens de la montée
+      g.beginPath(); g.moveTo(s0 - 4, half - 8); g.lineTo(s0 + 5, half); g.lineTo(s0 - 4, half + 8);
+      g.strokeStyle = '#2b1a10'; g.lineWidth = 6; g.stroke();
+      g.strokeStyle = '#ffd23f'; g.lineWidth = 3.5; g.stroke();
+    }
+    const top = pts.reduce((m, p) => (p.y < m.y ? p : m), pts[0]);
+    g.font = 'italic 900 13px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.lineWidth = 3; g.strokeStyle = '#1f4e8c'; g.fillStyle = '#ffffff';
+    const texte = '★ WORLD TOUR ★', pas = 13;
+    [...texte].forEach((ch, i) => {
+      const x = top.s - (pas * (texte.length - 1)) / 2 + i * pas;
+      g.strokeText(ch, x, half + 0.5); g.fillText(ch, x, half + 0.5);
+    });
+    const tex = canvasTexture(cv);
+    tex.anisotropy = this.gl.capabilities.getMaxAnisotropy();
+    this.rampMat = new THREE.MeshStandardMaterial({ map: tex, transparent: true, side: THREE.DoubleSide, depthWrite: false,
+      roughness: 0.08, metalness: 0 });
+    this.rampFlank = new THREE.MeshStandardMaterial({ color: 0xcde8ff, transparent: true, opacity: 0.22, side: THREE.DoubleSide,
+      depthWrite: false, roughness: 0.05, metalness: 0 });
+    const mesh = new THREE.Mesh(geo, [this.rampMat, this.rampFlank]);
     mesh.renderOrder = 2;
     this.table.add(mesh);
+
     for (const r of rails) {
       const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(r), r.length * 2, 2, 8), this.mat.chrome);
       tube.castShadow = true;
       this.table.add(tube);
     }
+    // lèvre métallique de l'entrée, posée sur le plateau
+    const p0 = pointAt(path, 7);
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(16, RAMPE.larg + 4, 1.5), this.mat.chrome);
+    lip.position.set(p0.x, p0.y, -0.8);
+    lip.rotation.z = Math.atan2(p0.dy, p0.dx);
+    lip.receiveShadow = true;
+    this.table.add(lip);
     for (let s = 140; s < L - 40; s += 140) {
       const z = zRampe(s, L);
       if (z < 20) continue;
@@ -382,13 +465,41 @@ export class Renderer3D {
     }
   }
 
+  // Reflets : la bille et les chromes reflètent la vraie table (capture faite une fois, et quand
+  // l'illustration arrive). Des plafonniers invisibles pour le joueur (calque 1) éclairent le reflet.
+  captureEnv() {
+    if (!this.cubeCam) {
+      this.cubeRT = new THREE.WebGLCubeRenderTarget(256, { type: THREE.HalfFloatType });
+      this.cubeCam = new THREE.CubeCamera(5, 4000, this.cubeRT);
+      this.cubeCam.children.forEach((c) => c.layers.enable(1));
+      this.scene.add(this.cubeCam);
+      for (const [x, z, w, h, k] of [[0, -150, 500, 160, 3.2], [-260, 250, 120, 420, 1.6], [260, 250, 120, 420, 1.6]]) {
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+          new THREE.MeshBasicMaterial({ color: new THREE.Color(k, k * 0.95, k * 0.85), side: THREE.DoubleSide }));
+        m.position.set(x, 700, z); m.rotation.x = Math.PI / 2;
+        m.layers.set(1);
+        this.scene.add(m);
+      }
+    }
+    this.scene.updateMatrixWorld(true);
+    this.cubeCam.position.copy(this.table.localToWorld(new THREE.Vector3(W / 2, H * 0.55, -BALL_R)));
+    const vis = this.balls.map((m) => m.visible);
+    this.balls.forEach((m) => { m.visible = false; });
+    this.cubeCam.update(this.gl, this.scene);
+    this.balls.forEach((m, i) => { m.visible = vis[i]; });
+    this.cubeRT.texture.needsPMREMUpdate = true;
+    this.mat.steel.envMap = this.cubeRT.texture;
+    this.mat.steel.envMapIntensity = 1.4;
+    this.mat.steel.needsUpdate = true;
+  }
+
   // ------------------------------------------------------------ interface commune avec Renderer
   fanny(kind = 'victoire', ms = 2200) { this.fannyShow = { kind, t: performance.now(), ms }; }
 
   popup(x, y, text) { this.popups.push({ x, y, text, t: performance.now() }); }
 
   resize(cssW, cssH) {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     this.cssW = cssW; this.cssH = cssH;
     this.gl.setPixelRatio(dpr);
     this.gl.setSize(cssW, cssH, true);
@@ -453,12 +564,20 @@ export class Renderer3D {
 
     // texture du plateau : redessinée seulement quand une lampe change
     const key = Object.entries(lamps).map(([k, v]) => (v === 2 ? (blinkOn ? 1 : 0) : v) ? k : '').join(',');
-    if (key !== this.lastFloorKey || this.floorR.bg !== this.lastBg) {   // bg change quand l'illustration arrive
-      this.lastFloorKey = key;
+    // plateau peint lampes éteintes : redessiné seulement quand l'illustration arrive
+    if (this.floorR.bg !== this.lastBg) {
       this.lastBg = this.floorR.bg;
-      this.floorR.drawFloor(lamps, blinkOn);
-      this.floorR.apron(lamps, blinkOn);
+      this.floorR.drawFloor({}, false);
+      this.floorR.apron({}, false);
       this.floorTex.needsUpdate = true;
+      this.envDirty = true;
+    }
+    if (key !== this.lastFloorKey) {
+      this.lastFloorKey = key;
+      for (const { name, ins, sp } of this.lampGlows) {
+        const st = lamps[name] || 0;
+        ins.visible = sp.visible = st === 1 || (st === 2 && blinkOn);
+      }
     }
 
     for (const f of this.flippers) f.mesh.rotation.z = f.fl.angle - f.a0;
@@ -467,17 +586,22 @@ export class Renderer3D {
       const hit = now - (sim.flash[`bumper${i}`] ?? -1e9) < 100;
       const want = b.tex[hit ? 1 : 0];
       if (b.topMat.map !== want) { b.topMat.map = want; b.topMat.emissiveIntensity = hit ? 0.35 : 0; b.topMat.needsUpdate = true; }
+      const age = now - (sim.flash[`bumper${i}`] ?? -1e9);
+      b.sp.visible = age < 180;
+      if (b.sp.visible) b.sp.material.opacity = 1 - age / 180;
     });
     this.slings.forEach((band, i) => {
       const hit = now - (sim.flash[`sling${i}`] ?? -1e9) < 90;
       band.material.emissive.setHex(hit ? 0xffd23f : 0x000000);
+      band.userData.sp.visible = hit;
     });
     this.leftTargets.forEach((face, i) => {
       const hit = now - (sim.flash[`target${i}`] ?? -1e9) < 150;
       face.emissiveIntensity = hit ? 0.9 : (lamps[`cible${i}`] || 0) > 0 ? 0.5 : 0;
     });
     const rampHit = now - (sim.flash.rampL ?? -1e9) < 300;
-    this.rampMat.color.setHex(rampHit ? 0xfff0aa : 0xcde8ff);
+    this.rampMat.color.setHex(rampHit ? 0xfff0aa : 0xffffff);
+    this.rampFlank.color.setHex(rampHit ? 0xfff0aa : 0xcde8ff);
     const kick = now - (sim.flash.plunger ?? -1e9) < 120 ? -14 : 0;
     this.plunger.position.y = GEO.plunger.top + 4 + kick;
 
@@ -505,6 +629,7 @@ export class Renderer3D {
       if (v) m.position.set(v[0], v[1], -(BALL_R + v[2]));
     });
 
+    if (this.envDirty) { this.envDirty = false; this.captureEnv(); }
     this.gl.render(this.scene, this.camera);
     this.drawOverlay();
   }

@@ -122,7 +122,16 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 - Caméra à la place du joueur, cadrée automatiquement. Le toucher est ramené aux coordonnées du plateau ; l'aller-retour écran ↔ table est exact.
 - Bouton « Vue » et touche V. La 3D est la vue par défaut quand le navigateur gère WebGL 2, et le choix est mémorisé.
 - Sur la carte graphique Intel HD 510 de Pilote2 : environ 31 images/s en 3D contre 44 en 2D.
-- Étapes suivantes : (2) halo des lampes, rampe plus travaillée, reflets ; (3) pièces importées de la CAO, réglage de la caméra, version légère pour téléphone.
+- Étape suivante : (3) pièces importées de la CAO, réglage de la caméra, version légère pour téléphone.
+
+## Vue 3D, étape 2, et lenteur de la bille (20/11)
+
+- Lenteur signalée : la physique était juste (bille à 1,08 m/s² le long du plateau, comme un vrai plateau à 6,5°), c'est la vue 3D qui ralentissait le jeu. À chaque clignotement de lampe, la texture du plateau (1028 × 2134 px) était redessinée et renvoyée à la carte graphique. Et la boucle plafonnait le pas de temps à 50 ms : sous 20 images/s, le jeu passait au ralenti.
+- Corrections : le plateau est peint une seule fois, lampes éteintes. Les lampes sont des pastilles lumineuses avec un halo, qu'on affiche ou cache. Le pas de temps rattrape le temps réel jusqu'à 10 images/s (plafond de 100 ms). Une erreur de dessin n'arrête plus la partie. Résolution plafonnée à 1,5.
+- Résultat sur l'Intel HD 510 : de 31 à 51 images/s en 3D, temps de jeu égal au temps réel.
+- Lampes : insert lumineux insensible à l'ombre + halo additif ; éclat des bumpers et des lance-pierres au choc.
+- Rampe : décor appliqué sur la longueur (liserés rouge et jaune, chevrons, « ★ WORLD TOUR ★ » sur l'arrondi), flancs teintés, lèvre métallique d'entrée.
+- Reflets : plateau verni (clearcoat). La bille reflète la vraie table grâce à une capture faite une fois au chargement, éclairée par des plafonniers que le joueur ne voit pas.
 
 ## Reste à faire
 
