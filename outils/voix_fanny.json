@@ -99,5 +99,13 @@
  "V_SUPER_JACKPOT": {
   "piste": 50,
   "texte": "Super jackpot ! Fanny est aux anges !"
+ },
+ "V_ATTENTION": {
+  "piste": 53,
+  "texte": "Doucement ! On ne secoue pas la table !"
+ },
+ "V_TILT": {
+  "piste": 54,
+  "texte": "Tilt ! Bon, ben… Fanny boude."
  }
 }

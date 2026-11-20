@@ -35,6 +35,10 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 - **Extra ball** : deux au plus par partie (lampe REJOUE) ; au-delà, elle vaut 25 000.
 - 3 billes, sauvetage de bille 8 s ; le **bonus** de fin de bille est décompté sous les yeux du
   joueur (« BONUS X3 », puis le score monte par paquets).
+- **Bourrage et tilt** : la barre d'espace donne un coup de caisse (la bille reprend de l'élan,
+  la table tressaute). Un coup par seconde ne craint rien ; des coups rapprochés font osciller le
+  pendule : deux « ATTENTION » par bille, puis **TILT** sur les afficheurs : batteurs, bumpers et
+  lance-pierres coupés, plus aucun point, bille perdue sans bonus.
 - **Le clac** : le knocker claque et une **partie gratuite** est gagnée à 150 000, 300 000 et
   500 000 points, et quand le record est battu.
 - **Le match** : en fin de partie, l'afficheur info tire un nombre de 00 à 90 ; s'il tombe sur les
@@ -48,7 +52,8 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 |---|---|---|
 | Flipper gauche | Maj gauche, ← | moitié gauche du plateau |
 | Flipper droit | Maj droite, → | moitié droite du plateau |
-| Lancer | Espace, ↓ | couloir de lancement |
+| Lancer | ↓, Entrée | couloir de lancement |
+| Bourrage (coup de caisse) | Espace | |
 | Nouvelle partie | Entrée | bouton Jouer |
 | Pièce (crédit) | C | |
 | Pause / son | P / M | |

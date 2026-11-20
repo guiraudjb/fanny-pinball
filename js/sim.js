@@ -20,6 +20,9 @@ const FLIP_DOWN = 0.02;
 const LAUNCH_POWER = 36;             // calé pour suivre l'arrondi du haut et retomber sur les bumpers
 const BUMPER_KICK = 12;
 const SLING_KICK = 10;
+const NUDGE_KICK = 4.5;           // élan vers le haut donné par un coup de caisse
+const TILT_BOB = 2.4;             // amplitude du pendule qui ferme le contact TILT
+const BOB_TAU = 1500;             // amortissement du pendule (ms) : un coup par seconde reste sans danger
 const SAUCER_MAX_SPEED = 16;      // au-delà, la bille passe par-dessus le Cercle
 const RAMP_SPEED = 1.0;          // px/ms sur la rampe
 const RAMP_MIN_VY = -1.5;         // vitesse montante minimale pour franchir la rampe
@@ -37,6 +40,10 @@ export class Sim {
     this.time = 0;
     this.acc = 0;
     this.held = { L: false, R: false };
+    this.power = true;        // relais d'alimentation des bobines du plateau (coupé par le tilt)
+    this.bob = 0;             // amplitude du pendule de tilt
+    this.lastNudge = -1e9;
+    this.shakeAt = -1e9;
     this.launchPower = LAUNCH_POWER;
     this.shooterClosed = false;
     this.dropsUp = GEO.drops.map(() => true);
@@ -97,6 +104,10 @@ export class Sim {
       this.flash.saucer = this.time;
     } else if (name === COIL.DROP_RESET) {
       this.resetDrops();
+    } else if (name === COIL.POWER_OFF) {
+      this.power = false;
+    } else if (name === COIL.POWER_ON) {
+      this.power = true;
     }
   }
 
@@ -123,7 +134,7 @@ export class Sim {
 
       switch (other.label) {
         case 'bumper':
-          if (!this.debounce(`bumper${d.idx}`, 60)) break;
+          if (!this.power || !this.debounce(`bumper${d.idx}`, 60)) break;
           this.flash[`bumper${d.idx}`] = this.time;
           this.post.push(() => {
             let dx = ball.position.x - other.position.x, dy = ball.position.y - other.position.y;
@@ -137,7 +148,7 @@ export class Sim {
           const { A, n } = d;
           const side = (ball.position.x - A[0]) * n.x + (ball.position.y - A[1]) * n.y;
           if (side < BALL_R * 0.5) break; // choc sur le dos du triangle : pas de tir
-          if (!this.debounce(`sling${d.idx}`, 200)) break;
+          if (!this.power || !this.debounce(`sling${d.idx}`, 200)) break;
           this.flash[`sling${d.idx}`] = this.time;
           this.post.push(() => {
             const v = Body.getVelocity(ball);
@@ -221,7 +232,7 @@ export class Sim {
     this.time += dt;
 
     for (const fl of this.T.flippers) {
-      const held = this.held[fl.def.side];
+      const held = this.power && this.held[fl.def.side];
       const target = held ? fl.def.up : fl.def.rest;
       const speed = (held ? FLIP_UP : FLIP_DOWN) * dt;
       const delta = Math.max(-speed, Math.min(speed, target - fl.angle));
@@ -276,7 +287,24 @@ export class Sim {
     }
   }
 
+  // Bourrage : le joueur pousse la caisse. Les billes du plateau reçoivent un petit élan vers le haut ;
+  // le pendule de tilt s'écarte et, après plusieurs coups rapprochés, ferme le contact TILT.
+  nudge() {
+    if (this.time - this.lastNudge < 250) return false;
+    this.lastNudge = this.time;
+    this.shakeAt = this.time;
+    for (const b of this.balls) {
+      if (b.plugin.fp.mode !== 'table' || (b.position.x > LANE_X && b.position.y > SHOOTER_Y)) continue;
+      const v = Body.getVelocity(b);
+      Body.setVelocity(b, { x: v.x + (Math.random() - 0.5) * 3, y: v.y - NUDGE_KICK });
+    }
+    this.bob += 1;
+    if (this.bob >= TILT_BOB) { this.bob = 0.8; this.onSwitch(SW.TILT); }
+    return true;
+  }
+
   frameChecks(dtMs) {
+    this.bob *= Math.exp(-dtMs / BOB_TAU);
     // contact du couloir de lancement
     const inShooter = this.balls.some((b) => b.plugin.fp.mode === 'table' && b.position.x > LANE_X
       && b.position.y > GEO.plunger.ballY - 8 && Math.abs(Body.getVelocity(b).y) < 0.8);

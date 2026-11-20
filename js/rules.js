@@ -21,6 +21,9 @@
 //   • Rampe : allume l'escale suivante du World Tour ; 7 escales = GRAND CHELEM (+50 000) + EXTRA BALL.
 //   • EXTRA BALL : deux au plus par partie ; au-delà, l'extra ball allumée vaut 25 000.
 //   • 3 billes, sauvetage de bille 8 s ; bonus de fin de bille décompté × multiplicateur.
+//   • TILT : le pendule (contact TILT) se ferme quand on secoue trop la caisse. Deux avertissements
+//     « ATTENTION » par bille, puis TILT : alimentation des batteurs, bumpers et lance-pierres coupée,
+//     plus aucun point, la bille est perdue sans bonus (et sans sauvetage).
 //   • LE CLAC (knocker) : partie gratuite à 150 000, 300 000 et 500 000 points, et au record battu.
 //   • MATCH en fin de partie : tirage de 00 à 90 ; s'il tombe sur les deux derniers chiffres du score,
 //     CLAC et partie gratuite. Crédits gagnés : 9 au plus ; START en consomme un s'il y en a
@@ -34,10 +37,11 @@ export const SW = {
   TARGETS: ['boule1', 'boule2', 'boule3'],   // cibles rondes du mur gauche
   SAUCER: 'saucer', RAMP: 'ramp',
   SLINGS: ['slingL', 'slingR'], BUMPERS: ['bumper1', 'bumper2', 'bumper3'],
-  SHOOTER: 'shooter', DRAIN: 'drain', COIN: 'coin',
+  SHOOTER: 'shooter', DRAIN: 'drain', COIN: 'coin', TILT: 'tilt',
 };
 
-export const COIL = { TROUGH: 'trough', LAUNCH: 'autoLaunch', SAUCER: 'saucerKick', DROP_RESET: 'dropReset', KNOCKER: 'knocker' };
+export const COIL = { TROUGH: 'trough', LAUNCH: 'autoLaunch', SAUCER: 'saucerKick', DROP_RESET: 'dropReset', KNOCKER: 'knocker',
+  POWER_OFF: 'powerOff', POWER_ON: 'powerOn' };   // relais d'alimentation des bobines du plateau (tilt)
 
 // Numéros de pistes du DFPlayer (0001.mp3 …)
 export const SND = {
@@ -51,10 +55,13 @@ export const SND = {
   V_GAME_OVER: 37, V_RECORD: 38, V_CITY_1: 39,   // escales 1 à 6 : 39 à 44
   CLAC: 45, MATCH: 46,                            // knocker (partie gratuite), tirage du match
   V_PARTIE_GRATUITE: 47, V_MATCH: 48, V_EXTRA_LIT: 49, V_SUPER_JACKPOT: 50,
+  NUDGE: 51, TILT: 52,                            // coup de caisse (jeu web), tilt
+  V_ATTENTION: 53, V_TILT: 54,
 };
-export const SND_MAX = 50;
+export const SND_MAX = 54;
 // Voix de Fanny : un seul canal (une réplique coupe la précédente).
-export const isVoice = (id) => (id >= SND.V_START && id <= SND.V_CITY_1 + 5) || id >= SND.V_PARTIE_GRATUITE;
+export const isVoice = (id) => (id >= SND.V_START && id <= SND.V_CITY_1 + 5)
+  || (id >= SND.V_PARTIE_GRATUITE && id <= SND.V_SUPER_JACKPOT) || id >= SND.V_ATTENTION;
 
 export const CITIES = ['MARSEILLE', 'PARIS', 'LONDRES', 'NEW YORK', 'TOKYO', 'RIO', 'SYDNEY'];
 
@@ -73,6 +80,8 @@ const EXTRA_MAX = 2;         // extra balls par partie
 const EXTRA_POINTS = 25000;  // extra ball allumée au-delà du plafond
 const SUPER_AFTER = 3;       // jackpots avant le super jackpot
 const FREE_PLAY = true;      // jeu web : START sans crédit possible
+const TILT_WARNINGS = 2;     // avertissements par bille avant le tilt
+const TILT_SETTLE_MS = 1200; // le pendule oscille encore : contacts ignorés pendant ce temps
 
 export class Rules {
   constructor(hw) {
@@ -125,13 +134,16 @@ export class Rules {
     this.shooterClosed = false;
     this.autoLaunchNext = false;
     this.saucerBusy = false;
+    this.tiltWarnings = 0;
+    this.tiltIgnoreUntil = 0;
+    this.tilted = false;
   }
 
   after(ms, fn) { this.timers.push({ t: this.now + ms, fn }); }
   say(text, ms = 2000) { this.msg = { text, start: this.now, until: this.now + ms }; }
 
   add(points, bonus = 0) {
-    if (this.mode !== 'play') return;
+    if (this.mode !== 'play' || this.tilted) return;
     this.score += points;
     this.bonus += bonus;
     this.checkReplay();
@@ -186,12 +198,19 @@ export class Rules {
 
   startBall() {
     this.resetBallState();
+    this.hw.coil(COIL.POWER_ON);
     this.serveBall(false);
   }
 
   // Bonus de fin de bille décompté sous les yeux du joueur : « BONUS X3 », puis le score monte par paquets.
   endOfBall() {
     this.mode = 'bonus';
+    if (this.tilted) {                      // bille tiltée : pas de bonus
+      this.bonus = 0;
+      this.say('TILT', 1800);
+      this.after(1800, () => this.nextBall());
+      return;
+    }
     this.say(this.mult > 1 ? `BONUS X${this.mult}` : 'BONUS', 1200);
     this.hw.sound(SND.BONUS);
     this.after(1200, () => this.countBonus());
@@ -225,6 +244,8 @@ export class Rules {
   // Fin de partie : record (partie gratuite si un record existait déjà), puis le MATCH.
   gameOver() {
     this.mode = 'match';
+    this.tilted = false;
+    this.hw.coil(COIL.POWER_ON);
     this.lastScore = this.score;
     const record = this.score > this.highScore;
     const ancien = this.highScore;
@@ -259,6 +280,7 @@ export class Rules {
       return;
     }
     if (id === SW.COIN) { if (closed) this.addCredit(); return; }
+    if (id === SW.TILT) { if (closed && this.mode === 'play') this.hitTilt(); return; }
     if (this.mode === 'attract' || this.mode === 'over') return;
 
     if (id === SW.SHOOTER) {
@@ -276,11 +298,18 @@ export class Rules {
     // Les flippers sont câblés en direct ; les règles ne lisent les boutons que pour le
     // changement de couloir : chaque appui décale les lettres T-O-U-R allumées.
     if (id === SW.FLIP_L || id === SW.FLIP_R) {
-      if (closed && this.mode === 'play') this.rotateLetters(id === SW.FLIP_L ? -1 : 1);
+      if (closed && this.mode === 'play' && !this.tilted) this.rotateLetters(id === SW.FLIP_L ? -1 : 1);
       return;
     }
     if (id === SW.DRAIN) { this.drain(); return; }
     if (!closed) return;
+    if (this.tilted) {                       // plus rien ne compte ; le Cercle rend quand même la bille
+      if (id === SW.SAUCER && !this.saucerBusy) {
+        this.saucerBusy = true;
+        this.after(600, () => { this.hw.coil(COIL.SAUCER); this.saucerBusy = false; });
+      }
+      return;
+    }
 
     // tout autre contact = la bille est sur le plateau → le sauvetage de bille démarre
     if (!this.ballSaveArmed && this.mode === 'play') {
@@ -299,6 +328,28 @@ export class Rules {
     if (SW.SLINGS.includes(id)) { this.add(10, 10); this.hw.sound(SND.SLING); return; }
     if (id === SW.SAUCER) return this.hitSaucer();
     if (id === SW.RAMP) return this.hitRamp();
+  }
+
+  // --- tilt : le pendule a touché son anneau
+  hitTilt() {
+    if (this.tilted || this.now < this.tiltIgnoreUntil) return;
+    this.tiltIgnoreUntil = this.now + TILT_SETTLE_MS;
+    this.tiltWarnings++;
+    if (this.tiltWarnings <= TILT_WARNINGS) {
+      this.say('ATTENTION', 1500);
+      this.hw.sound(SND.STANDUP);
+      this.hw.sound(SND.V_ATTENTION);
+      return;
+    }
+    this.tilted = true;
+    this.ballSaveUntil = 0;
+    this.multiball = false;
+    this.superLit = false;
+    this.carreauUntil = 0;
+    this.hw.coil(COIL.POWER_OFF);
+    this.hw.sound(SND.TILT);
+    this.hw.sound(SND.V_TILT);
+    this.msg = null;                         // « TILT » occupe les afficheurs jusqu'à la fin de la bille
   }
 
   launch() {
@@ -531,6 +582,10 @@ export class Rules {
   drain() {
     this.ballsInPlay = Math.max(0, this.ballsInPlay - 1);
     if (this.mode !== 'play') return;
+    if (this.tilted) {                        // ni sauvetage ni bille rendue
+      if (this.ballsInPlay === 0) { this.hw.sound(SND.DRAIN); this.endOfBall(); }
+      return;
+    }
     if (!this.ballSaveArmed && !this.multiball) {
       // bille évacuée sans avoir touché un seul contact : rendue
       this.say('BILLE RENDUE', 1200);
@@ -587,6 +642,7 @@ export class Rules {
     L.bouchon = this.pointLit ? 2 : 1;
     L.point = this.pointLit ? 1 : 0;
     this.targets.forEach((on, i) => { L[`cible${i}`] = on ? 1 : 0; });
+    if (this.tilted) Object.keys(L).forEach((name) => { L[name] = 0; });   // tilt : tout s'éteint
     if (this.mode === 'attract' || this.mode === 'over' || this.mode === 'match') {
       const k = Math.floor(this.now / 150);
       Object.keys(L).forEach((name, i) => { L[name] = (i + k) % 6 === 0 ? 1 : 0; });
@@ -597,6 +653,7 @@ export class Rules {
   // Afficheurs TM1637 : score = 8 caractères (2 modules), info = 4 caractères (bille + multiplicateur).
   display() {
     let score;
+    if (this.tilted) return { score: '  TILT  ', info: 'TILT' };   // afficheurs TM1637
     if (this.msg) score = scrollText(this.msg.text, 8, this.now - this.msg.start);
     else if (this.mode === 'attract') {
       const phase = Math.floor(this.now / 6000) % 3;

@@ -43,7 +43,8 @@ const renderer = new Renderer(canvas, sim);
 const KEYS = {
   left: ['ShiftLeft', 'ArrowLeft', 'KeyZ'],
   right: ['ShiftRight', 'ArrowRight', 'Slash'],
-  launch: ['Space', 'ArrowDown', 'Enter'],
+  launch: ['ArrowDown', 'Enter'],
+  nudge: ['Space'],              // bourrage : coup de caisse
   start: ['Enter', 'KeyS'],
   coin: ['KeyC', 'Digit5'],      // pièce (monnayeur de la réplique)
 };
@@ -65,10 +66,20 @@ function pressStart() {
   }
 }
 
+// Bourrage : la table tressaute, coup sourd dans la caisse
+function nudge() {
+  if (paused || rules.mode !== 'play') return;
+  if (!sim.nudge()) return;
+  play(SND.NUDGE);
+  canvas.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-5px)' }, { transform: 'translateY(0)' }],
+    { duration: 140, easing: 'ease-out' });
+}
+
 let paused = false;
 window.addEventListener('keydown', (e) => {
   unlockAudio(); audioReady = true;
-  if (e.repeat) { if ([...KEYS.left, ...KEYS.right, ...KEYS.launch].includes(e.code)) e.preventDefault(); return; }
+  if (e.repeat) { if ([...KEYS.left, ...KEYS.right, ...KEYS.launch, ...KEYS.nudge].includes(e.code)) e.preventDefault(); return; }
+  if (KEYS.nudge.includes(e.code)) { nudge(); e.preventDefault(); return; }
   if (KEYS.left.includes(e.code)) { setFlipper('L', true); e.preventDefault(); }
   if (KEYS.right.includes(e.code)) { setFlipper('R', true); e.preventDefault(); }
   if (KEYS.start.includes(e.code) && rules.canStart()) { pressStart(); e.preventDefault(); return; }

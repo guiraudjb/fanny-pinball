@@ -62,13 +62,21 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 - **Bonus** décompté. Knocker (D13) et monnayeur (D53) ajoutés au brochage. Sons 45–46, voix 47–50
   (`816e494`).
 
+### 6. Bourrage et tilt (20 novembre)
+
+- Barre d'espace : coup de caisse. Les billes reprennent de l'élan, la table tressaute et un coup
+  sourd se fait entendre (piste 51).
+- Pendule de tilt simulé (amorti : un coup par seconde reste sans danger). Deux « ATTENTION » par
+  bille, puis **TILT** affiché sur les deux afficheurs 7 segments. Le relais d'alimentation retombe
+  (batteurs, bumpers, lance-pierres), plus aucun point, la bille est perdue sans bonus ni sauvetage.
+- Réplique : pendule sur A7, relais d'alimentation sur D14. Voix 53–54 (« Doucement ! », « Tilt ! »).
+
 ## Reste à faire
 
 | Sujet | Détail |
 |---|---|
 | Écoute des voix | Vérifier à l'oreille le timbre et la prononciation des pistes 24 à 50 |
 | Réglages | Paliers du clac, nombre d'extra balls, partie libre : constantes en tête de `js/rules.js`, à ajuster après quelques parties |
-| Tilt | Non demandé ; possible avec un capteur d'inclinaison sur une broche libre |
 | Réplique : logiciel | Porter `js/rules.js` en C++ pour le Mega (même découpage : contacts → bobines, lampes, afficheurs, sons) |
 | Réplique : mécanique | Dessiner les pièces 3D, acheter les bobines, les cibles et les flippers ([MATERIEL.md](MATERIEL.md)) |
 | Son sur la réplique | Le DFPlayer ne joue qu'une piste à la fois : priorité à la voix, ou second DFPlayer sur Serial2 |

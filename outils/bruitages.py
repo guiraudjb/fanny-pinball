@@ -321,7 +321,26 @@ def ecrire(n, s):
     wav.unlink()
 
 
-EXTRA = {45: "CLAC", 46: "MATCH"}    # pistes ajoutées après les voix (24-44)
+def S_NUDGE():
+    """Coup de caisse : la paume frappe le bois, les billes et les pièces tressautent."""
+    p = piste(.6)
+    place(p, bois(140, .3, 1.0), 0)
+    place(p, bobine(.5, 45, .2), .002, .7)
+    place(p, gravier(.15), .02, .25)
+    return p
+
+
+def S_TILT():
+    """Tilt : le relais d'alimentation retombe, toutes les bobines lâchent, bourdonnement qui s'éteint."""
+    p = piste(1.8)
+    place(p, bobine(1.2, 50, .4), 0)
+    place(p, bobine(.8, 70, .3), .05)
+    t = t_(1.4)
+    place(p, .35 * np.sin(2 * np.pi * 100 * t) * np.exp(-t / .45), .08)
+    return p
+
+
+EXTRA = {45: "CLAC", 46: "MATCH", 51: "NUDGE", 52: "TILT"}    # pistes ajoutées après les voix (24-44)
 
 
 def main():

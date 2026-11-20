@@ -50,7 +50,8 @@ lampes, mêmes pistes sonores.
 | **Loterie de fin de partie (match)** pour gagner une partie supplémentaire | ✅ |
 | Crédits gardés entre deux sessions ; monnayeur facultatif sur la réplique | ✅ |
 | Sauvetage de bille | ✅ |
-| Tilt | ⬜ (non demandé à ce jour) |
+| **Bourrage** à la barre d'espace (coup de caisse) | ✅ |
+| **Tilt** : pendule, deux avertissements, puis TILT sur les afficheurs, alimentation coupée, bille perdue sans bonus | ✅ |
 
 ## 5. Habillage
 

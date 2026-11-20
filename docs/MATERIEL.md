@@ -113,6 +113,7 @@ Sorties vers les modules MOSFET (bobines en 24 V, diode de roue libre sur chaque
 | D11 | Éjection du bac à billes | |
 | D12 | Lanceur automatique | |
 | D13 | Knocker (« le clac ») | Impulsion ~30 ms contre la caisse : partie gratuite, match |
+| D14 | Relais d'alimentation 24 V des batteurs, bumpers et lance-pierres | Retombe au TILT, réarmé à la bille suivante |
 
 Autres périphériques :
 
@@ -124,7 +125,8 @@ Autres périphériques :
 | A5 / A6 | TM1637 info (bille + multiplicateur) |
 | D18 / D19 | DFPlayer Mini (Serial1 TX1 / RX1, résistance 1 kΩ sur RX du DFPlayer) |
 
-Il reste environ 11 broches libres (A7–A15) pour des ajouts. Les crédits gagnés (clac, match) sont
+Pendule de tilt (tige et anneau classiques) sur A7, utilisée en entrée numérique avec pull-up.
+Il reste environ 10 broches libres (A8–A15) pour des ajouts. Les crédits gagnés (clac, match) sont
 gardés en EEPROM avec le record ; `FREE_PLAY` (`js/rules.js`) décide si START exige un crédit.
 
 ## Sécurité électrique
@@ -141,8 +143,8 @@ gardés en EEPROM avec le record ; `FREE_PLAY` (`js/rules.js`) décide si START 
 Les sons du jeu web sont synthétisés en attendant les vrais fichiers ; leur numéro
 (`SND` dans `js/rules.js`) est déjà le numéro de piste du DFPlayer.
 
-- Bruitages (pistes 1 à 21, 45 le clac, 46 le match) : synthèse physique, `outils/bruitages.py`.
+- Bruitages (pistes 1 à 21, 45 le clac, 46 le match, 51 le coup de caisse du jeu web, 52 le tilt) : synthèse physique, `outils/bruitages.py`.
 - Musiques (22 générique, 23 thème) : **YuE2**, `outils/musique_yue2.py`.
-- Voix de Fanny (24 à 44 et 47 à 50 : « Carreau ! », « Triplette ! », escales, partie gratuite, match…) : **VoiceStudio**, voix clonée sur le chant
+- Voix de Fanny (24 à 44, 47 à 50, 53 et 54 : « Carreau ! », « Triplette ! », escales, partie gratuite, match…) : **VoiceStudio**, voix clonée sur le chant
   du générique, `outils/voix_fanny.py`. Le DFPlayer ne joue qu'une piste à la fois : sur la réplique, la voix
   passe avant le bruitage (ou un second DFPlayer sur Serial2, D16/D17, pour superposer musique et voix).
