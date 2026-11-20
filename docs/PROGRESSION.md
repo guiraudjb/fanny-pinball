@@ -71,6 +71,24 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   (batteurs, bumpers, lance-pierres), plus aucun point, la bille est perdue sans bonus ni sauvetage.
 - Réplique : pendule sur A7, relais d'alimentation sur D14. Voix 53–54 (« Doucement ! », « Tilt ! »).
 
+### 7. CAO, plans cotés et caisse (20 novembre)
+
+- Géométrie du jeu exportée de `js/table.js` (`cao/exporter_geometrie.py`) : le jeu et la réplique partagent les mêmes cotes.
+- Modèle commun `cao/modele.py` :
+  - 62 pièces et 155 perçages ;
+  - les fixations par vis M3 par dessous, avec des inserts ;
+  - les inserts de lampes ;
+  - les détecteurs (rollovers à fil, cibles fixes, Cercle, lancement, bac, barrière IR) ;
+  - la rampe en tronçons sur 9 poteaux.
+- FreeCAD (`cao/construire.py`) produit :
+  - le plateau percé ;
+  - les pièces en STEP et STL ;
+  - la caisse et le fronton WPC ;
+  - l'assemblage.
+- Blender produit les rendus de contrôle.
+- 12 planches cotées en PDF : [CONSTRUCTION.md](CONSTRUCTION.md).
+- Recherche d'une caisse nue dans le commerce : seulement aux États-Unis ou en version « flipper virtuel ». La caisse se construit aux cotes WPC.
+
 ## Reste à faire
 
 | Sujet | Détail |
@@ -78,5 +96,7 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Écoute des voix | Vérifier à l'oreille le timbre et la prononciation des pistes 24 à 50 |
 | Réglages | Paliers du clac, nombre d'extra balls, partie libre : constantes en tête de `js/rules.js`, à ajuster après quelques parties |
 | Réplique : logiciel | Porter `js/rules.js` en C++ pour le Mega (même découpage : contacts → bobines, lampes, afficheurs, sons) |
-| Réplique : mécanique | Dessiner les pièces 3D, acheter les bobines, les cibles et les flippers ([MATERIEL.md](MATERIEL.md)) |
+| Réplique : mécanique | Acheter les mécanismes, relever les cotes en orange (HYP) sur les pièces reçues, mettre à jour `cao/cotes.py` et régénérer les plans ([CONSTRUCTION.md](CONSTRUCTION.md)) |
+| Réplique : impression | Imprimer une pièce test (poteau, guide) pour valider inserts et tolérances, puis la série |
+| Caisse | Débiter et assembler la caisse et le fronton (planches 08, 09, 11) |
 | Son sur la réplique | Le DFPlayer ne joue qu'une piste à la fois : priorité à la voix, ou second DFPlayer sur Serial2 |

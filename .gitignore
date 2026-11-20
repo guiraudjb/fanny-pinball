@@ -4,3 +4,6 @@ dist/
 *.log
 .env
 assets/brut/
+cao/sortie/rendu/*.stl
+cao/sortie/*.FCBak
+__pycache__/

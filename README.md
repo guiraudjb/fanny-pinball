@@ -69,6 +69,14 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 | `js/segfont.js` | Police 7 segments identique aux TM1637 |
 | `js/audio.js` | Bruitages `assets/sons/00NN.mp3` (= pistes du DFPlayer), musique ; synthèse en repli |
 
+## Réplique physique : plans et CAO
+
+Le dossier `cao/` génère le modèle 3D (FreeCAD) et les plans cotés de la réplique à partir de la géométrie du jeu :
+- plateau percé, pièces à imprimer, détecteurs ;
+- caisse et fronton aux cotes WPC.
+
+Voir [docs/CONSTRUCTION.md](docs/CONSTRUCTION.md) et [docs/plans/plans_fanny_pinball.pdf](docs/plans/plans_fanny_pinball.pdf).
+
 ## Habillage et sons
 
 Ambiance d'été provençal, ode à la pétanque, avec une touche d'humour.

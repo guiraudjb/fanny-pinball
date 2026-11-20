@@ -84,6 +84,11 @@ lampes, mêmes pistes sonores.
 | Inventaire des pièces impossibles à fabriquer (à acheter) | ✅ |
 | Règles portées en C++ (le module `js/rules.js` n'utilise que compteurs, drapeaux et minuteries) | ⬜ |
 
+Plans et modèle 3D : [CONSTRUCTION.md](CONSTRUCTION.md).
+- Les plans sont générés depuis la géométrie du jeu.
+- Les cotes des pièces du commerce non vérifiées sont signalées en orange.
+- La caisse suit les cotes Williams WPC « standard body » (contreplaqué 19 mm).
+
 ## 8. Contraintes de réalisation
 
 - Dépôt **public** : le code, les images de Fanny, les sons et les musiques y sont publiés.

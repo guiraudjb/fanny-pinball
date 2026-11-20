@@ -84,6 +84,8 @@ Tout ce qui bouge ou encaisse des chocs vient du commerce ou de l'imprimante.
 | Couloir de lancement | Micro-rupteur à levier sous la bille au repos |
 | Évacuation + bac à billes ×3 | Micro-rupteurs à levier |
 
+Les perçages, fixations, détecteurs, la caisse et la nomenclature complète figurent dans [CONSTRUCTION.md](CONSTRUCTION.md) et dans les plans cotés de `docs/plans/`.
+
 ## Câblage proposé sur le Mega 2560 Pro
 
 Entrées en `INPUT_PULLUP`, contact entre la broche et la masse.

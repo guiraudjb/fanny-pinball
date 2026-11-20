@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Export géométrie</title>
+<!-- Exporte la géométrie de js/table.js (cotes en mm) en JSON pour la CAO :
+     google-chrome --headless --virtual-time-budget=4000 --dump-dom http://127.0.0.1:8766/cao/export_geo.html -->
+<script src="../vendor/matter.min.js"></script>
+<pre id="geo">en cours…</pre>
+<script type="module">
+import { GEO, W, H, BALL_R, CX, buildTable, rampPath } from '../js/table.js';
+import { LAMP_LAYOUT } from '../js/render.js';
+const engine = Matter.Engine.create();
+const T = buildTable(engine);
+const verts = (b) => b.vertices.map((v) => [+v.x.toFixed(2), +v.y.toFixed(2)]);
+const body = (b) => ({ label: b.label, plugin: b.plugin && Object.fromEntries(Object.entries(b.plugin).filter(([k, v]) => typeof v !== 'object' || k === 'n')),
+  circle: b.circleRadius ? { x: +b.position.x.toFixed(2), y: +b.position.y.toFixed(2), r: b.circleRadius } : null, verts: verts(b) });
+const out = {
+  W, H, BALL_R, CX, GEO,
+  ramp: rampPath(GEO.ramps.L, 8).pts.map((p) => [+p.x.toFixed(2), +p.y.toFixed(2), +p.s.toFixed(1)]),
+  walls: T.walls.map(body),
+  slings: T.slings.map(body), drops: T.drops.map(body), standups: T.standups.map(body),
+  leftTargets: T.leftTargets.map(body), gate: body(T.gate),
+  flippers: T.flippers.map((f) => ({ def: f.def, verts: verts(f.body) })),
+  lamps: LAMP_LAYOUT.map(([name, x, y, r, color, label], i) => ({ led: i, name, x: +x.toFixed(2), y: +y.toFixed(2), r, label })),
+};
+document.getElementById('geo').textContent = JSON.stringify(out);
+</script>
