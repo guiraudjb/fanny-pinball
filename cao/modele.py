@@ -187,15 +187,32 @@ for i, s in enumerate(GEO["slings"]):
     m = ((A[0] + C[0]) / 2, (A[1] + C[1]) / 2)
     B = [p for k, p in enumerate(pts) if k not in s["face"]][0]
     n = unit(sub(B, m))
-    bras = (m[0] + n[0] * 12, m[1] + n[1] * 12)
-    ang = math.degrees(math.atan2(C[1] - A[1], C[0] - A[0]))
+    # gabarit Pinball Makers posé sur les deux poteaux de la face : milieu sur milieu, axe sur axe, « intérieur » vers B
+    gb = V(MECA["sling_gabarit"])
+    g1, g2 = gb["poteaux"]
+    gm = ((g1[0] + g2[0]) / 2, (g1[1] + g2[1]) / 2)
+    gd = unit(sub(g2, g1)); gv = (-gd[1], gd[0])
+    if A[1] < C[1]:
+        A, C = C, A                       # A = poteau avant (côté flippers), comme le poteau bas du gabarit
+    e_ = unit(sub(C, A))
+    nv = (-e_[1], e_[0])
+    if (nv[0] * (B[0] - m[0]) + nv[1] * (B[1] - m[1])) < 0:
+        nv = (-nv[0], -nv[1])
+    sgn_g = 1 if sum((p[0] - gm[0]) * gv[0] + (p[1] - gm[1]) * gv[1] for p in gb["passages"]) > 0 else -1
+
+    def gab(p):
+        r = sub(p, gm)
+        u_, v_ = r[0] * gd[0] + r[1] * gd[1], (r[0] * gv[0] + r[1] * gv[1]) * sgn_g
+        return (m[0] + e_[0] * u_ + nv[0] * v_, m[1] + e_[1] * u_ + nv[1] * v_)
+    b1, b2 = gab(gb["bras"][0]), gab(gb["bras"][1])
+    bras = ((b1[0] + b2[0]) / 2, (b1[1] + b2[1]) / 2)
+    ang = math.degrees(math.atan2(b2[1] - b1[1], b2[0] - b1[0]))
     l, w = V(MECA["sling_lumiere"])
-    trou(f"sling_{'GD'[i]}.bras", "lumière du bras de lance-pierre", *bras, forme="oblong", l=l, w=w, angle=ang, src="HYP")
+    trou(f"sling_{'GD'[i]}.bras", "lumière du bras de lance-pierre", *bras, forme="oblong", l=l, w=w, angle=ang, src="PM")
     piece(id=f"meca_sling_{'GD'[i]}", nom="Ensemble lance-pierre (acheté)", type="zone", x=bras[0], y=bras[1],
           dims=V(MECA["sling_zone"]), angle=ang, achat=True, matiere="acheté (type 500-5849)")
-    for k, p in enumerate((A, C)):   # contacts à lames derrière le caoutchouc
-        q = (p[0] + (m[0] - p[0]) * 0.35 + n[0] * 6, p[1] + (m[1] - p[1]) * 0.35 + n[1] * 6)
-        trou(f"sling_{'GD'[i]}.lame{k + 1}", "passe-fil du contact à lames", *q, d=V(VISSERIE["passe_fil"]))
+    for k, p in enumerate(gb["passages"]):   # contacts à lames derrière le caoutchouc (gabarit)
+        trou(f"sling_{'GD'[i]}.lame{k + 1}", "passage du contact à lames (gabarit)", *gab(p), d=gb["d_passage"], src="PM")
 
 # --- flippers (achetés)
 for f in GEO["flippers"]:
@@ -207,10 +224,13 @@ for f in GEO["flippers"]:
 
 # --- bumpers (ensembles achetés, chapeau imprimé)
 for i, b in enumerate(GEO["bumpers"]):
-    trou(f"bumper_{i + 1}.base", "base du bumper", b["x"], b["y"], d=V(MECA["bumper_centre"]), src="MPF")
+    trou(f"bumper_{i + 1}.base", "base du bumper (+ 2 encoches de clavette à 45°)", b["x"], b["y"], d=V(MECA["bumper_centre"]), src="PM")
     ex = V(MECA["bumper_entraxe_tiges"]) / 2
     for k, sg in enumerate((-1, 1)):
-        trou(f"bumper_{i + 1}.tige{k + 1}", "tige de l'anneau du bumper", b["x"] + sg * ex, b["y"], d=V(MECA["bumper_tiges"]), src="MPF")
+        trou(f"bumper_{i + 1}.tige{k + 1}", "tige de l'anneau du bumper", b["x"] + sg * ex, b["y"], d=V(MECA["bumper_tiges"]), src="PM")
+    bv = V(MECA["bumper_vis"])
+    for k, (dx, dy) in enumerate(bv["pos"]):
+        trou(f"bumper_{i + 1}.vis{k + 1}", "avant-trou de vis de la base du bumper", b["x"] + dx, b["y"] - dy, d=bv["d"], src="PM")
     piece(id=f"bumper_{i + 1}", nom="Ensemble bumper (acheté) + chapeau « boule de pétanque » imprimé", type="bumper",
           x=b["x"], y=b["y"], r=b["r"], cap=b["cap"], achat=True, matiere="acheté + chapeau PETG translucide")
     piece(id=f"meca_bumper_{i + 1}", nom="Bobine du bumper (achetée)", type="zone", x=b["x"], y=b["y"],

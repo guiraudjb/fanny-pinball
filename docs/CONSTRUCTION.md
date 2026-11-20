@@ -71,18 +71,32 @@ Tous les contacts sont des micro-rupteurs **KW11-3Z**, câblés NO vers la masse
 - **Sortie de rampe.** Une barrière infrarouge (LED 940 nm et phototransistor) est placée à 12 mm du fond.
 - **Cibles tombantes et lance-pierres.** Les contacts sont ceux des mécanismes achetés.
 
-## Cotes à confirmer (en orange sur les plans)
+## Cotes relevées sur les gabarits Pinball Makers
 
-Ces cotes viennent de pièces du commerce. **Il faut les relever sur la pièce achetée avant de percer.**
+Les gabarits de perçage STL de [Pinball Makers](https://pinballmakers.com/wiki/index.php?title=Files_Section) ont été mesurés dans FreeCAD (source « PM » dans `cao/cotes.py`) :
+
+| Mécanisme | Mesure du gabarit | Ancienne hypothèse |
+|---|---|---|
+| Bumper : trou central | Ø 16,3 + 2 encoches de clavette à 45° (rayon 14) → Forstner 17 + lime | Ø 17 |
+| Bumper : tiges de l'anneau | 2 × Ø 9, entraxe **35,0** | Ø 8, entraxe 44,5 |
+| Bumper : vis de la base | 3 avant-trous Ø 3 (± 25,5 ; 10,7) et (0 ; 28,7) depuis le centre, empreinte Ø 69 | — |
+| Lance-pierre 500-5849 : bras | oblong **25,1 × 12,7**, presque perpendiculaire à la face | 40 × 10 |
+| Lance-pierre : contacts à lames | 4 passages Ø 12,7 | 2 passe-fils Ø 8 |
+| Lance-pierre : poteaux | Ø 6,1, distants de 100,9 | — |
+
+Le gabarit du lance-pierre est posé sur les deux poteaux de la face du jeu, centré au milieu. **La face du jeu mesure 127 mm contre 101 mm pour le mécanisme Williams.** Il faudra soit raccourcir les lance-pierres dans `js/table.js`, soit garder des poteaux plus écartés que ceux du gabarit (le bras frappe alors le caoutchouc en son milieu, ce qui reste correct).
+
+Les plans DWG du même site (flippers A-15205, banque de 5 cibles tombantes, rollover A-12688, trough, cible fixe B-12001-4) n'ont pas pu être lus : aucun convertisseur DWG n'est installé (LibreDWG ou ODA File Converter le permettraient).
+
+## Cotes encore à confirmer (en orange sur les plans)
+
+Il faut les relever sur la pièce achetée **avant de percer** :
 
 - Ø de la bague de flipper.
-- Entraxe des tiges de bumper.
-- Lumières de la banque de cibles tombantes et du lance-pierre.
+- Lumières de la banque de cibles tombantes.
 - Encombrements sous le plateau.
 - Cotes du KW11.
 - Pieds.
-
-Les gabarits STL/DWG de [Pinball Makers](https://pinballmakers.com/wiki/index.php?title=Files_Section) (pop bumper, flipper, banque de cibles, rollover, slingshot, trough) permettent de les vérifier.
 
 ## La caisse
 

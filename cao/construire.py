@@ -97,7 +97,7 @@ def construire_plateau():
         if t["forme"] == "rond":
             outils.append(Part.makeCylinder(t["d"] / 2, M.EP + 2, tv(t["x"], t["y"], -M.EP - 1)))
         elif t["forme"] == "oblong":
-            outils.append(oblong_outil(t["x"], t["y"], t["l"], t["w"], -t["angle"], M.EP + 2, -M.EP - 1))
+            outils.append(oblong_outil(t["x"], t["y"], t["l"], t["w"], t["angle"], M.EP + 2, -M.EP - 1))
     for o in outils:
         pf = pf.cut(o)
     return pf

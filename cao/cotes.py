@@ -6,6 +6,7 @@ SOURCE :
                 (https://pinballmakers.com/wiki/index.php?title=Files_Section : Wpc-cabinet-2/3, Wpc-backbox-1)
   « MPF »     : Mission Pinball Framework, page « Pop bumpers » (perçages)
   « choix »   : choix de conception de ce projet (pièces imprimées, visserie)
+  « PM »      : gabarits de perçage Pinball Makers (Pop-bumper-template.stl, Slingshot-template.stl), mesurés dans FreeCAD
   « HYP »     : hypothèse à CONFIRMER sur la pièce achetée avant de percer (affichée en orange sur les plans)
 """
 
@@ -14,6 +15,7 @@ SOURCES = {
     "WPC": "Plans WPC standard body, Pinball Makers (Wpc-cabinet-2/3, Wpc-backbox-1)",
     "MPF": "Mission Pinball Framework — Pop bumpers",
     "choix": "Choix de conception du projet",
+    "PM": "Gabarits de perçage Pinball Makers (STL), mesurés",
     "HYP": "Hypothèse — à confirmer sur la pièce achetée",
 }
 
@@ -44,13 +46,18 @@ VISSERIE = {
 MECA = {
     "flipper_bague": c(13.0, "HYP", "bague de flipper (type Bally/Williams 03-7568) : Ø à relever, puis percer avec la platine en gabarit"),
     "flipper_zone": c((180, 110), "HYP", "encombrement de la platine sous le plateau"),
-    "bumper_centre": c(17.0, "MPF", "trou central de la base (mèche Forstner 17 mm)"),
-    "bumper_tiges": c(8.0, "MPF", "2 trous des tiges de l'anneau (mèche 8 mm)"),
-    "bumper_entraxe_tiges": c(44.5, "HYP", "entraxe des tiges : relever sur le gabarit Pinball Makers (Pop-bumper-template.stl)"),
+    "bumper_centre": c(17.0, "PM", "gabarit : Ø 16,3 + 2 encoches de clavette à 45° (r 14) ; mèche Forstner 17 mm (MPF), encoches à la lime"),
+    "bumper_tiges": c(9.0, "PM", "2 trous des tiges de l'anneau (gabarit : Ø 9)"),
+    "bumper_entraxe_tiges": c(35.0, "PM", "entraxe des tiges (gabarit : 35,0)"),
+    "bumper_vis": c({"d": 3.0, "pos": [(-25.5, 10.67), (25.5, 10.67), (0.0, 28.67)]}, "PM",
+                    "3 avant-trous des vis de la base, (dx ; dy) depuis le centre, dy vers l'arrière du plateau ; empreinte Ø 69"),
     "bumper_zone": c((95, 70), "HYP", "bobine + culasse sous le plateau"),
     "drop_lumiere": c((26.0, 8.0), "HYP", "lumière par cible (cible 24 mm + jeu) ; banque de 5 au pas de 28 mm"),
     "drop_zone": c((170, 75), "HYP", "banque de 5 cibles tombantes sous le plateau"),
-    "sling_lumiere": c((40.0, 10.0), "HYP", "lumière du bras de lance-pierre"),
+    "sling_lumiere": c((25.1, 12.7), "PM", "lumière du bras (gabarit 500-5849 : oblong 25,1 × 12,7, presque perpendiculaire à la face)"),
+    "sling_gabarit": c({"poteaux": [(14.0, 14.03), (47.81, 109.14)], "bras": [(19.95, 67.53), (41.64, 54.97)],
+                        "passages": [(32.63, 101.93), (40.81, 84.73), (11.44, 51.36), (23.80, 36.86)], "d_passage": 12.7, "d_poteau": 6.1},
+                       "PM", "Slingshot-template.stl : poteaux Ø 6,1 aux bouts de la face, 4 passages Ø 12,7 (contacts à lames), repère du gabarit"),
     "sling_zone": c((120, 60), "HYP", "ensemble lance-pierre (type 500-5849) sous le plateau"),
 }
 
