@@ -7,16 +7,24 @@
 //              afficheurs (display())             → TM1637 (2 × 4 chiffres score + 4 chiffres info)
 // Il doit rester portable tel quel en C++ : compteurs, drapeaux et minuteries seulement.
 //
-// Règles :
+// Règles — la boucle de jeu :
 //   • F-A-N-N-Y (cibles tombantes) allume le Cercle ; bille dans le Cercle allumé = MULTIBALL (3 billes).
-//   • Bumpers (tous les 3 coups) et couloirs du haut allument T-O-U-R ; TOUR complet = bonus ×2, ×3 … ×5.
-//     Changement de couloir : chaque appui sur un batteur décale les lettres allumées.
+//     Le multiball se rallume ensuite plus difficilement : F-A-N-N-Y deux fois, puis trois…
+//   • Multiball : chaque rampe = JACKPOT (+5 000 à chaque fois, +10 000 par F-A-N-N-Y ; la valeur reste
+//     acquise d'un multiball à l'autre). Trois jackpots allument le SUPER JACKPOT au Cercle (3 × jackpot).
+//   • Bumpers (tous les 3 coups) et couloirs du haut allument T-O-U-R ; TOUR complet = bonus ×2, ×3 … ×5,
+//     puis au ×5 : EXTRA BALL allumée au Cercle. Changement de couloir : chaque appui sur un batteur
+//     décale les lettres allumées.
 //   • Couloir du BOUCHON (haut gauche) : allume le CARREAU sur TIRER pendant 20 s (carreau = lettre + k × 10 000).
 //     POINTER puis BOUCHON = BIBERON (+5 000).
 //   • Trois cibles rondes du mur gauche : les trois = TRIPLETTE (+3 000, lettre T-O-U-R, boule pointée).
-//   • Rampe : allume l'escale suivante du World Tour ; en multiball, chaque rampe = JACKPOT.
-//   • 7 escales = GRAND CHELEM + bille supplémentaire (une fois par partie).
-//   • 3 billes, sauvetage de bille 8 s, bonus de fin de bille × multiplicateur.
+//   • Rampe : allume l'escale suivante du World Tour ; 7 escales = GRAND CHELEM (+50 000) + EXTRA BALL.
+//   • EXTRA BALL : deux au plus par partie ; au-delà, l'extra ball allumée vaut 25 000.
+//   • 3 billes, sauvetage de bille 8 s ; bonus de fin de bille décompté × multiplicateur.
+//   • LE CLAC (knocker) : partie gratuite à 150 000, 300 000 et 500 000 points, et au record battu.
+//   • MATCH en fin de partie : tirage de 00 à 90 ; s'il tombe sur les deux derniers chiffres du score,
+//     CLAC et partie gratuite. Crédits gagnés : 9 au plus ; START en consomme un s'il y en a
+//     (sinon partie libre sur le jeu web ; sur la réplique, monnayeur facultatif : contact COIN).
 
 export const SW = {
   FLIP_L: 'flipL', FLIP_R: 'flipR', LAUNCH: 'launch', START: 'start',
@@ -26,10 +34,10 @@ export const SW = {
   TARGETS: ['boule1', 'boule2', 'boule3'],   // cibles rondes du mur gauche
   SAUCER: 'saucer', RAMP: 'ramp',
   SLINGS: ['slingL', 'slingR'], BUMPERS: ['bumper1', 'bumper2', 'bumper3'],
-  SHOOTER: 'shooter', DRAIN: 'drain',
+  SHOOTER: 'shooter', DRAIN: 'drain', COIN: 'coin',
 };
 
-export const COIL = { TROUGH: 'trough', LAUNCH: 'autoLaunch', SAUCER: 'saucerKick', DROP_RESET: 'dropReset' };
+export const COIL = { TROUGH: 'trough', LAUNCH: 'autoLaunch', SAUCER: 'saucerKick', DROP_RESET: 'dropReset', KNOCKER: 'knocker' };
 
 // Numéros de pistes du DFPlayer (0001.mp3 …)
 export const SND = {
@@ -41,7 +49,12 @@ export const SND = {
   V_START: 24, V_MULTIBALL: 25, V_JACKPOT: 26, V_CARREAU: 27, V_BIBERON: 28, V_BOUCHON: 29, V_TRIPLETTE: 30,
   V_GRAND_CHELEM: 31, V_EXTRA: 32, V_BALL_SAVE: 33, V_MB_LIT: 34, V_BONUS_MULT: 35, V_DRAIN: 36,
   V_GAME_OVER: 37, V_RECORD: 38, V_CITY_1: 39,   // escales 1 à 6 : 39 à 44
+  CLAC: 45, MATCH: 46,                            // knocker (partie gratuite), tirage du match
+  V_PARTIE_GRATUITE: 47, V_MATCH: 48, V_EXTRA_LIT: 49, V_SUPER_JACKPOT: 50,
 };
+export const SND_MAX = 50;
+// Voix de Fanny : un seul canal (une réplique coupe la précédente).
+export const isVoice = (id) => (id >= SND.V_START && id <= SND.V_CITY_1 + 5) || id >= SND.V_PARTIE_GRATUITE;
 
 export const CITIES = ['MARSEILLE', 'PARIS', 'LONDRES', 'NEW YORK', 'TOKYO', 'RIO', 'SYDNEY'];
 
@@ -54,6 +67,12 @@ const JACKPOT_START = 20000;
 const JACKPOT_STEP = 5000;
 const CARREAU_MS = 20000;   // durée du carreau allumé après un tir au bouchon
 const CARREAU_PTS = 10000;  // carreau n°k = k × 10 000
+const REPLAY_LEVELS = [150000, 300000, 500000];   // paliers du clac (réglage « exploitant »)
+const MAX_CREDITS = 9;
+const EXTRA_MAX = 2;         // extra balls par partie
+const EXTRA_POINTS = 25000;  // extra ball allumée au-delà du plafond
+const SUPER_AFTER = 3;       // jackpots avant le super jackpot
+const FREE_PLAY = true;      // jeu web : START sans crédit possible
 
 export class Rules {
   constructor(hw) {
@@ -62,8 +81,11 @@ export class Rules {
     this.timers = [];
     this.highScore = 0;
     this.lastScore = 0;
-    this.mode = 'attract';   // attract | play | bonus | over
+    this.mode = 'attract';   // attract | play | bonus | match | over
     this.msg = null;
+    this.credits = 0;
+    this.matchNum = null;    // tirage du match (0, 10 … 90), null = pas de tirage affiché
+    this.matchRolling = false;
     this.resetGame();
   }
 
@@ -71,14 +93,20 @@ export class Rules {
   resetGame() {
     this.score = 0;
     this.ball = 0;
-    this.extraBalls = 0;
-    this.extraAwarded = false;
+    this.extraBalls = 0;     // billes à rejouer (lampe REJOUE)
+    this.extrasGiven = 0;    // extra balls gagnées dans la partie
+    this.extraLit = false;   // extra ball allumée au Cercle
+    this.replayIdx = 0;      // prochain palier du clac
     this.ballsInPlay = 0;
     this.pendingServes = 0;
     this.city = 0;              // nombre d'escales allumées (0 → 7)
     this.mbLit = false;
     this.multiball = false;
+    this.mbCount = 0;           // multiballs joués
+    this.fannyDone = 0;         // F-A-N-N-Y complétés depuis le dernier multiball
     this.jackpot = JACKPOT_START;
+    this.jackpotsMb = 0;        // jackpots du multiball en cours
+    this.superLit = false;
     this.carreaux = 0;
     this.resetBallState();
   }
@@ -106,16 +134,46 @@ export class Rules {
     if (this.mode !== 'play') return;
     this.score += points;
     this.bonus += bonus;
+    this.checkReplay();
+  }
+
+  // ---------------------------------------------------------------- le clac et les crédits
+  checkReplay() {
+    while (this.replayIdx < REPLAY_LEVELS.length && this.score >= REPLAY_LEVELS[this.replayIdx]) {
+      this.replayIdx++;
+      this.freeGame('PARTIE GRATUITE');
+    }
+  }
+
+  freeGame(text) {
+    this.credits = Math.min(MAX_CREDITS, this.credits + 1);
+    this.hw.coil(COIL.KNOCKER);
+    this.hw.sound(SND.CLAC);
+    this.hw.sound(text === 'MATCH' ? SND.V_MATCH : SND.V_PARTIE_GRATUITE);
+    this.say(text, 2000);
+    this.hw.event?.('credits', { credits: this.credits });
+  }
+
+  addCredit() {
+    this.credits = Math.min(MAX_CREDITS, this.credits + 1);
+    this.hw.sound(SND.STANDUP);
+    this.hw.event?.('credits', { credits: this.credits });
   }
 
   // ---------------------------------------------------------------- partie
+  canStart() { return (this.mode === 'attract' || this.mode === 'over') && (FREE_PLAY || this.credits > 0); }
+
   startGame() {
+    if (!this.canStart()) return;
+    const gratuite = this.credits > 0;
+    if (gratuite) { this.credits--; this.hw.event?.('credits', { credits: this.credits }); }
     this.resetGame();
+    this.matchNum = null;
     this.mode = 'play';
     this.ball = 1;
     this.hw.sound(SND.START);
     this.hw.sound(SND.V_START);
-    this.say('FANNY PETANQUE WORLD TOUR', 3000);
+    this.say(gratuite ? 'PARTIE GRATUITE' : 'FANNY PETANQUE WORLD TOUR', 3000);
     this.serveBall(false);
   }
 
@@ -131,46 +189,76 @@ export class Rules {
     this.serveBall(false);
   }
 
+  // Bonus de fin de bille décompté sous les yeux du joueur : « BONUS X3 », puis le score monte par paquets.
   endOfBall() {
     this.mode = 'bonus';
-    const total = this.bonus * this.mult;
-    this.say(`BONUS ${total}`, 2500);
+    this.say(this.mult > 1 ? `BONUS X${this.mult}` : 'BONUS', 1200);
     this.hw.sound(SND.BONUS);
-    this.after(2500, () => {
-      this.score += total;
-      this.mode = 'play';
-      if (this.extraBalls > 0) {
-        this.extraBalls--;
-        this.say('REJOUE', 1500);
-        this.startBall();
-      } else if (this.ball < BALLS_PER_GAME) {
-        this.ball++;
-        this.say(`BILLE ${this.ball}`, 1500);
-        this.startBall();
-      } else {
-        this.gameOver();
-      }
-    });
+    this.after(1200, () => this.countBonus());
   }
 
+  countBonus() {
+    if (this.bonus <= 0) { this.after(600, () => this.nextBall()); return; }
+    const step = Math.min(this.bonus, Math.max(1000, Math.ceil(this.bonus / 200) * 10));
+    this.bonus -= step;
+    this.score += step * this.mult;
+    this.checkReplay();
+    this.hw.sound(SND.LANE);
+    this.after(110, () => this.countBonus());
+  }
+
+  nextBall() {
+    this.mode = 'play';
+    if (this.extraBalls > 0) {
+      this.extraBalls--;
+      this.say('REJOUE', 1500);
+      this.startBall();
+    } else if (this.ball < BALLS_PER_GAME) {
+      this.ball++;
+      this.say(`BILLE ${this.ball}`, 1500);
+      this.startBall();
+    } else {
+      this.gameOver();
+    }
+  }
+
+  // Fin de partie : record (partie gratuite si un record existait déjà), puis le MATCH.
   gameOver() {
-    this.mode = 'over';
+    this.mode = 'match';
     this.lastScore = this.score;
     const record = this.score > this.highScore;
+    const ancien = this.highScore;
     if (record) this.highScore = this.score;
     this.hw.sound(SND.GAME_OVER);
-    this.say(record ? 'NOUVEAU RECORD' : 'FIN DE PARTIE', 4000);
+    this.say(record ? 'NOUVEAU RECORD' : 'FIN DE PARTIE', 2500);
     this.hw.sound(record ? SND.V_RECORD : SND.V_GAME_OVER);
     this.hw.event?.('gameOver', { score: this.score, record });
-    this.after(4000, () => { this.mode = 'attract'; });
+    if (record && ancien > 0) this.after(2600, () => this.freeGame('PARTIE GRATUITE'));
+    this.after(record && ancien > 0 ? 5000 : 2800, () => this.startMatch());
+  }
+
+  startMatch() {
+    this.matchRolling = true;
+    this.matchNum = 0;
+    this.hw.sound(SND.MATCH);
+    this.after(2600, () => {
+      this.matchRolling = false;
+      this.matchNum = 10 * Math.floor(Math.random() * 10);
+      const fin = (this.score % 100) - (this.score % 10);   // les deux derniers chiffres (le score finit par 0)
+      if (this.matchNum === fin) this.freeGame('MATCH');
+      else this.say(`MATCH ${String(this.matchNum).padStart(2, '0')}`, 1800);
+      this.mode = 'over';
+      this.after(5000, () => { if (this.mode === 'over') { this.mode = 'attract'; this.matchNum = null; } });
+    });
   }
 
   // ---------------------------------------------------------------- contacts
   onSwitch(id, closed = true) {
     if (id === SW.START) {
-      if (closed && (this.mode === 'attract' || this.mode === 'over')) this.startGame();
+      if (closed) this.startGame();
       return;
     }
+    if (id === SW.COIN) { if (closed) this.addCredit(); return; }
     if (this.mode === 'attract' || this.mode === 'over') return;
 
     if (id === SW.SHOOTER) {
@@ -208,7 +296,7 @@ export class Rules {
     if (id === 'pointer') return this.hitPointer();
     if (id === 'tirer') return this.hitTirer();
     if (id === 'bouchon') return this.hitBouchon();
-    if (SW.SLINGS.includes(id)) { this.add(10, 1); this.hw.sound(SND.SLING); return; }
+    if (SW.SLINGS.includes(id)) { this.add(10, 10); this.hw.sound(SND.SLING); return; }
     if (id === SW.SAUCER) return this.hitSaucer();
     if (id === SW.RAMP) return this.hitRamp();
   }
@@ -229,6 +317,7 @@ export class Rules {
         this.mult++;
         this.say(`BONUS X${this.mult}`, 1800);
         this.hw.sound(SND.V_BONUS_MULT);
+        if (this.mult === MAX_MULT) this.lightExtra();
       } else {
         this.add(10000, 0);
         this.say('10000', 1200);
@@ -325,9 +414,17 @@ export class Rules {
       this.jackpot += 2 * JACKPOT_STEP;
       this.say(`JACKPOT ${this.jackpot}`, 1800);
     } else if (!this.mbLit) {
-      this.mbLit = true;
-      this.say('MULTIBALL AU CERCLE', 2200);
-      this.hw.sound(SND.V_MB_LIT);
+      this.fannyDone++;
+      const besoin = this.mbCount + 1;            // 1er multiball : 1 fois, puis 2, puis 3…
+      if (this.fannyDone >= besoin) {
+        this.fannyDone = 0;
+        this.mbLit = true;
+        this.say('MULTIBALL AU CERCLE', 2200);
+        this.hw.sound(SND.V_MB_LIT);
+      } else {
+        this.add(5000, 500);
+        this.say(`FANNY ${this.fannyDone}/${besoin}`, 1500);
+      }
     } else {
       this.add(5000, 500);
     }
@@ -337,7 +434,7 @@ export class Rules {
     });
   }
 
-  // --- le Cercle : la bille est toujours réexpulsée
+  // --- le Cercle : la bille est toujours réexpulsée. Priorité : multiball, super jackpot, extra ball.
   hitSaucer() {
     if (this.saucerBusy) return;
     this.saucerBusy = true;
@@ -348,6 +445,19 @@ export class Rules {
       this.hw.sound(SND.V_MULTIBALL);
       hold = 2000;
       this.after(hold, () => this.startMultiball());
+    } else if (this.multiball && this.superLit) {
+      this.superLit = false;
+      this.jackpotsMb = 0;
+      const pts = 3 * this.jackpot;
+      this.add(pts, 0);
+      this.say(`SUPER JACKPOT ${pts}`, 2500);
+      this.hw.sound(SND.JACKPOT);
+      this.hw.sound(SND.V_SUPER_JACKPOT);
+      hold = 1800;
+    } else if (this.extraLit) {
+      this.extraLit = false;
+      this.awardExtra();
+      hold = 1800;
     } else {
       this.add(1000, 100);
       this.hw.sound(SND.SAUCER);
@@ -358,10 +468,33 @@ export class Rules {
   startMultiball() {
     this.multiball = true;
     this.mbLit = false;
-    this.jackpot = JACKPOT_START;
+    this.mbCount++;
+    this.jackpotsMb = 0;
+    this.superLit = false;
     this.ballSaveUntil = this.now + MB_BALL_SAVE_MS;
     this.serveBall(true);
     this.after(1500, () => this.serveBall(true));
+  }
+
+  // --- extra ball : allumée au Cercle (TOUR au ×5) ou donnée directement (Grand Chelem)
+  lightExtra() {
+    if (this.extraLit) return;
+    if (this.extrasGiven >= EXTRA_MAX) { this.add(EXTRA_POINTS, 0); return; }
+    this.extraLit = true;
+    this.after(1900, () => { this.say('EXTRA BALL AU CERCLE', 2200); this.hw.sound(SND.V_EXTRA_LIT); });
+  }
+
+  awardExtra() {
+    if (this.extrasGiven >= EXTRA_MAX) {
+      this.add(EXTRA_POINTS, 0);
+      this.say(`${EXTRA_POINTS}`, 1500);
+      return;
+    }
+    this.extrasGiven++;
+    this.extraBalls++;
+    this.say('EXTRA BALL', 2000);
+    this.hw.sound(SND.EXTRA);
+    this.hw.sound(SND.V_EXTRA);
   }
 
   // --- rampes : escales du World Tour, jackpot en multiball
@@ -373,6 +506,10 @@ export class Rules {
       this.jackpot += JACKPOT_STEP;
       this.hw.sound(SND.JACKPOT);
       this.hw.sound(SND.V_JACKPOT);
+      if (++this.jackpotsMb >= SUPER_AFTER && !this.superLit) {
+        this.superLit = true;
+        this.after(1900, () => { this.say('SUPER JACKPOT AU CERCLE', 2200); });
+      }
     } else {
       this.hw.sound(SND.RAMP);
     }
@@ -383,11 +520,7 @@ export class Rules {
       this.say('GRAND CHELEM', 2500);
       this.hw.sound(SND.GRAND_CHELEM);
       this.hw.sound(SND.V_GRAND_CHELEM);
-      if (!this.extraAwarded) {
-        this.extraAwarded = true;
-        this.extraBalls++;
-        this.after(2500, () => { this.say('EXTRA BALL', 2000); this.hw.sound(SND.EXTRA); this.hw.sound(SND.V_EXTRA); });
-      }
+      this.after(2500, () => this.awardExtra());
     } else {
       if (!this.multiball) this.say(CITIES[this.city], 1500);
       this.hw.sound(SND.CITY);
@@ -413,6 +546,7 @@ export class Rules {
     }
     if (this.multiball && this.ballsInPlay <= 1) {
       this.multiball = false;
+      this.superLit = false;
       this.say('FIN DE LA MENE', 1500);
     }
     if (this.ballsInPlay === 0) {
@@ -441,18 +575,19 @@ export class Rules {
     const L = {};
     this.letters.forEach((on, i) => { L[`lane${i}`] = on ? 1 : 0; });
     this.drops.forEach((down, i) => { L[`drop${i}`] = down ? 1 : 0; });
-    L.multiball = this.multiball ? 1 : this.mbLit ? 2 : 0;
+    L.multiball = this.superLit ? 2 : this.multiball ? 1 : this.mbLit ? 2 : 0;
     L.ramp = 1;
     L.jackpot = this.multiball ? 2 : 0;
     for (let m = 2; m <= MAX_MULT; m++) L[`mult${m}`] = this.mult >= m ? 1 : 0;
     CITIES.forEach((_, i) => { L[`city${i}`] = i < this.city ? 1 : i === this.city ? 2 : 0; });
     L.extra = this.extraBalls > 0 ? 1 : 0;
+    L.extraLit = this.extraLit ? 2 : 0;
     L.save = this.now < this.ballSaveUntil ? 2 : 0;
     L.carreau = this.now < this.carreauUntil ? 2 : 0;
     L.bouchon = this.pointLit ? 2 : 1;
     L.point = this.pointLit ? 1 : 0;
     this.targets.forEach((on, i) => { L[`cible${i}`] = on ? 1 : 0; });
-    if (this.mode === 'attract' || this.mode === 'over') {
+    if (this.mode === 'attract' || this.mode === 'over' || this.mode === 'match') {
       const k = Math.floor(this.now / 150);
       Object.keys(L).forEach((name, i) => { L[name] = (i + k) % 6 === 0 ? 1 : 0; });
     }
@@ -469,7 +604,14 @@ export class Rules {
         : phase === 1 ? pad(`HI ${this.highScore}`, 8) : pad(String(this.lastScore), 8);
     } else score = pad(String(this.score), 8);
 
-    const info = this.mode === 'attract' || this.mode === 'over' ? 'PLAY' : `b${this.ball} ${this.mult}`;
+    let info;
+    if (this.matchNum !== null && (this.mode === 'match' || this.mode === 'over')) {
+      // 4 caractères du module info : le tirage du match défile puis s'arrête
+      const n = this.matchRolling ? 10 * (Math.floor(this.now / 70) % 10) : this.matchNum;
+      info = `  ${String(n).padStart(2, '0')}`;
+    } else if (this.mode === 'attract' || this.mode === 'over' || this.mode === 'match') {
+      info = this.credits > 0 && Math.floor(this.now / 2000) % 2 ? `CR ${this.credits}` : 'PLAY';
+    } else info = `b${this.ball} ${this.mult}`;
     return { score, info };
   }
 }

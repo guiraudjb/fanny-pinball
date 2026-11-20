@@ -1,24 +1,103 @@
 {
  "_note": "Répliques de Fanny : clé = nom SND (js/rules.js), piste = n° DFPlayer (00NN.mp3). Voix clonée sur le chant du générique YuE2 (outils/voix_fanny.py).",
- "V_START":        {"piste": 24, "texte": "Allez, on part pour le World Tour !"},
- "V_MULTIBALL":    {"piste": 25, "texte": "Triplette ! Tout le monde sur le terrain !"},
- "V_JACKPOT":      {"piste": 26, "texte": "Jackpot !"},
- "V_CARREAU":      {"piste": 27, "texte": "Carreau ! En plein dessus !"},
- "V_BIBERON":      {"piste": 28, "texte": "Biberon ! Elle embrasse le bouchon !"},
- "V_BOUCHON":      {"piste": 29, "texte": "Tir au bouchon !"},
- "V_TRIPLETTE":    {"piste": 30, "texte": "Et une triplette !"},
- "V_GRAND_CHELEM": {"piste": 31, "texte": "Grand chelem ! Quelle championne !"},
- "V_EXTRA":        {"piste": 32, "texte": "Rejoue, mon grand !"},
- "V_BALL_SAVE":    {"piste": 33, "texte": "Allez, je te la rends !"},
- "V_MB_LIT":       {"piste": 34, "texte": "Le Cercle est allumé !"},
- "V_BONUS_MULT":   {"piste": 35, "texte": "Bonus multiplié !"},
- "V_DRAIN":        {"piste": 36, "texte": "Oh, peuchère !"},
- "V_GAME_OVER":    {"piste": 37, "texte": "Fin de partie ! On se refait une mène ?"},
- "V_RECORD":       {"piste": 38, "texte": "Nouveau record ! Bravo, champion !"},
- "V_CITY_1":       {"piste": 39, "texte": "Escale à Paris !"},
- "V_CITY_2":       {"piste": 40, "texte": "Escale à Londres !"},
- "V_CITY_3":       {"piste": 41, "texte": "Escale à New York !"},
- "V_CITY_4":       {"piste": 42, "texte": "Escale à Tokyo !"},
- "V_CITY_5":       {"piste": 43, "texte": "Escale à Rio !"},
- "V_CITY_6":       {"piste": 44, "texte": "Escale à Sydney !"}
+ "V_START": {
+  "piste": 24,
+  "texte": "Allez, on part pour le World Tour !"
+ },
+ "V_MULTIBALL": {
+  "piste": 25,
+  "texte": "Triplette ! Tout le monde sur le terrain !"
+ },
+ "V_JACKPOT": {
+  "piste": 26,
+  "texte": "Jackpot !"
+ },
+ "V_CARREAU": {
+  "piste": 27,
+  "texte": "Carreau ! En plein dessus !"
+ },
+ "V_BIBERON": {
+  "piste": 28,
+  "texte": "Biberon ! Elle embrasse le bouchon !"
+ },
+ "V_BOUCHON": {
+  "piste": 29,
+  "texte": "Tir au bouchon !"
+ },
+ "V_TRIPLETTE": {
+  "piste": 30,
+  "texte": "Et une triplette !"
+ },
+ "V_GRAND_CHELEM": {
+  "piste": 31,
+  "texte": "Grand chelem ! Quelle championne !"
+ },
+ "V_EXTRA": {
+  "piste": 32,
+  "texte": "Rejoue, mon grand !"
+ },
+ "V_BALL_SAVE": {
+  "piste": 33,
+  "texte": "Allez, je te la rends !"
+ },
+ "V_MB_LIT": {
+  "piste": 34,
+  "texte": "Le Cercle est allumé !"
+ },
+ "V_BONUS_MULT": {
+  "piste": 35,
+  "texte": "Bonus multiplié !"
+ },
+ "V_DRAIN": {
+  "piste": 36,
+  "texte": "Oh, peuchère !"
+ },
+ "V_GAME_OVER": {
+  "piste": 37,
+  "texte": "Fin de partie ! On se refait une mène ?"
+ },
+ "V_RECORD": {
+  "piste": 38,
+  "texte": "Nouveau record ! Bravo, champion !"
+ },
+ "V_CITY_1": {
+  "piste": 39,
+  "texte": "Escale à Paris !"
+ },
+ "V_CITY_2": {
+  "piste": 40,
+  "texte": "Escale à Londres !"
+ },
+ "V_CITY_3": {
+  "piste": 41,
+  "texte": "Escale à New York !"
+ },
+ "V_CITY_4": {
+  "piste": 42,
+  "texte": "Escale à Tokyo !"
+ },
+ "V_CITY_5": {
+  "piste": 43,
+  "texte": "Escale à Rio !"
+ },
+ "V_CITY_6": {
+  "piste": 44,
+  "texte": "Escale à Sydney !"
+ },
+ "V_PARTIE_GRATUITE": {
+  "piste": 47,
+  "texte": "Clac ! Partie gratuite, mon cœur !"
+ },
+ "V_MATCH": {
+  "piste": 48,
+  "texte": "Match ! La partie est offerte !"
+ },
+ "V_EXTRA_LIT": {
+  "piste": 49,
+  "texte": "Extra ball au Cercle, vas-y !"
+ },
+ "V_SUPER_JACKPOT": {
+  "piste": 50,
+  "texte": "Super jackpot ! Fanny est aux anges !"
+ }
 }

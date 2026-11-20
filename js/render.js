@@ -34,6 +34,7 @@ export const LAMP_LAYOUT = [
   ['bouchon', GEO.bouchonLane.M.x + GEO.bouchonLane.u.x * 34, GEO.bouchonLane.M.y + GEO.bouchonLane.u.y * 34, 8, '#ffd23f', ''],
   ['point', 82, 560, 7, '#7dff6a', ''],
   ...GEO.leftTargets.map((t, i) => [`cible${i}`, t.x + 26, t.y, 6, '#ff3fa4', '']),
+  ['extraLit', GEO.saucer.x - 34, GEO.saucer.y + 30, 8, '#ff5252', 'EB'],
 ];
 
 export class Renderer {

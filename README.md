@@ -16,17 +16,28 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 ## Règles (esprit flipper des années 70)
 
 - **F-A-N-N-Y** : abattre les 5 cibles allume **le Cercle** ; une bille dans le Cercle allumé
-  lance le **multiball Triplette** (3 billes).
+  lance le **multiball Triplette** (3 billes). Ensuite il faut F-A-N-N-Y deux fois, puis trois…
+- **Jackpot** : en multiball, chaque rampe rapporte le jackpot (20 000, +5 000 à chaque fois,
+  +10 000 par F-A-N-N-Y ; la valeur reste acquise pour le multiball suivant). Trois jackpots
+  allument le **super jackpot** au Cercle (3 × le jackpot).
 - **T-O-U-R** : les couloirs du haut et les bumpers (tous les 3 coups) allument les lettres ;
-  TOUR complet = bonus ×2, ×3 … ×5. **Changement de couloir** : chaque appui sur un batteur
-  décale les lettres allumées.
+  TOUR complet = bonus ×2, ×3 … ×5, et le ×5 allume l'**extra ball** au Cercle (lampe EB).
+  **Changement de couloir** : chaque appui sur un batteur décale les lettres allumées.
 - **Le Cercle** est un trou d'éjection en haut à droite.
 - **Couloir du bouchon** (haut gauche, tir de la palette droite) : le cochonnet allume le
   **CARREAU** sur TIRER pendant 20 s (lettre + 10 000 × n). POINTER puis BOUCHON = **BIBERON**.
 - **Trois cibles rondes** du mur gauche : les trois = **TRIPLETTE** (lettre + boule pointée).
 - **Rampe** : chaque passage allume l'escale suivante du World Tour (Marseille → Sydney) ;
-  en multiball, chaque rampe rapporte le **jackpot**. 7 escales = Grand Chelem + bille supplémentaire.
-- 3 billes, sauvetage de bille 8 s, bonus de fin de bille × multiplicateur.
+  en multiball, chaque rampe rapporte le **jackpot**. 7 escales = Grand Chelem (+50 000) + **extra ball**.
+- **Extra ball** : deux au plus par partie (lampe REJOUE) ; au-delà, elle vaut 25 000.
+- 3 billes, sauvetage de bille 8 s ; le **bonus** de fin de bille est décompté sous les yeux du
+  joueur (« BONUS X3 », puis le score monte par paquets).
+- **Le clac** : le knocker claque et une **partie gratuite** est gagnée à 150 000, 300 000 et
+  500 000 points, et quand le record est battu.
+- **Le match** : en fin de partie, l'afficheur info tire un nombre de 00 à 90 ; s'il tombe sur les
+  deux derniers chiffres du score, clac et partie gratuite. Les parties gratuites (9 au plus,
+  gardées dans le navigateur) sont consommées par START, affichées « CR n » ; la touche C
+  ajoute une pièce, mais le jeu web reste en partie libre.
 
 ## Commandes
 
@@ -36,6 +47,7 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 | Flipper droit | Maj droite, → | moitié droite du plateau |
 | Lancer | Espace, ↓ | couloir de lancement |
 | Nouvelle partie | Entrée | bouton Jouer |
+| Pièce (crédit) | C | |
 | Pause / son | P / M | |
 
 ## Organisation du code

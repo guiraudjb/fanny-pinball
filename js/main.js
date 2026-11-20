@@ -25,10 +25,12 @@ const hw = {
   },
   event: (name, data) => {
     if (name === 'gameOver') try { localStorage.setItem('fanny-pinball-hi', String(rules.highScore)); } catch {}
+    if (name === 'credits') try { localStorage.setItem('fanny-pinball-credits', String(data.credits)); } catch {}
   },
 };
 const rules = new Rules(hw);
 try { rules.highScore = Number(localStorage.getItem('fanny-pinball-hi')) || 0; } catch {}
+try { rules.credits = Number(localStorage.getItem('fanny-pinball-credits')) || 0; } catch {}
 
 sim = new Sim((id, closed = true) => {
   rules.onSwitch(id, closed);
@@ -43,6 +45,7 @@ const KEYS = {
   right: ['ShiftRight', 'ArrowRight', 'Slash'],
   launch: ['Space', 'ArrowDown', 'Enter'],
   start: ['Enter', 'KeyS'],
+  coin: ['KeyC', 'Digit5'],      // pièce (monnayeur de la réplique)
 };
 
 function setFlipper(side, down) {
@@ -56,7 +59,7 @@ function setFlipper(side, down) {
 
 function pressStart() {
   unlockAudio(); audioReady = true;
-  if (rules.mode === 'attract' || rules.mode === 'over') {
+  if (rules.canStart()) {
     sim.clear();
     rules.onSwitch(SW.START);
   }
@@ -68,7 +71,8 @@ window.addEventListener('keydown', (e) => {
   if (e.repeat) { if ([...KEYS.left, ...KEYS.right, ...KEYS.launch].includes(e.code)) e.preventDefault(); return; }
   if (KEYS.left.includes(e.code)) { setFlipper('L', true); e.preventDefault(); }
   if (KEYS.right.includes(e.code)) { setFlipper('R', true); e.preventDefault(); }
-  if (KEYS.start.includes(e.code) && (rules.mode === 'attract' || rules.mode === 'over')) { pressStart(); e.preventDefault(); return; }
+  if (KEYS.start.includes(e.code) && rules.canStart()) { pressStart(); e.preventDefault(); return; }
+  if (KEYS.coin.includes(e.code)) { rules.onSwitch(SW.COIN); e.preventDefault(); return; }
   if (KEYS.launch.includes(e.code)) { rules.onSwitch(SW.LAUNCH); e.preventDefault(); }
   if (e.code === 'KeyP' || e.code === 'Escape') paused = !paused;
   if (e.code === 'KeyM') muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui';
@@ -148,8 +152,8 @@ function frame(t) {
   }
   cityEl.textContent = rules.mode === 'play' || rules.mode === 'bonus'
     ? `Escale : ${CITIES[rules.city].charAt(0) + CITIES[rules.city].slice(1).toLowerCase()} · bille ${rules.ball} · bonus ×${rules.mult}${rules.multiball ? ' · MULTIBALL' : ''}`
-    : `Record : ${rules.highScore.toLocaleString('fr-FR')}`;
-  startBtn.hidden = rules.mode === 'play' || rules.mode === 'bonus';
+    : `Record : ${rules.highScore.toLocaleString('fr-FR')}${rules.credits ? ` · parties gratuites : ${rules.credits}` : ''}`;
+  startBtn.hidden = !rules.canStart();
 
   // musique : générique hors partie (une fois le son déverrouillé), thème en partie
   if (audioReady) playMusic(rules.mode === 'play' || rules.mode === 'bonus' ? 'theme' : 'generique');

@@ -36,7 +36,7 @@ Tout ce qui bouge ou encaisse des chocs vient du commerce ou de l'imprimante.
 
 | Pièce | Qté | Pourquoi l'acheter |
 |---|---|---|
-| **Bobines (solénoïdes)** | 11 | Cœur de toute la mécanique. Les solénoïdes génériques 12/24 V sont trop faibles pour des flippers ; prendre de vraies bobines de flipper au moins pour les flippers et les bumpers |
+| **Bobines (solénoïdes)** | 12 (dont le knocker) | Cœur de toute la mécanique. Les solénoïdes génériques 12/24 V sont trop faibles pour des flippers ; prendre de vraies bobines de flipper au moins pour les flippers et les bumpers |
 | **Mécanismes de flipper complets** (palette, axe, bague, biellette, ressort de rappel, support) | 2 | L'axe et la bague doivent être en métal : une palette imprimée casse ou prend du jeu |
 | **Palettes de flipper avec caoutchouc** | 2 | Souvent fournies avec le mécanisme |
 | **Ensembles bumper** (corps, jupe, anneau, culasse, contact) | 3 | L'anneau qui frappe la bille et sa tige sont métalliques ; seul le chapeau s'imprime (boule de pétanque) |
@@ -48,7 +48,7 @@ Tout ce qui bouge ou encaisse des chocs vient du commerce ou de l'imprimante.
 | **Billes de flipper 27 mm** (1-1/16") | 3 + rechange | Billes standard de flipper |
 | **Vitre trempée 4 mm** | 1 | Sécurité |
 | **Contreplaqué 12 mm** (plateau) + bois de caisse | — | Découpe scie, pas imprimable |
-| **Électronique** : Mega 2560 Pro, 11 modules MOSFET logiques (IRLZ44N ou équivalent), diodes 1N4007, alimentation 24 V ≥ 10 A, alimentation 5 V 4 A, fusibles, borniers | — | |
+| **Électronique** : Mega 2560 Pro, 12 modules MOSFET logiques (IRLZ44N ou équivalent), diodes 1N4007, alimentation 24 V ≥ 10 A, alimentation 5 V 4 A, fusibles, borniers | — | |
 | **Afficheurs** TM1637 4 chiffres | 3 | Rouge pour le score, orange pour l'info |
 | **Bande WS2812B** (60 LED/m, découpée) | ~30 LED + éclairage général | |
 | **Son** : DFPlayer Mini + carte micro SD + haut-parleur 4 Ω 3 W | 1 | |
@@ -98,7 +98,7 @@ Entrées en `INPUT_PULLUP`, contact entre la broche et la masse.
 | D30–D34 | Cibles F, A, N, N, Y | D40, D41 | Lance-pierres G, D |
 | D42, D43, D47 | Bumpers 1, 2, 3 | D48 | Couloir de lancement |
 | D49 | Évacuation | D50–D52 | Bac à billes 1–3 |
-| D44–D46 | Cibles rondes 1, 2, 3 (mur gauche) | | |
+| D44–D46 | Cibles rondes 1, 2, 3 (mur gauche) | D53 | Monnayeur (facultatif) |
 
 Sorties vers les modules MOSFET (bobines en 24 V, diode de roue libre sur chaque bobine).
 
@@ -112,6 +112,7 @@ Sorties vers les modules MOSFET (bobines en 24 V, diode de roue libre sur chaque
 | D10 | Remise des cibles F-A-N-N-Y | |
 | D11 | Éjection du bac à billes | |
 | D12 | Lanceur automatique | |
+| D13 | Knocker (« le clac ») | Impulsion ~30 ms contre la caisse : partie gratuite, match |
 
 Autres périphériques :
 
@@ -123,7 +124,8 @@ Autres périphériques :
 | A5 / A6 | TM1637 info (bille + multiplicateur) |
 | D18 / D19 | DFPlayer Mini (Serial1 TX1 / RX1, résistance 1 kΩ sur RX du DFPlayer) |
 
-Il reste environ 12 broches libres (A7–A15, D53) pour des ajouts.
+Il reste environ 11 broches libres (A7–A15) pour des ajouts. Les crédits gagnés (clac, match) sont
+gardés en EEPROM avec le record ; `FREE_PLAY` (`js/rules.js`) décide si START exige un crédit.
 
 ## Sécurité électrique
 
@@ -139,8 +141,8 @@ Il reste environ 12 broches libres (A7–A15, D53) pour des ajouts.
 Les sons du jeu web sont synthétisés en attendant les vrais fichiers ; leur numéro
 (`SND` dans `js/rules.js`) est déjà le numéro de piste du DFPlayer.
 
-- Bruitages (pistes 1 à 21) : synthèse physique, `outils/bruitages.py`.
+- Bruitages (pistes 1 à 21, 45 le clac, 46 le match) : synthèse physique, `outils/bruitages.py`.
 - Musiques (22 générique, 23 thème) : **YuE2**, `outils/musique_yue2.py`.
-- Voix de Fanny (24 à 44 : « Carreau ! », « Triplette ! », escales…) : **VoiceStudio**, voix clonée sur le chant
+- Voix de Fanny (24 à 44 et 47 à 50 : « Carreau ! », « Triplette ! », escales, partie gratuite, match…) : **VoiceStudio**, voix clonée sur le chant
   du générique, `outils/voix_fanny.py`. Le DFPlayer ne joue qu'une piste à la fois : sur la réplique, la voix
   passe avant le bruitage (ou un second DFPlayer sur Serial2, D16/D17, pour superposer musique et voix).

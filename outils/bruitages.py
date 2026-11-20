@@ -15,6 +15,7 @@ Sortie : assets/sons/00NN.mp3, NN = numéro SND de js/rules.js = piste du DFPlay
     python3 outils/bruitages.py
 """
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -279,6 +280,25 @@ def S_LAUNCH():
     return p
 
 
+def S_CLAC():
+    """Le CLAC : le knocker frappe la caisse en bois — partie gratuite."""
+    p = piste(1.2)
+    place(p, knocker(), 0, 1.3)
+    place(p, bois(220, .4, .9), .004)
+    return p
+
+
+def S_MATCH():
+    """Tirage du match : les rouleaux du compteur défilent (cliquetis de relais) puis s'arrêtent."""
+    p = piste(2.8)
+    t, k = 0.0, 0
+    while t < 2.45:
+        place(p, bois(1400 + 90 * (k % 5), .05, .5), t, .6)
+        t += .06 + .1 * (t / 2.45) ** 2; k += 1
+    place(p, bobine(.9, 70, .25), 2.5)
+    return p
+
+
 SND = ["START", "BUMPER", "SLING", "FLIP", "DROP", "DROPS_DONE", "RAMP", "LANE", "LANES_DONE", "STANDUP",
        "SAUCER", "MULTIBALL", "JACKPOT", "CITY", "GRAND_CHELEM", "EXTRA", "BALL_SAVE", "DRAIN", "BONUS",
        "GAME_OVER", "LAUNCH"]
@@ -301,9 +321,16 @@ def ecrire(n, s):
     wav.unlink()
 
 
+EXTRA = {45: "CLAC", 46: "MATCH"}    # pistes ajoutées après les voix (24-44)
+
+
 def main():
+    """python3 outils/bruitages.py [NOM …]   (sans argument : toutes les pistes)"""
     OUT.mkdir(parents=True, exist_ok=True)
-    for i, nom in enumerate(SND, 1):
+    noms = set(sys.argv[1:])
+    for i, nom in [*enumerate(SND, 1), *EXTRA.items()]:
+        if noms and nom not in noms:
+            continue
         ecrire(i, globals()[f"S_{nom}"]())
         print(f"{i:04d}.mp3  {nom}")
 

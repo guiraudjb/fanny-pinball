@@ -1,7 +1,7 @@
 // Sons synthétisés (WebAudio), un par numéro de piste DFPlayer (voir SND dans rules.js).
 // Sur la réplique, chaque numéro correspondra à un fichier 00NN.mp3 sur la carte SD.
 
-import { SND } from './rules.js';
+import { SND, SND_MAX, isVoice } from './rules.js';
 
 let ac = null;
 let master = null;
@@ -61,8 +61,7 @@ function arp(notes, step = 0.09, type = 'square', vol = 0.18) {
 const buffers = {};
 const SON_GAIN = { [SND.FLIP]: 0.5, [SND.BUMPER]: 0.8, [SND.SLING]: 0.7 };
 function loadSounds() {
-  const last = SND.V_CITY_1 + 5;                       // escales 1 à 6 = pistes 39 à 44
-  for (let id = 1; id <= last; id++) {
+  for (let id = 1; id <= SND_MAX; id++) {
     if (id === SND.MUSIQUE_GENERIQUE || id === SND.MUSIQUE_THEME) continue;
     fetch(`assets/sons/${String(id).padStart(4, '0')}.mp3`)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject()))
@@ -75,13 +74,13 @@ function loadSounds() {
 let voice = null;   // voix de Fanny : une seule à la fois, la nouvelle coupe l'ancienne
 function playBuffer(id) {
   const src = ac.createBufferSource(), g = ac.createGain();
-  if (id >= SND.V_START) {
+  if (isVoice(id)) {
     try { voice?.stop(); } catch {}
     voice = src;
   }
   src.buffer = buffers[id];
   src.playbackRate.value = id === SND.BUMPER || id === SND.FLIP ? 0.96 + Math.random() * 0.08 : 1;
-  g.gain.value = (SON_GAIN[id] ?? 1) * (id >= SND.V_START ? 2.6 : 2.2);
+  g.gain.value = (SON_GAIN[id] ?? 1) * (isVoice(id) ? 2.6 : 2.2);
   src.connect(g); g.connect(master);
   src.start();
 }
@@ -125,5 +124,7 @@ export function play(id) {
     case SND.GAME_OVER: arp([523, 392, 330, 262], 0.22, 'triangle', 0.3); break;
     case SND.START: arp([392, 523, 659, 784, 1046], 0.09, 'triangle', 0.3); break;
     case SND.LAUNCH: noise(0.12, { vol: 0.4, freq: 600 }); break;
+    case SND.CLAC: clac(0.45); noise(0.08, { vol: 0.7, freq: 400 }); break;
+    case SND.MATCH: for (let i = 0; i < 20; i++) tone(900 + (i % 10) * 40, 0.03, { type: 'square', vol: 0.06, delay: i * 0.12 }); break;
   }
 }
