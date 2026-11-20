@@ -70,7 +70,8 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 | Nouvelle partie | Entrée | bouton Jouer |
 | Pièce (crédit) | C | |
 | Pause / son | P / M | |
-| Vue 3D / 2D | V | bouton Vue |
+| Vue 2D / 3D / 3D légère | V | bouton Vue |
+| Caméra 3D (joueur, haute, plateau) | K | bouton Caméra |
 
 ## Organisation du code
 
@@ -80,7 +81,8 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 | `js/rules.js` | Règles : contacts → bobines, lampes, afficheurs, sons (à porter en C++ sur le Mega) |
 | `js/sim.js` | Physique : transforme les chocs en contacts, exécute les bobines |
 | `js/render.js` | Dessin du plateau en 2D ; `LAMP_LAYOUT` = ordre des LED WS2812B ; `drawFloor()` peint aussi la texture du plateau 3D |
-| `js/render3d.js` | Vue 3D (Three.js r170, `vendor/`, chargé à la demande) : plateau incliné, volumes, ombres, bille d'acier ; même physique |
+| `js/render3d.js` | Vue 3D (Three.js r170, `vendor/`, chargé à la demande) : plateau incliné, pièces de la CAO (`assets/cao/pieces.glb`), ombres, bille d'acier ; même physique |
+| `outils/cao_web.py` | Pièces de la CAO (STL) → `assets/cao/pieces.glb` pour la vue 3D, sans dépendance |
 | `js/segfont.js` | Police 7 segments identique aux TM1637 |
 | `js/audio.js` | Bruitages `assets/sons/00NN.mp3` (= pistes du DFPlayer), musique ; synthèse en repli |
 

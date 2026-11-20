@@ -64,7 +64,7 @@ lampes, mêmes pistes sonores.
 | **Composition vintage** aux couleurs flashy de Fanny ; **ambiance estivale**, clin d'œil à la pétanque | ✅ |
 | « Une œuvre d'art, une ode à la pétanque », avec une **touche d'humour** | ✅ |
 | Plateau, rampe, bumpers, lance-pierres habillés | ✅ |
-| **Vue 3D** façon Visual Pinball (plateau incliné, volumes, ombres, bille d'acier), vue 2D conservée | étapes 1 et 2 ✅ |
+| **Vue 3D** façon Visual Pinball (plateau incliné, volumes, ombres, bille d'acier), vue 2D conservée ; pièces de la CAO, caméras, version légère | ✅ |
 | **Fronton** « Fanny Pétanque World Tour » | ✅ |
 | Cigale à lunettes dans l'arbre près du soleil, intégration lissée par IA (inpainting Krea 2 dans ComfyUI) | ✅ |
 | Pièces en plastique **sans angles vifs** ; la pièce au-dessus du cochonnet d'un seul tenant, arrondie | ✅ |

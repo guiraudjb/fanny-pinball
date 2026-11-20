@@ -8,6 +8,7 @@ import { W, H, GEO } from './table.js';
 const canvas = document.getElementById('table');
 const view3dEl = document.getElementById('view3d');
 const viewBtn = document.getElementById('view');
+const camBtn = document.getElementById('camera');
 const playfieldEl = document.getElementById('playfield');
 const dispScore = document.getElementById('disp-score');
 const dispInfo = document.getElementById('disp-info');
@@ -47,22 +48,34 @@ let renderer3d = null;
 let view = renderer;
 const has3d = (() => { try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; } })();
 let mode3d = false;
+function viewLabel() {
+  viewBtn.textContent = !mode3d ? 'Vue : 2D' : renderer3d.light ? 'Vue : 3D légère' : 'Vue : 3D';
+  camBtn.hidden = !mode3d;
+  if (mode3d) camBtn.textContent = `Caméra : ${renderer3d.cameraNom}`;
+}
+// bouton Vue / touche V : 2D → 3D → 3D légère → 2D
+function nextView() {
+  if (!mode3d) setView(true);
+  else if (!renderer3d.light) { renderer3d.setLight(true); viewLabel(); }
+  else { renderer3d.setLight(false); setView(false); }
+}
 async function setView(want3d) {
   if (want3d && !has3d) want3d = false;
   if (want3d && !renderer3d) {
     try {
       const { Renderer3D } = await import('./render3d.js');
       renderer3d = new Renderer3D(document.getElementById('table3d'), document.getElementById('overlay3d'), sim);
+      renderer3d.onQualite = viewLabel;
     } catch (e) { console.error('vue 3D indisponible', e); want3d = false; }
   }
   mode3d = want3d;
   view = mode3d ? renderer3d : renderer;
   canvas.hidden = mode3d;
   view3dEl.hidden = !mode3d;
-  viewBtn.textContent = mode3d ? 'Vue : 3D' : 'Vue : 2D';
   viewBtn.hidden = !has3d;
   try { localStorage.setItem('fanny-pinball-vue', mode3d ? '3d' : '2d'); } catch {}
   layout();
+  viewLabel();
 }
 
 // ------------------------------------------------------------ commandes
@@ -114,7 +127,8 @@ window.addEventListener('keydown', (e) => {
   if (KEYS.launch.includes(e.code)) { rules.onSwitch(SW.LAUNCH); e.preventDefault(); }
   if (e.code === 'KeyP' || e.code === 'Escape') paused = !paused;
   if (e.code === 'KeyM') muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui';
-  if (e.code === 'KeyV') setView(!mode3d);
+  if (e.code === 'KeyV') nextView();
+  if (e.code === 'KeyK' && mode3d) { renderer3d.cycleCamera(); viewLabel(); }
 });
 window.addEventListener('keyup', (e) => {
   if (KEYS.left.includes(e.code)) setFlipper('L', false);
@@ -150,7 +164,8 @@ const release = (e) => {
 for (const el of [canvas, view3dEl]) { el.addEventListener('pointerup', release); el.addEventListener('pointercancel', release); }
 
 startBtn.addEventListener('click', () => { pressStart(); startBtn.blur(); });
-viewBtn.addEventListener('click', () => { setView(!mode3d); viewBtn.blur(); });
+viewBtn.addEventListener('click', () => { nextView(); viewBtn.blur(); });
+camBtn.addEventListener('click', () => { renderer3d.cycleCamera(); viewLabel(); camBtn.blur(); });
 muteBtn.addEventListener('click', () => { unlockAudio(); audioReady = true; muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui'; muteBtn.blur(); });
 
 // ------------------------------------------------------------ mise en page

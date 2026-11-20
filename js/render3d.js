@@ -14,6 +14,14 @@ const H_PAROI = 32;                        // parois et guides imprimés
 const RAMPE = { z: 62, pente: Math.tan((14 * Math.PI) / 180), desc: 300, larg: 39, flanc: 25 };
 const TEX = 2;                             // résolution des textures peintes (px par mm)
 const APRON_Y = 975;                       // au-delà, la bille est sous le tablier
+// points de vue : élévation de la caméra au-dessus de l'horizontale, champ vertical
+export const CAMERAS = [
+  { nom: 'joueur', elev: 38, fov: 32 },       // à la place du joueur, comme la vue « bureau » de Visual Pinball
+  { nom: 'haute', elev: 55, fov: 32 },
+  { nom: 'plateau', elev: 80, fov: 28 },      // presque de dessus : écrans verticaux, téléphones
+];
+const lire = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const ecrire = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
 // hauteur du fond de rampe à l'abscisse curviligne s (même profil que cao/modele.py)
 function zRampe(s, L) {
@@ -83,6 +91,7 @@ export class Renderer3D {
     this.table.position.set(-W / 2, 0, -H / 2);
     this.tilt.add(this.table);
 
+    this.provisoire = [];   // volumes dessinés ici en attendant les pièces de la CAO : { mesh, x, y }
     this.buildLights();
     this.buildMaterials();
     this.buildFloor();
@@ -92,6 +101,17 @@ export class Renderer3D {
     this.buildRamp();
 
     this.raycaster = new THREE.Raycaster();
+    const cam = CAMERAS.findIndex((c) => c.nom === lire('fanny-pinball-camera'));
+    this.camIdx = cam >= 0 ? cam : -1;           // -1 : choisie selon la forme de l'écran
+    // version légère : réglage mémorisé, sinon automatique (téléphone, ou machine trop lente)
+    const q = lire('fanny-pinball-qualite');
+    const mobile = matchMedia('(pointer: coarse)').matches || (navigator.deviceMemory || 8) <= 4;
+    this.qualiteAuto = !q;
+    this.light = q ? q === 'legere' : mobile;
+    this.mesure = { n: 0, total: 0, last: 0 };
+    this.onQualite = null;                       // rappel quand la qualité change d'elle-même
+    this.applyQuality();
+    this.loadCAO();
     this.lastFloorKey = '';
   }
 
@@ -243,19 +263,24 @@ export class Renderer3D {
     const plasticTop = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.3 });
     const plasticMat = [plasticTop, this.mat.plasticSide];
 
-    for (const p of plastics) this.table.add(extrude(p, H_PAROI, plasticMat));
+    const cen = (pts) => [pts.reduce((t, p) => t + p[0], 0) / pts.length, pts.reduce((t, p) => t + p[1], 0) / pts.length];
+    // pts : points témoins (tous les sommets d'un contour, ou le centre d'un rond)
+    const prov = (mesh, pts) => { this.provisoire.push({ mesh, pts }); this.table.add(mesh); return mesh; };
+    this.plasticTop = plasticTop; this.plasticMat = plasticMat;
+    for (const p of plastics) prov(extrude(p, H_PAROI, plasticMat), p);
 
     // parois et poteaux
     for (const b of T.walls) {
       if (b.plugin && (b.plugin.hidden || b.plugin.housing)) continue;
       if (b.circleRadius) {
-        this.table.add(cylinder(b.circleRadius, H_PAROI + 4, this.mat.chrome, b.position.x, b.position.y));
+        prov(cylinder(b.circleRadius, H_PAROI + 4, this.mat.chrome, b.position.x, b.position.y), [[b.position.x, b.position.y]]);
         const ring = new THREE.Mesh(new THREE.TorusGeometry(b.circleRadius + 1.5, 2.2, 10, 28), this.mat.rubber);
         ring.position.set(b.position.x, b.position.y, -14);
         ring.castShadow = true;
         this.table.add(ring);
       } else {
-        this.table.add(extrude(b.vertices.map((v) => [v.x, v.y]), H_PAROI, this.mat.chrome));
+        const pts = b.vertices.map((v) => [v.x, v.y]);
+        prov(extrude(pts, H_PAROI, this.mat.chrome), [cen(pts), ...pts]);
       }
     }
     // portillon du couloir de lancement
@@ -263,7 +288,8 @@ export class Renderer3D {
 
     // lance-pierres : plastique + caoutchouc blanc tendu sur la face, butoir rouge au milieu
     this.slings = T.slings.map((b) => {
-      this.table.add(extrude(b.vertices.map((v) => [v.x, v.y]), H_PAROI - 6, plasticMat));
+      const sp = b.vertices.map((v) => [v.x, v.y]);
+      prov(extrude(sp, H_PAROI - 6, plasticMat), [cen(sp)]);
       const { A, C } = b.plugin;
       const l = Math.hypot(C[0] - A[0], C[1] - A[1]);
       const band = new THREE.Mesh(new THREE.BoxGeometry(l, 3, 14), this.mat.rubber.clone());
@@ -271,7 +297,7 @@ export class Renderer3D {
       band.rotation.z = Math.atan2(C[1] - A[1], C[0] - A[0]);
       band.castShadow = true;
       this.table.add(band);
-      for (const p of [A, C]) this.table.add(cylinder(3.5, H_PAROI + 2, this.mat.chrome, p[0], p[1]));
+      for (const p of [A, C]) prov(cylinder(3.5, H_PAROI + 2, this.mat.chrome, p[0], p[1]), [p]);
       band.userData.sp = this.glow(0xfff0b0, 70, (A[0] + C[0]) / 2, (A[1] + C[1]) / 2, 16);
       return band;
     });
@@ -461,7 +487,9 @@ export class Renderer3D {
       const z = zRampe(s, L);
       if (z < 20) continue;
       const p = pointAt(path, s);
-      this.table.add(cylinder(3, z, this.mat.chrome, p.x, p.y, 0, 12));
+      const m = cylinder(3, z, this.mat.chrome, p.x, p.y, 0, 12);
+      this.provisoire.push({ mesh: m, pts: [[p.x, p.y]], support: true });
+      this.table.add(m);
     }
   }
 
@@ -493,13 +521,132 @@ export class Renderer3D {
     this.mat.steel.needsUpdate = true;
   }
 
+  // ------------------------------------------------------------ pièces de la CAO
+  // assets/cao/pieces.glb (outils/cao_web.py) : glTF binaire minimal, lu ici sans chargeur externe.
+  // Chaque pièce remplace les volumes provisoires dont le centre tombe dans son contour au ras du plateau.
+  async loadCAO() {
+    let buf;
+    try {
+      const r = await fetch('assets/cao/pieces.glb');
+      if (!r.ok) return;
+      buf = await r.arrayBuffer();
+    } catch { return; }
+    const dv = new DataView(buf);
+    if (dv.getUint32(0, true) !== 0x46546c67) return;
+    const jlen = dv.getUint32(12, true);
+    const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jlen)));
+    const bin = 20 + jlen + 8;
+    const lire = (a) => {
+      const acc = gltf.accessors[a], v = gltf.bufferViews[acc.bufferView];
+      const n = acc.count * (acc.type === 'VEC3' ? 3 : 1);
+      const T = { 5126: Float32Array, 5123: Uint16Array, 5125: Uint32Array }[acc.componentType];
+      return new T(buf.slice(bin + v.byteOffset, bin + v.byteOffset + n * T.BYTES_PER_ELEMENT));
+    };
+    const blanc = new THREE.MeshStandardMaterial({ color: 0xf3efe6, roughness: 0.35, flatShading: true });
+    const chrome = this.mat.chrome.clone(); chrome.flatShading = true;
+    const tablierCote = new THREE.MeshStandardMaterial({ color: 0x16294a, roughness: 0.5, flatShading: true });
+    const tablierDessus = new THREE.MeshStandardMaterial({ map: this.floorTex, roughness: 0.45, flatShading: true });
+    const plastCote = this.mat.plasticSide.clone(); plastCote.flatShading = true;
+    const contours = [];
+    for (const node of gltf.nodes) {
+      const { categorie, contour } = node.extras;
+      const prim = gltf.meshes[node.mesh].primitives[0];
+      const pos = lire(prim.attributes.POSITION), idx = lire(prim.indices);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      let mat;
+      if (categorie === 'plastique' || categorie === 'tablier') {
+        // dessus (faces tournées vers le haut) : décor ; le reste : chant
+        const dessus = [], cotes = [];
+        for (let i = 0; i < idx.length; i += 3) {
+          const [a, b, c] = [idx[i], idx[i + 1], idx[i + 2]];
+          const ux = pos[3 * b] - pos[3 * a], uy = pos[3 * b + 1] - pos[3 * a + 1];
+          const vx = pos[3 * c] - pos[3 * a], vy = pos[3 * c + 1] - pos[3 * a + 1];
+          const uz = pos[3 * b + 2] - pos[3 * a + 2], vz = pos[3 * c + 2] - pos[3 * a + 2];
+          const nz = ux * vy - uy * vx, l = Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, nz) || 1;
+          (nz / l < -0.7 ? dessus : cotes).push(a, b, c);
+        }
+        geo.setIndex([...dessus, ...cotes]);
+        geo.addGroup(0, dessus.length, 0);
+        geo.addGroup(dessus.length, cotes.length, 1);
+        const uv = new Float32Array((pos.length / 3) * 2);
+        for (let i = 0; i < pos.length / 3; i++) {
+          const x = pos[3 * i], y = pos[3 * i + 1];
+          if (categorie === 'tablier') { uv[2 * i] = x / W; uv[2 * i + 1] = 1 - y / H; } else { uv[2 * i] = x; uv[2 * i + 1] = y; }
+        }
+        geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+        mat = categorie === 'tablier' ? [tablierDessus, tablierCote] : [this.plasticTop, plastCote];
+      } else {
+        geo.setIndex(new THREE.BufferAttribute(idx, 1));
+        mat = categorie === 'poteau' ? blanc : chrome;
+      }
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, mat);
+      m.name = node.name;
+      m.castShadow = categorie !== 'tablier';
+      m.receiveShadow = true;
+      this.table.add(m);
+      for (const poly of contour) if (poly.length > 2) contours.push(poly);
+    }
+    // volumes provisoires remplacés
+    const dedans = (x, y, poly) => {
+      let c = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [xi, yi] = poly[i], [xj, yj] = poly[j];
+        if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+      }
+      return c;
+    };
+    const pres = (x, y, poly, d) => poly.some(([xi, yi], i) => {   // distance au contour < d
+      const [xj, yj] = poly[(i + 1) % poly.length];
+      const dx = xj - xi, dy = yj - yi, l2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((x - xi) * dx + (y - yi) * dy) / l2));
+      return Math.hypot(x - xi - t * dx, y - yi - t * dy) < d;
+    });
+    // une pièce provisoire disparaît si la majorité de ses points témoins sont dans une pièce de la CAO (ou à moins
+    // de 8 mm) ; les poteaux de rampe provisoires disparaissent tous dès que la CAO fournit les siens
+    const couvert = ([x, y]) => contours.some((poly) => dedans(x, y, poly) || pres(x, y, poly, 8));
+    const supportsCAO = gltf.nodes.some((n) => n.extras.categorie === 'support');
+    let caches = 0;
+    for (const p of this.provisoire) {
+      const ok = p.support ? supportsCAO : p.pts.filter(couvert).length * 2 > p.pts.length;
+      if (ok) { p.mesh.visible = false; caches++; }
+    }
+    this.cao = { pieces: gltf.nodes.length, caches, restants: this.provisoire.length - caches };
+    this.envDirty = true;
+  }
+
   // ------------------------------------------------------------ interface commune avec Renderer
   fanny(kind = 'victoire', ms = 2200) { this.fannyShow = { kind, t: performance.now(), ms }; }
 
   popup(x, y, text) { this.popups.push({ x, y, text, t: performance.now() }); }
 
+  // version légère : ni ombres ni vernis, résolution de l'écran
+  setLight(on, auto = false) {
+    this.light = on;
+    if (!auto) { this.qualiteAuto = false; ecrire('fanny-pinball-qualite', on ? 'legere' : 'haute'); }
+    this.applyQuality();
+    if (this.cssW) this.resize(this.cssW, this.cssH);
+  }
+
+  applyQuality() {
+    this.gl.shadowMap.enabled = !this.light;
+    if (this.floorMat) this.floorMat.clearcoat = this.light ? 0 : 0.9;
+    this.scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
+  }
+
+  get cameraNom() { return CAMERAS[this.camIdx >= 0 ? this.camIdx : this.camAuto()].nom; }
+  camAuto() { return this.cssW && this.cssW / this.cssH < 0.62 ? 1 : 0; }
+
+  cycleCamera() {
+    this.camIdx = ((this.camIdx >= 0 ? this.camIdx : this.camAuto()) + 1) % CAMERAS.length;
+    ecrire('fanny-pinball-camera', CAMERAS[this.camIdx].nom);
+    this.fitCamera();
+    return this.cameraNom;
+  }
+
   resize(cssW, cssH) {
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const dpr = Math.min(window.devicePixelRatio || 1, this.light ? 1 : 1.5);
     this.cssW = cssW; this.cssH = cssH;
     this.gl.setPixelRatio(dpr);
     this.gl.setSize(cssW, cssH, true);
@@ -514,7 +661,9 @@ export class Renderer3D {
 
   // caméra à la place du joueur : on recule jusqu'à voir toute la table
   fitCamera() {
-    const cam = this.camera, elev = (42 * Math.PI) / 180;
+    const vue = CAMERAS[this.camIdx >= 0 ? this.camIdx : this.camAuto()];
+    const cam = this.camera, elev = (vue.elev * Math.PI) / 180;
+    cam.fov = vue.fov;
     cam.clearViewOffset();
     this.scene.updateMatrixWorld(true);
     const target = new THREE.Vector3(0, 0, 40);
@@ -559,6 +708,16 @@ export class Renderer3D {
   // ------------------------------------------------------------ image
   draw(rules) {
     const sim = this.sim, now = sim.time;
+    // qualité automatique : sous 40 images/s en moyenne pendant une partie, on passe en version légère
+    if (this.qualiteAuto && !this.light && rules.mode === 'play') {
+      const t = performance.now(), m = this.mesure;
+      if (m.last && t - m.last < 250) { m.n++; m.total += t - m.last; }
+      m.last = t;
+      if (m.n >= 150) {
+        if (m.total / m.n > 25) { this.setLight(true, true); if (this.onQualite) this.onQualite(); }
+        else this.qualiteAuto = false;           // la machine suit : on n'y touche plus
+      }
+    }
     const lamps = rules.lamps();
     const blinkOn = Math.floor(performance.now() / 220) % 2 === 0;
 

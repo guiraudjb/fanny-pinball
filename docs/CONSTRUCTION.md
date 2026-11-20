@@ -30,6 +30,8 @@ Pour tout régénérer après une modification de la table :
 python3 cao/exporter_geometrie.py
 freecadcmd cao/construire.py        # ~5 min
 python3 cao/plans.py
+python3 outils/cao_web.py           # pièces pour la vue 3D du jeu (assets/cao/pieces.glb)
+python3 outils/pwa.py               # cache de l'application installable
 ```
 
 ## Contenu des planches

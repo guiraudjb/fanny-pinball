@@ -20,7 +20,7 @@ ICONES = RACINE / "icons"
 
 # fichiers servis au joueur (hors docs, outils, CAO)
 MOTIFS = ["index.html", "manifest.webmanifest", "css/*.css", "js/*.js", "vendor/*.js",
-          "assets/*.jpg", "assets/*.png", "assets/sons/*.mp3", "icons/*.png"]
+          "assets/*.jpg", "assets/*.png", "assets/sons/*.mp3", "assets/cao/*.glb", "icons/*.png"]
 
 
 def soleil(taille):

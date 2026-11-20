@@ -122,7 +122,7 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 - Caméra à la place du joueur, cadrée automatiquement. Le toucher est ramené aux coordonnées du plateau ; l'aller-retour écran ↔ table est exact.
 - Bouton « Vue » et touche V. La 3D est la vue par défaut quand le navigateur gère WebGL 2, et le choix est mémorisé.
 - Sur la carte graphique Intel HD 510 de Pilote2 : environ 31 images/s en 3D contre 44 en 2D.
-- Étape suivante : (3) pièces importées de la CAO, réglage de la caméra, version légère pour téléphone.
+
 
 ## Vue 3D, étape 2, et lenteur de la bille (20/11)
 
@@ -138,6 +138,16 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 - Signalé : la bille rebondissait sans fin d'un lance-pierre à l'autre. Reproduit : 24 billes sur 60 tournaient en orbite stable, jusqu'à 46 coups en 12 s. Les lance-pierres plus rapprochés renvoyaient la bille exactement à la même hauteur sur la face opposée.
 - Correction dans `js/sim.js` (`SLING_TUNE`) : coup penché un peu vers le bas (≈ 18° au-dessus de l'horizontale au lieu de 29°) et légèrement dispersé (±6°, ±12 %), comme un vrai lance-pierre. Plus aucune orbite sur 60 billes : 1,3 coup en moyenne, 7 au plus.
 - Sur la réplique, le même effet se règle par la course du bras et la tension du caoutchouc.
+
+## Vue 3D, étape 3 (20/11)
+
+- Pièces de la CAO dans le jeu : `outils/cao_web.py` convertit les STL de `cao/sortie/pieces/` en un glTF binaire de 0,86 Mo (37 pièces, 68 000 triangles, repère du jeu), sans dépendance ni IA. Le jeu le lit avec un petit décodeur, sans module Three.js supplémentaire.
+- Pièces concernées : arche, guides, séparateurs, déflecteur, entrée de rampe, pièce du bouchon, bloc F-A-N-N-Y, mur des cibles, plastiques des lance-pierres (posés sur leurs poteaux, comme sur la réplique), poteaux, poteaux de rampe, tablier. Les plastiques reçoivent le décor sur le dessus.
+- Chaque pièce masque les volumes provisoires qu'elle remplace (points témoins dans son contour, ou à moins de 8 mm). 50 volumes sur 54 sont remplacés. Restent le couloir de lancement (alu, sans modèle) et le bord gauche de la caisse.
+- Caméra (bouton ou touche K) : joueur (38°), haute (55°), plateau (80°, écrans verticaux). Choix mémorisé ; par défaut, haute sur un écran étroit.
+- 3D légère (bouton Vue ou touche V : 2D → 3D → 3D légère) : sans ombres ni vernis, à la résolution de l'écran. Automatique sur téléphone, ou si une partie descend sous 40 images/s.
+- Intel HD 510 : 47 images/s en qualité haute, 59 en 3D légère.
+- Après chaque `freecadcmd cao/construire.py` : `python3 outils/cao_web.py`, puis `python3 outils/pwa.py`.
 
 ## Reste à faire
 
