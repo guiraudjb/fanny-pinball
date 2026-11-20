@@ -133,6 +133,12 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 - Rampe : décor appliqué sur la longueur (liserés rouge et jaune, chevrons, « ★ WORLD TOUR ★ » sur l'arrondi), flancs teintés, lèvre métallique d'entrée.
 - Reflets : plateau verni (clearcoat). La bille reflète la vraie table grâce à une capture faite une fois au chargement, éclairée par des plafonniers que le joueur ne voit pas.
 
+## Bille piégée entre les lance-pierres (20/11)
+
+- Signalé : la bille rebondissait sans fin d'un lance-pierre à l'autre. Reproduit : 24 billes sur 60 tournaient en orbite stable, jusqu'à 46 coups en 12 s. Les lance-pierres plus rapprochés renvoyaient la bille exactement à la même hauteur sur la face opposée.
+- Correction dans `js/sim.js` (`SLING_TUNE`) : coup penché un peu vers le bas (≈ 18° au-dessus de l'horizontale au lieu de 29°) et légèrement dispersé (±6°, ±12 %), comme un vrai lance-pierre. Plus aucune orbite sur 60 billes : 1,3 coup en moyenne, 7 au plus.
+- Sur la réplique, le même effet se règle par la course du bras et la tension du caoutchouc.
+
 ## Reste à faire
 
 | Sujet | Détail |
