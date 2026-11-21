@@ -73,8 +73,9 @@ export class Renderer3D {
 
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
     this.gl.outputColorSpace = THREE.SRGBColorSpace;
-    this.gl.toneMapping = THREE.ACESFilmicToneMapping;
-    this.gl.toneMappingExposure = 1.05;
+    // Neutral (Khronos PBR Neutral) : garde les couleurs de l'illustration ; ACES les délavait vers le blanc
+    this.gl.toneMapping = THREE.NeutralToneMapping;
+    this.gl.toneMappingExposure = 1;
     this.gl.shadowMap.enabled = true;
     this.gl.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -117,8 +118,8 @@ export class Renderer3D {
 
   // ------------------------------------------------------------ lumière et matières
   buildLights() {
-    this.scene.add(new THREE.HemisphereLight(0xfff1dc, 0x2a1a10, 0.9));
-    const sun = new THREE.DirectionalLight(0xfff0d8, 2.2);
+    this.scene.add(new THREE.HemisphereLight(0xfffaf2, 0x2a1a10, 0.6));
+    const sun = new THREE.DirectionalLight(0xfff8ee, 1.8);
     sun.position.set(-260, 900, 420);
     sun.target.position.set(0, 0, -60);
     sun.castShadow = true;
@@ -127,7 +128,7 @@ export class Renderer3D {
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.6;
     this.scene.add(sun, sun.target);
-    const fill = new THREE.DirectionalLight(0xcfe0ff, 0.5);
+    const fill = new THREE.DirectionalLight(0xcfe0ff, 0.4);
     fill.position.set(400, 500, 800);
     this.scene.add(fill);
 
@@ -176,7 +177,8 @@ export class Renderer3D {
     // plateau verni : vernis brillant (clearcoat) sur l'illustration mate. La texture est peinte lampes
     // éteintes, une seule fois : les lampes sont des pastilles posées dessus (aucun envoi de texture en jeu).
     this.floorMat = new THREE.MeshPhysicalMaterial({
-      map: this.floorTex, roughness: 0.6, metalness: 0, clearcoat: 0.9, clearcoatRoughness: 0.12,
+      map: this.floorTex, roughness: 0.6, metalness: 0, clearcoat: 0.5, clearcoatRoughness: 0.12,
+      envMapIntensity: 0.5,                          // la salle se reflète moins : pas de voile laiteux
     });
     this.floor = new THREE.Mesh(geo, this.floorMat);
     this.floor.receiveShadow = true;
@@ -631,7 +633,7 @@ export class Renderer3D {
 
   applyQuality() {
     this.gl.shadowMap.enabled = !this.light;
-    if (this.floorMat) this.floorMat.clearcoat = this.light ? 0 : 0.9;
+    if (this.floorMat) this.floorMat.clearcoat = this.light ? 0 : 0.5;
     this.scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
   }
 
