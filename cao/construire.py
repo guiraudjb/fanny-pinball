@@ -103,6 +103,43 @@ def construire_plateau():
     return pf
 
 
+def construire_cible(p):
+    """cible fixe imprimée, repère local (u vers la bille, v en travers, z vers le haut) puis posée au point (x, y)"""
+    cf = M.V(M.CIBLES["fixe"])
+    r, zc, za, w, ua, prof = p["r"], p["zc"], p["z_axe"], p["w"], p["u_axe"], p["prof"]
+    pa, fe, ad = cf["paroi"], cf["face_ep"], cf["axe_d"]
+    if p["type"] == "cible_face":
+        # disque + bras qui monte à l'axe + moyeu percé Ø axe + 0,2
+        s = Part.makeCylinder(r, fe, Vec(-fe / 2, 0, zc), Vec(1, 0, 0))
+        s = s.fuse(Part.makeBox(3, 8, za - zc, Vec(-fe / 2 - 3, -4, zc)))
+        s = s.fuse(Part.makeBox(abs(ua) - fe / 2, 8, 6, Vec(ua, -4, za - 3)))
+        moyeu = Part.makeCylinder(3.5, w - 2 * pa - 2 * cf["jeu"], Vec(ua, -(w / 2 - pa - cf["jeu"]), za), Vec(0, 1, 0))
+        s = s.fuse(moyeu).cut(Part.makeCylinder(ad / 2 + 0.2, w, Vec(ua, -w / 2, za), Vec(0, 1, 0)))
+    else:
+        # socle, deux joues percées pour l'axe, paroi du fond qui porte le KW11 (levier vers le dos de la face)
+        s = Part.makeBox(prof - fe / 2 - 2, w, 3, Vec(-prof, -w / 2, 0))
+        for sv in (-1, 1):
+            j = Part.makeBox(prof, pa, za + 6, Vec(-prof, (w / 2 - pa) if sv > 0 else -w / 2, 0))
+            s = s.fuse(j)
+        s = s.fuse(Part.makeBox(pa, w, za + 6, Vec(-prof, -w / 2, 0)))
+        s = s.cut(Part.makeCylinder(ad / 2 + 0.1, w + 2, Vec(ua, -w / 2 - 1, za), Vec(0, 1, 0)))
+        kw = M.V(M.DETECTION["kw11"])
+        s = s.cut(Part.makeBox(kw["e"], kw["l"], kw["h"], Vec(-prof + pa, -kw["l"] / 2, zc - kw["h"] / 2)))   # logement KW11
+        s = s.cut(Part.makeCylinder(4, 4, Vec(-prof + 14, 0, -1)))                                         # passe-fil
+    ang = math.degrees(math.atan2(-p["n"][1], p["n"][0]))        # u (repère table) → repère plateau (y inversé)
+    s.rotate(Vec(0, 0, 0), Vec(0, 0, 1), ang)
+    s.translate(tv(p["x"], p["y"]))
+    return inserts(s, p["fix"]) if p["type"] == "cible" else s
+
+
+def construire_rallonge():
+    """rallonge fixe, repère plateau : de Y = H à Y = H + h, encoche des câbles au milieu du bord arrière"""
+    R = M.RALLONGE
+    r = Part.makeBox(R["l"], R["h"], R["ep"], Vec(0, M.H, -R["ep"]))
+    en = R["encoche"]
+    return r.cut(Part.makeBox(en["l"], en["p"] + 1, R["ep"] + 2, Vec(R["l"] / 2 - en["l"] / 2, M.H + R["h"] - en["p"], -R["ep"] - 1)))
+
+
 # ------------------------------------------------------------------ pièces
 def construire_piece(p):
     k = p["type"]
@@ -112,16 +149,50 @@ def construire_piece(p):
             s = s.common(Part.makeBox(M.W, M.H, 200, Vec(0, 0, -50)))
         return inserts(s, p["fix"])
     if k == "bloc":
-        return inserts(bloc(p["pts"], p["h"], p.get("r", 0)).common(Part.makeBox(M.W, M.H, 200, Vec(0, 0, -50))), p["fix"])
+        s = bloc(p["pts"], p["h"], p.get("r", 0)).common(Part.makeBox(M.W, M.H, 200, Vec(0, 0, -50)))
+        if p.get("creux"):                             # carcasse : parois de « creux » mm, plots Ø 9 aux fixations
+            s = s.cut(bloc(p["pts"], p["h"] + 2, p.get("r", 0), -p["creux"], -1))
+            for (x, y) in p["fix"]:
+                s = s.fuse(Part.makeCylinder(4.5, p["h"], tv(x, y)))
+            s = inserts(s.removeSplitter(), p["fix"], p["h"] - 6)    # inserts en haut : entretoises du plastique
+        rampe = next(q for q in M.PIECES if q["id"] == "rampe")
+        if p["id"] == "bloc_fanny":                    # sous la rampe qui redescend : 2 mm de jeu sous son fond
+            s = s.cut(gabarit_rampe(rampe, 2.0))
+        if p["id"] == "piece_bouchon":                 # sous la rampe qui monte depuis l'entrée
+            s = s.cut(gabarit_rampe(rampe, 2.0, lambda q: 60 < q[3] < 220))
+        if p["id"] == "piece_bouchon":
+            for q in M.POCHES_BOUCHON:                     # poche du boîtier de POINTER
+                s = s.cut(bloc(q, p["h"] + 2, 0, 0, -1))
+        if p["id"] == "mur_cibles":
+            for x0, y0, l, w in M.POCHES_MUR:              # poches des unités de cible ronde, ouvertes vers le plateau
+                s = s.cut(Part.makeBox(l, w, p["h"] + 2, tv(x0, y0 + w, -1)))
+        return inserts(s, p["fix"])
     if k == "poteau":
         s = Part.makeCylinder(p["d"] / 2, p["h"], tv(p["x"], p["y"]))
         s = s.cut(Part.makeCylinder(2.0, 6.0, tv(p["x"], p["y"])))                    # insert M3 en bas
-        return s.cut(Part.makeCylinder(2.0, 6.0, tv(p["x"], p["y"], p["h"] - 6)))      # et en haut (plastique)
+        s = s.cut(Part.makeCylinder(2.0, 6.0, tv(p["x"], p["y"], p["h"] - 6)))        # et en haut (plastique)
+        if p.get("gorge"):                                                            # gorge de l'anneau caoutchouc
+            gd, gz, gh = p["gorge"]
+            bague = Part.makeCylinder(p["d"] / 2 + 1, gh, tv(p["x"], p["y"], gz - gh / 2))
+            s = s.cut(bague.cut(Part.makeCylinder(gd / 2, gh, tv(p["x"], p["y"], gz - gh / 2))))
+        return s
+    if k == "tablier":
+        # coque : dessus et lèvre de ep mm, ouverte en dessous ; plots de fixation (inserts M3) sous le dessus
+        s = bloc(p["pts"], p["h"]).cut(bloc(p["pts"], p["h"] - p["ep"], 0, -p["ep"], -1))
+        for (x, y) in p["fix"]:
+            s = s.fuse(Part.makeCylinder(4.5, p["h"] - p["ep"] + 0.5, tv(x, y)))
+        return inserts(s.removeSplitter(), p["fix"])
     if k == "plaque":
         s = bloc(p["pts"], p["ep"], p.get("r", 0), p.get("marge", 0), p["z"])
         for (x, y) in p.get("fix", []):
             s = s.cut(Part.makeCylinder(1.75, p["ep"] + 2, tv(x, y, p["z"] - 1)))
-        return s
+        if p.get("sous_rampe"):                        # échancré là où la rampe passe plus bas que lui ; on garde le gros morceau
+            s = s.cut(gabarit_rampe(next(q for q in M.PIECES if q["id"] == "rampe"), 2.0, lambda q: q[3] < 220))
+            s = max(s.Solids, key=lambda o: o.Volume)
+        for (x, y) in p.get("entretoises", []):        # entretoises Ø 7 sous la plaque, vis M3 traversante
+            e = Part.makeCylinder(3.5, p["h_entretoise"], tv(x, y, p["z"] - p["h_entretoise"]))
+            s = s.fuse(e).cut(Part.makeCylinder(1.6, p["h_entretoise"] + p["ep"] + 2, tv(x, y, p["z"] - p["h_entretoise"] - 1)))
+        return s.removeSplitter()
     if k == "palette":
         f = p["flip"]
         verts = next(fl["verts"] for fl in M.G["flippers"] if fl["def"]["side"] == f["side"])
@@ -134,20 +205,33 @@ def construire_piece(p):
         chapeau = Part.makeSphere(p["cap"], tv(x, y, 34 - p["cap"] * 0.55)).common(Part.makeCylinder(p["cap"], 40, tv(x, y, 34)))
         return jupe.fuse(corps).fuse(anneau).fuse(chapeau)
     if k == "drop":
-        b = Part.makeBox(24, 4, 36, Vec(-12, -2, 0))
+        # lame : section l × e, coins hauts arrondis, dépasse du plateau de h_dessus et descend dans la banque
+        d = M.V(M.CIBLES["drop"])
+        l, e, r, z0, z1 = d["l"], d["e"], d["r_haut"], -M.EP - d["h_dessous"], d["h_dessus"]
+        b = Part.makeBox(l, e, z1 - r - z0, Vec(-l / 2, -e / 2, z0))
+        b = b.fuse(Part.makeBox(l - 2 * r, e, z1 - z0, Vec(-l / 2 + r, -e / 2, z0)))
+        for sx in (-1, 1):
+            b = b.fuse(Part.makeCylinder(r, e, Vec(sx * (l / 2 - r), -e / 2, z1 - r), Vec(0, 1, 0)))
         b.rotate(Vec(0, 0, 0), Vec(0, 0, 1), -math.degrees(p["angle"]))
         b.translate(tv(p["x"], p["y"]))
         return b
-    if k == "cible":
-        x, y, r, n = p["x"], p["y"], p["r"], p["n"]
-        ang = math.degrees(math.atan2(-n[1], n[0]))              # direction de la face dans le repère plateau
-        face = Part.makeCylinder(r, 4, Vec(0, 0, 0), Vec(1, 0, 0))
-        face.translate(Vec(-2, 0, max(r, 12)))
-        boitier = Part.makeBox(22, 32, 28, Vec(-24, -16, 0))
-        u = face.fuse(boitier)
-        u.rotate(Vec(0, 0, 0), Vec(0, 0, 1), ang)
-        u.translate(tv(x, y))
-        return inserts(u, p["fix"])
+    if k == "banque":
+        # châssis en tôle sous le plateau : platine (gabarit DWG), deux joues, peigne de guidage des lames,
+        # bobine de remise et barre de remise
+        bq = M.V(M.CIBLES["banque"]); l, w = p["dims"]; ep, h = bq["ep"], bq["h"]
+        z = -M.EP
+        s = Part.makeBox(l, w, ep, Vec(-l / 2, -w / 2, z - ep))                                   # platine sous le plateau
+        for sx in (-1, 1):
+            s = s.fuse(Part.makeBox(ep, w, h, Vec(sx * (l / 2) - (ep if sx > 0 else 0), -w / 2, z - h)))   # joues
+        s = s.fuse(Part.makeBox(l, ep, h * 0.6, Vec(-l / 2, -ep / 2 + 6, z - h * 0.6)))             # peigne des lames
+        s = s.fuse(Part.makeBox(l - 2 * ep, 10, 4, Vec(-l / 2 + ep, -w / 2 + 6, z - h + 10)))      # barre de remise
+        bd, bl = bq["bobine"]
+        s = s.fuse(Part.makeCylinder(bd / 2, bl, Vec(0, -w / 2 + 25, z - h + 2), Vec(0, 0, 1)))   # bobine
+        s.rotate(Vec(0, 0, 0), Vec(0, 0, 1), -p["angle"])
+        s.translate(tv(p["x"], p["y"]))
+        return s
+    if k in ("cible", "cible_face"):
+        return construire_cible(p)
     if k == "rollover":
         x, y = p["x"], p["y"]
         support = Part.makeBox(16, 56, 24, tv(x - 8, y + 28, -M.EP - 24))             # sous le plateau
@@ -182,6 +266,24 @@ def section_rampe(x, y, z, dx, dy, p):
     prof = [(-hw - e, -e), (hw + e, -e), (hw + e, h), (hw, h), (hw, 0), (-hw, 0), (-hw, h), (-hw - e, h)]
     pts = [tv(x + nx * a, y + ny * a, z + b) for a, b in prof]
     return Part.makePolygon(pts + [pts[0]])
+
+
+def gabarit_rampe(p, jeu, garde=lambda q: q[0] > 350 and q[1] > 330):
+    """volume réservé à la rampe : de jeu mm sous son fond jusqu'à 200 mm, largeur hors tout + 2 × jeu,
+    sur les points retenus par « garde » (par défaut : la descente le long du mur droit)"""
+    fils = []
+    hw = p["larg"] / 2 + p["ep"] + jeu
+    q3 = [q for q in p["pts3d"] if garde(q)]
+    for i, (x, y, z, s) in enumerate(q3):
+        a = q3[max(0, i - 1)]; b = q3[min(len(q3) - 1, i + 1)]
+        dx, dy = M.unit((b[0] - a[0], b[1] - a[1])); nx, ny = -dy, dx
+        pts = [tv(x + nx * u, y + ny * u, z + w) for u, w in ((-hw, -jeu), (hw, -jeu), (hw, 200), (-hw, 200))]
+        fils.append(Part.makePolygon(pts + [pts[0]]))
+    solide = None
+    for w1, w2 in zip(fils, fils[1:]):
+        lo = Part.makeLoft([w1, w2], True, True)
+        solide = lo if solide is None else solide.fuse(lo)
+    return solide
 
 
 def construire_rampe(p, s_min=None, s_max=None):
@@ -278,6 +380,66 @@ def construire_caisse():
     out["fronton_dessous"] = panneau_xy(P["fronton_dessous"]["contour"], E, M.HAR, X0 + E, LG - fr["p_bas"])
     out["fronton_dessus"] = panneau_xy(P["fronton_dessus"]["contour"], E, M.HAR + fr["h"] - E, X0 + E, LG - fr["p_haut"])
     out["fronton_fond"] = panneau_xz(P["fronton_fond"]["contour"], 6.0, LG - 6.0, X0 + E, M.HAR + E)
+    # boulons des pieds : 2 trous par angle, en diagonale à 45° à travers l'arête de la caisse
+    pd = M.PIED
+    for _, xc, yc, sx, sy in M.COINS_PIEDS:
+        d = Vec(sx, sy, 0).normalize()
+        for z in pd["z_trous"]:
+            outil = Part.makeCylinder(pd["d_trou"] / 2, 120, Vec(xc - sx * 30, yc - sy * 30, z), d)
+            for nom in ("flanc_G" if sx > 0 else "flanc_D", "facade" if sy > 0 else "arriere"):
+                out[nom] = out[nom].cut(outil)
+    return out
+
+
+def pieds():
+    """pieds achetés : cornière effilée, boulons en diagonale, platine d'angle intérieure, vérin (cotes.py : PW / HYP)"""
+    pd, E = M.PIED, M.EPC
+    t = pd["ep"]
+    bo, pl, ve = M.V(CAISSE["pied_boulons"]), M.V(CAISSE["pied_platine"]), M.V(CAISSE["verin"])
+    z_droit = pd["z_haut"] - pd["droit"]
+    out = {}
+    for nom, xc, yc, sx, sy in M.COINS_PIEDS:
+        # repère local du coin : u vers l'intérieur selon X, v vers l'intérieur selon Y
+        q = lambda u, v, z: Vec(xc + sx * u, yc + sy * v, z)  # noqa: E731
+
+        def prisme(poly, z0, h):
+            pts = [q(u, v, z0) for u, v in poly]
+            return Part.Face(Part.makePolygon(pts + [pts[0]])).extrude(Vec(0, 0, h))
+
+        # cornière : une aile sur le flanc, une sur la façade (ou l'arrière)
+        prof = [(-t, pd["z_bas"]), (pd["aile_bas"] - t, pd["z_bas"]), (pd["aile_haut"] - t, z_droit),
+                (pd["aile_haut"] - t, pd["z_haut"]), (-t, pd["z_haut"])]
+        a = [q(-t, w, z) for w, z in prof]
+        b = [q(w, -t, z) for w, z in prof]
+        aile_a = Part.Face(Part.makePolygon(a + [a[0]])).extrude(Vec(sx * t, 0, 0))
+        aile_b = Part.Face(Part.makePolygon(b + [b[0]])).extrude(Vec(0, sy * t, 0))
+        c = pd["aile_bas"] * 0.42
+        jambe = aile_a.fuse(aile_b).fuse(prisme([(-t, -t), (pd["aile_bas"] - t, -t), (-t, pd["aile_bas"] - t)], pd["z_bas"], 4))
+        diag = Vec(sx, sy, 0).normalize()
+        quinc = []
+        for z in pd["z_trous"]:
+            jambe = jambe.cut(Part.makeCylinder(pd["d_trou"] / 2, 40, q(-20, -20, z), diag))
+            tete = q(-t, -t, z) - diag * 6
+            quinc.append(Part.makeCylinder(bo["tete"] / 2, 6, tete, diag))
+            quinc.append(Part.makeSphere(bo["tete"] / 2 * 0.85, tete))
+            quinc.append(Part.makeCylinder(4.7, bo["l"], q(-t, -t, z), diag))
+        # platine d'angle intérieure : face diagonale + deux ailes vissées sur les faces intérieures
+        s = pl["retrait"] * math.sqrt(2)
+        e = pl["ep"] * math.sqrt(2)
+        zp = sum(pd["z_trous"]) / 2 - pl["h"] / 2
+        quinc.append(prisme([(E, s - E), (s - E, E), (s - E + e, E), (E, s - E + e)], zp, pl["h"]))
+        quinc.append(prisme([(E, s - E), (E + pl["ep"], s - E), (E + pl["ep"], s - E + pl["ailes"]), (E, s - E + pl["ailes"])], zp, pl["h"]))
+        quinc.append(prisme([(s - E, E), (s - E, E + pl["ep"]), (s - E + pl["ailes"], E + pl["ep"]), (s - E + pl["ailes"], E)], zp, pl["h"]))
+        # vérin : contre-écrou sous la plaque, tige, patin au sol
+        r6 = ve["contre_ecrou"] / math.sqrt(3)
+        quinc.append(prisme([(c + r6 * math.cos(k * math.pi / 3), c + r6 * math.sin(k * math.pi / 3)) for k in range(6)], pd["z_bas"] - 8, 8))
+        quinc.append(Part.makeCylinder(ve["d"] / 2, ve["saillie"] + 14 - ve["h_patin"], q(c, c, -M.H_SOL + ve["h_patin"])))
+        quinc.append(Part.makeCone(ve["patin"] / 2, ve["patin"] / 2 * 0.55, ve["h_patin"], q(c, c, -M.H_SOL)))
+        out[f"pied_{nom}"] = jambe
+        q0 = quinc[0]
+        for k in quinc[1:]:
+            q0 = q0.fuse(k)
+        out[f"quincaillerie_{nom}"] = q0
     return out
 
 
@@ -285,11 +447,9 @@ def achats_caisse():
     """pièces achetées de la caisse (encombrements) : pieds, barre de verrouillage, vitre"""
     L, LG = M.LARG, M.LONG
     out = {}
-    h_sol = 930.0 - M.HAV                 # hauteur du bas de caisse au-dessus du sol (barre de verrouillage ≈ 930 mm)
-    recouv = M.V(CAISSE["pieds"])["l"] - h_sol
-    for nom, x, y in (("pied_AVG", -63, 0), ("pied_AVD", L, 0), ("pied_ARG", -63, LG - 63), ("pied_ARD", L, LG - 63)):
-        out[nom] = Part.makeBox(63, 63, M.V(CAISSE["pieds"])["l"], Vec(x if x >= 0 else 0 - 63 + 63 * 0, y, -h_sol))
-        out[nom] = Part.makeBox(63, 63, M.V(CAISSE["pieds"])["l"], Vec(x, y, -h_sol))
+    h_sol = M.H_SOL                       # hauteur du bas de caisse au-dessus du sol (barre de verrouillage ≈ 930 mm)
+    recouv = M.PIED["recouvrement"]
+    out.update(pieds())
     out["barre_verrouillage"] = Part.makeBox(L, 70, 25, Vec(0, -10, M.HAV))
     ang = math.atan((M.HAR - M.HAV) / (LG - M.PLAT))
     v = Part.makeBox(L - 2 * M.EPC + 10, 1000, 4, Vec(M.EPC - 5, 0, 0))
@@ -326,6 +486,13 @@ def main():
     Part.export([doc.getObject("plateau")], os.path.join(OUT, "plateau.step"))
     contours["plateau"] = contour_xy(plateau, -M.EP / 2)
     pp = plateau.copy(); pp.Placement = pl; rendu["bois"].append(pp)
+    ra = construire_rallonge()
+    ra.Placement = pl                      # posée dans la caisse : exportée avec la caisse
+    o = doc.addObject("Part::Feature", "rallonge"); o.Shape = ra
+    Part.export([o], os.path.join(OUT, "caisse", "rallonge.step"))
+    Mesh.export([o], os.path.join(OUT, "caisse", "rallonge.stl"))
+    rendu["bois"].append(ra)
+    rapport.append(("rallonge", "ok", round(ra.Volume / 1000, 1)))
 
     for p in M.PIECES:
         try:
@@ -341,7 +508,7 @@ def main():
             z = p.get("z", 0) + 1 if p["type"] == "plaque" else 1.0
             contours[p["id"]] = contour_xy(s, z)
             c = s.copy(); c.Placement = pl.multiply(c.Placement)
-            cat = "dessous" if p["type"] in ("zone", "rollover", "cuvette", "bac") else \
+            cat = "dessous" if p["type"] in ("zone", "banque", "rollover", "cuvette", "bac") else \
                   "metal" if p["type"] in ("bumper",) or "alu" in p["matiere"] else \
                   "achat" if p["achat"] else "imprime"
             rendu[cat].append(c)
@@ -368,11 +535,13 @@ def main():
     for nom, s in caisse.items():
         o = doc.addObject("Part::Feature", nom); o.Shape = s
         Part.export([o], os.path.join(OUT, "caisse", f"{nom}.step"))
+        Mesh.export([o], os.path.join(OUT, "caisse", f"{nom}.stl"))      # vue 3D du jeu (outils/cao_web.py)
         rendu["bois"].append(s)
         rapport.append((nom, "ok", round(s.Volume / 1000, 1)))
     achats, h_sol, recouv = achats_caisse()
     for nom, s in achats.items():
         o = doc.addObject("Part::Feature", nom); o.Shape = s
+        Mesh.export([o], os.path.join(OUT, "caisse", f"{nom}.stl"))
         rendu["verre" if nom == "vitre" else "metal"].append(s)
 
     # objets placés dans l'assemblage (plateau et pièces inclinés)

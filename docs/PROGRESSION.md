@@ -149,6 +149,50 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 - Intel HD 510 : 47 images/s en qualité haute, 59 en 3D légère.
 - Après chaque `freecadcmd cao/construire.py` : `python3 outils/cao_web.py`, puis `python3 outils/pwa.py`.
 
+## Vue 3D : couleurs, flipper complet (21/11)
+
+- Couleurs : le plateau 3D paraissait délavé. Tone mapping Neutral au lieu d'ACES, éclairage moins fort et moins crème, vernis réduit. Saturation mesurée du plateau : 94 avant, 130 après, 133 en 2D.
+- Flipper complet : la CAO exporte aussi la caisse en STL (`cao/sortie/caisse/*.stl`), et `outils/cao_web.py` en fait `assets/cao/caisse.glb`. Il contient les flancs, la façade, l'arrière, le fond, le fronton, les pieds et la barre de verrouillage, aux cotes WPC. Le plateau du jeu y est posé à sa place exacte dans la caisse.
+- Ajouts dans la vue : porte du monnayeur, boutons start, lancer et flippers aux perçages des plans, sol de la salle.
+- Fronton : vitre rétroéclairée avec l'illustration, et panneau des afficheurs en dessous, avec les mêmes TM1637 que la réplique (score sur 2 × 4 chiffres, info sur 4). Ils suivent la partie.
+- Nouvelle caméra « machine » qui montre tout le flipper, des pieds au haut du fronton.
+- Pieds affinés d'après les sources publiées (PinWiki, VPForums, Pinside, Marco Specialties) :
+  - pieds WPC de 28-1/2" (724 mm) et non 32" ;
+  - cornière pliée plaquée sur les deux faces de l'angle, droite sur la zone boulonnée puis effilée ;
+  - 2 boulons 3/8"-16 × 2-1/2" à tête bombée par pied, passés en diagonale dans l'arête de la caisse jusqu'à la platine d'angle intérieure (Williams 01-11400-1). Les trous sont à 2-1/4" d'entraxe, celui du bas à 5" du haut du pied ;
+  - au bas, une plaque soudée et un vérin réglable : contre-écrou, tige 3/8"-16, patin Ø 1-3/4" ;
+  - finition thermolaquée noir satiné, boulons et platines zingués.
+  - Aucune source ne donne la section du pied, l'épaisseur de tôle ni les cotes de la platine. Ce sont des hypothèses (HYP dans `cao/cotes.py`), à mesurer sur les pièces achetées. Les trous de la caisse sont percés en diagonale dans la CAO (flancs, façade, arrière) et figurent sur les planches 08 et 10.
+- Jointure plateau / caisse vérifiée. Le jeu latéral est correct : 6,8 mm, soit 3,4 mm de chaque côté. Mais le plateau du jeu fait 42" (1067 mm), alors que la caisse WPC attend un plateau de 46". Il restait 198 mm de vide entre le bord arrière du plateau et le panneau arrière.
+  - Solution retenue : une rallonge fixe en contreplaqué de 12 mm, dans le prolongement du plateau, à la même pente. Elle mesure 514 × 196 mm, laisse 3 mm de jeu à l'arrière et porte une encoche de 160 × 40 mm pour les câbles du fronton. Elle repose sur les tasseaux du plateau.
+  - Elle est dans la CAO (`cao/sortie/caisse/rallonge.*`), sur les planches 08, 10 et 11, et dans la vue 3D : bois verni comme les coins du plateau, avec le titre du jeu.
+- Caméra « tour » : elle tourne seule autour du flipper en 48 s. La hauteur (de 6° à 55°) et la distance varient à d'autres rythmes, donc les angles changent d'un tour à l'autre. Glisser à la souris ou au doigt fait tourner la vue, la molette zoome, et le tour automatique reprend 5 s plus tard. Le jeu reste jouable au clavier.
+- Caoutchoucs et cibles (CAO et vue 3D). Le jeu ne change pas : les contours de rebond restent ceux de la physique, et les pièces sont dessinées autour.
+  - Poteaux d'entrée des couloirs : poteau Ø 10 avec une gorge Ø 5 à hauteur du centre de la bille (13,5 mm). Un mini-anneau noir 1/8" (corde 2,5 mm) y est logé, affleurant au rayon de rebond. Les guides sont raccourcis de 6 mm pour laisser l'anneau libre.
+  - Lance-pierres : les 3 poteaux sont décalés de 8 mm vers l'intérieur pour que la face extérieure de l'anneau 2-1/2" (corde 4 mm) tombe sur la face de rebond. En 3D, l'anneau est un vrai tube tendu autour des poteaux, et le bras le bombe au choc.
+  - Palettes : le corps en plastique est réduit de la section du caoutchouc (4 mm). Le caoutchouc rouge est tendu dans la gorge, et sa face extérieure suit le contour de rebond.
+  - Cibles tombantes : lame 22,5 × 8,1 mm, 33 mm au-dessus du plateau, coins hauts arrondis R 6. En 3D, elle s'enfonce dans sa lumière au lieu de disparaître. Sous le plateau, la banque porte un cadre, une bobine de réarmement et une barre de relevage.
+  - Cibles fixes (POINTER, TIRER, bouchon, cibles rondes 1 à 3) : boîtier à deux joues, axe acier Ø 3, face pendulaire (disque, bras, moyeu) et microrupteur KW11 derrière la face, avec passe-fil. Les 3 cibles rondes sont logées dans des poches du mur de gauche. En 3D, la face bascule sur son axe au choc puis revient.
+  - Cotes des caoutchoucs et des cibles : hypothèses (HYP dans `cao/cotes.py`) à vérifier sur les pièces achetées. Les anneaux sont choisis dans les tailles du commerce (PinWiki) et listés dans la nomenclature (planche 11).
+  - Pas encore traité : les pointes des guides des couloirs du haut (rayon de rebond 3 mm), trop fines pour un anneau.
+- Tablier (apron) : plastron noir en V au bas du plateau, avec une lèvre de 20 mm. Ses bras sont parallèles aux palettes au repos et laissent 31 mm sous leur arrière (37 mm sous la pointe), un peu plus qu'une bille de 27 mm. Le bord passe de y 846 contre les murs à y 964 au centre. Dans le couloir de lancement, il reste à y 1000, sous la bille au repos.
+  - Il cache le bac, la montée de la bille et l'autolanceur. Le séparateur du couloir de lancement s'arrête maintenant au tablier.
+  - Ses deux bras ramènent vers le trou d'évacuation central les billes des couloirs extérieurs. Ils sont aussi dans la physique du jeu : une bille sortie par un couloir extérieur passe derrière la palette et roule le long de la lèvre jusqu'au trou, en 1,1 s environ.
+  - Cartes d'instructions : « Multiball Triplette » (F-A-N-N-Y, Cercle, jackpot, super jackpot) à gauche, « Bonus · Extra ball » (T-O-U-R, ×5, escales, Grand Chelem) à droite. Au centre, « Fanny te la rend » renvoie à la lampe de sauvetage.
+  - La lampe de sauvetage passe de y 990 à y 895, au-dessus des palettes et hors de leur balayage : elle était sur le trou d'évacuation.
+  - CAO : coque PETG noir 3 mm, à imprimer en 3 tronçons collés, 3 plots à insert M3, cartes plastifiées collées sur le dessus. Le trou d'évacuation, ramené à 70 × 34 pour rester sous l'intervalle entre les pointes des palettes, est devant la lèvre et se voit dans les deux vues ; en 3D, la bille s'y enfonce.
+- Caméra « machine » réglable : on choisit l'angle (glisser) et le zoom (molette ou pincer). En zoomant, la vue se rapproche du plateau. Le bouton « Verrouiller la vue » (touche L) fige ce réglage : la souris et le doigt commandent à nouveau le jeu. L'angle, le zoom et le verrou sont mémorisés.
+- Service worker : à l'installation, chaque fichier est relu au serveur (`cache: 'reload'`). Avant, le cache HTTP du navigateur pouvait mélanger deux versions, par exemple une ancienne `index.html` avec un nouveau `main.js`.
+- POINTER passe à gauche du couloir du bouchon. Elle est encastrée dans le bloc entre le mur gauche et le couloir, face aux palettes. Elle était seule en bas à gauche, vers y 590. Sa lampe et son étiquette la suivent. Dans la CAO, son boîtier est logé dans une poche de la pièce du bouchon, avec au moins 7,8 mm de matière autour.
+  - Un essai avec TIRER entre le couloir et la rampe a été abandonné. Il fallait décaler l'entrée de rampe et la cible masquait cette entrée. TIRER reste au centre, à x 239, y 450, et l'entrée de rampe reste à x 160.
+- Banque F-A-N-N-Y remontée de 60 mm le long de son axe. La rampe redescend le long du mur droit à moins de 33 mm du plateau (24 mm sous la cible Y) et heurtait la lame Y. La lame la plus proche est maintenant à 11 mm de la rampe. Dans la CAO, le bloc arrière de la banque, haut de 32 mm, est découpé sous la rampe avec 2 mm de jeu.
+
+- Entrée de rampe ouverte au fond. La paroi en pointe est supprimée : la rampe passait au travers (sa paroi de 32 mm dépassait de 4 mm le fond de la rampe). La rampe part de la bouche et prolonge le couloir. Les deux parois deviennent deux pièces droites, `entree_rampe_G` et `entree_rampe_D`.
+- Zone du bouchon refaite comme sur un vrai flipper :
+  - La pièce du bouchon devient une carcasse creuse : parois de 6 mm, 9 plots Ø 9 avec inserts en haut et en bas. Elle est découpée sous la rampe avec 2 mm de jeu, alors qu'avant elle la traversait jusqu'à s ≈ 128 mm.
+  - Par-dessus, un plastique décoré de 3 mm (`plastique_bouchon`) est posé sur des entretoises de 6 mm. Il déborde de 4 mm sur les couloirs et il est échancré là où la rampe passe plus bas que lui.
+  - Une enseigne « ★ ESCALE ★ » (`plastique_rampe`, 64 × 20 mm) est posée à cheval sur la bouche de la rampe, sur deux entretoises de 12 mm vissées dans les parois.
+
 ## Reste à faire
 
 | Sujet | Détail |

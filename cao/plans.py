@@ -185,7 +185,7 @@ def p_dessous():
     ax.add_patch(Rectangle((0, 0), M.W, M.H, fill=False, ec=NOIR, lw=0.8))
     ax.invert_xaxis()   # vue de dessous : miroir gauche/droite
     for p in M.PIECES:
-        if p["type"] == "zone":
+        if p["type"] in ("zone", "banque"):
             contour(ax, p["id"], ec=ORANGE, fill=True, fc="#fde9d6", lw=0.4)
             X, Y = M.P(p["x"], p["y"])
             ax.text(X, Y, p["nom"].replace(" (acheté)", "").replace(" (achetée)", "")[:26], fontsize=3.6, ha="center", va="center", color=NOIR)
@@ -307,7 +307,7 @@ def p_detection():
 # ================================================================== 06 pièces imprimées
 def p_pieces():
     fig = page(A3L, "Pièces imprimées — vues de dessus cotées, points de fixation (1:2)", 6)
-    choix = ["piece_bouchon", "mur_cibles", "bloc_fanny", "entree_rampe", "guide_retour_G", "deflecteur_1", "guide_tour_1",
+    choix = ["piece_bouchon", "mur_cibles", "bloc_fanny", "plastique_bouchon", "guide_retour_G", "entree_rampe_G", "plastique_rampe",
              "plastique_sling_G", "poteau_1", "tablier"]
     cases = [(15, 150, 130, 130), (150, 150, 60, 130), (215, 150, 100, 130), (320, 150, 85, 130),
              (15, 45, 90, 100), (110, 45, 45, 100), (160, 45, 35, 100), (200, 45, 70, 100), (275, 45, 30, 100), (310, 45, 95, 100)]
@@ -408,6 +408,9 @@ def p_caisse():
     a = M.plateau_vers_caisse(0, 0); b = M.plateau_vers_caisse(0, M.H)
     ax.plot([a[1], b[1]], [a[2], b[2]], color=VERT, lw=0.8)
     ax.plot([a[1] + 20, b[1] - 40], [a[2] - M.EP, b[2] - M.EP - 5], color=VERT, lw=2.2, alpha=0.5)
+    c_ = M.plateau_vers_caisse(0, M.H + M.RALLONGE["h"])
+    ax.plot([b[1], c_[1]], [b[2], c_[2]], color=VERT, lw=0.8, ls="--")
+    ax.text(b[1] - 60, b[2] + 14, f"rallonge 12 mm : {fmt(M.RALLONGE['h'])}", fontsize=4.5, color=VERT)
     ax.text(a[1] + 30, a[2] + 8, f"dessus du plateau : {fmt(a[2])} à l'avant, {fmt(b[2])} à l'arrière (pente {M.V(PLATEAU['pente_deg'])}°)\n"
             f"tasseau 20 × 30 × {M.TASSEAU['longueur']} vissé-collé sous le plateau, face intérieure", fontsize=4.5, color=VERT)
     # façade
@@ -451,9 +454,11 @@ def p_caisse():
     txt = [f"Contreplaqué {fmt(E)} mm (bouleau ou peuplier).",
            "Assemblage : feuillures 10 × 10 + colle vinylique",
            "+ vis 4 × 50 ; tasseaux d'angle 20 × 20 à l'intérieur.",
-           "Pieds : 4 pieds de flipper standard 32\" achetés",
-           "(2 boulons 3/8\"-16 par pied, vérins), à positionner",
-           "avec les platines de pied achetées.",
+           f"Pieds : 4 pieds WPC 28-1/2\" ({fmt(M.PIED['l'])}), cornière thermolaquée,",
+           f"2 boulons 3/8\"-16 × 2-1/2\" par pied, EN DIAGONALE à 45° dans l'arête :",
+           f"trous Ø {fmt(M.PIED['d_trou'])} à {fmt(M.PIED['z_trous'][0])} et {fmt(M.PIED['z_trous'][1])} du bas de caisse,",
+           "percés pied en place (gabarit), dans la platine d'angle intérieure (01-11400-1).",
+           "Vérins 3/8\"-16 : tige 2\" à l'avant, 3\" à l'arrière.",
            f"Hauteur bas de caisse / sol ≈ {fmt(CT['h_sol'])} (barre ≈ 930).",
            "Cotes WPC : Pinball Makers (Wpc-cabinet-2/3)."]
     for i, l in enumerate(txt):
@@ -499,9 +504,19 @@ def p_assemblage():
                          closed=True, fc="#f3e6d3", ec=NOIR, lw=0.7, alpha=0.6))
     a = M.plateau_vers_caisse(0, 0); b = M.plateau_vers_caisse(0, M.H)
     ax.plot([a[1], b[1]], [a[2], b[2]], color=VERT, lw=2)
+    c_ = M.plateau_vers_caisse(0, M.H + M.RALLONGE["h"])
+    ax.plot([b[1], c_[1]], [b[2], c_[2]], color=VERT, lw=2, ls=(0, (2, 1)))
+    ax.text(b[1] - 120, b[2] + 25, f"rallonge {fmt(M.RALLONGE['h'])}", fontsize=5, color=VERT)
     ax.plot([0, M.LONG], [-h_sol, -h_sol], color=NOIR, lw=0.8)
-    for y in (0, M.LONG - 63):
-        ax.add_patch(Rectangle((y, -h_sol), 63, M.V(CAISSE["pieds"])["l"], fc="#dcdcdc", ec=GRIS, lw=0.4))
+    pd = M.PIED
+    prof = [(-pd["ep"], pd["z_bas"]), (pd["aile_bas"] - pd["ep"], pd["z_bas"]), (pd["aile_haut"] - pd["ep"], pd["z_haut"] - pd["droit"]),
+            (pd["aile_haut"] - pd["ep"], pd["z_haut"]), (-pd["ep"], pd["z_haut"])]
+    for sens, y0 in ((1, 0), (-1, M.LONG)):
+        ax.add_patch(Polygon([(y0 + sens * w, z) for w, z in prof], closed=True, fc="#3a3a40", ec=NOIR, lw=0.4))
+        for z in pd["z_trous"]:
+            ax.add_patch(Circle((y0, z), 8, fc="#c9ccd2", ec=NOIR, lw=0.3))
+        ax.plot([y0 + sens * 18, y0 + sens * 18], [-h_sol, pd["z_bas"]], color=GRIS, lw=1.2)
+    cote(ax, (0, pd["z_trous"][0]), (0, 0), -25, f"{fmt(pd['z_trous'][0])}")
     cote(ax, (0, -h_sol), (0, 0), 60, f"{fmt(h_sol)}")
     cote(ax, (0, -h_sol), (0, M.HAV), 120, f"{fmt(h_sol + M.HAV)} (barre)")
     cote(ax, (M.LONG, -h_sol), (M.LONG, M.HAR + fr["h"]), -80, f"{fmt(h_sol + M.HAR + fr['h'])} (hors tout)")
@@ -516,16 +531,26 @@ def p_assemblage():
 
 
 # ================================================================== 11 nomenclature et débit
+def pouces(v):
+    """0.125 → 1/8\", 2.5 → 2-1/2\""""
+    ent, fr = int(v), v - int(v)
+    frac = {0: "", 0.125: "1/8", 0.25: "1/4", 0.3125: "5/16", 0.375: "3/8", 0.4375: "7/16", 0.5: "1/2", 0.75: "3/4"}.get(round(fr, 4), f"{fr:.3f}")
+    return (f"{ent}-{frac}" if ent and frac else str(ent) if ent else frac) + '"'
+
+
 def p_nomenclature():
     fig = page(A3L, "Nomenclature, quincaillerie et débit des panneaux", 11)
     ax = fig.add_axes([15 / 420, 40 / 297, 190 / 420, 245 / 297]); ax.axis("off")
-    nfix = sum(len(p.get("fix", [])) for p in M.PIECES if p["type"] != "plaque") + sum(len(p.get("fix", [])) for p in M.PIECES if p["type"] == "plaque")
+    nfix = sum(len(p.get("fix", [])) for p in M.PIECES)
     nkw = 4 + 3 + 3 + 1 + 1 + 4      # rollovers, cibles fixes, cibles rondes, Cercle, lancement, bac (3) + évacuation
     lignes = [("ACHATS — mécanique", ""), ("Mécanismes de flipper complets + palettes 3\"", "2"),
               ("Ensembles bumper (corps, anneau, jupe, contact)", "3"), ("Ensembles lance-pierre + contacts à lames", "2"),
               ("Banque de 5 cibles tombantes", "1"), ("Bobines (dont knocker, éjecteurs, lanceur)", "12"),
-              ("Anneaux caoutchouc (poteaux, lance-pierres)", "≈ 15"), ("Billes 27 mm (1-1/16\")", "4"),
-              ("Pieds 32\" + platines + boulons 3/8\"-16 + vérins", "4"), ("Barre de verrouillage, charnière et verrous de fronton", "1"),
+              *[(f"Anneau caoutchouc {'blanc' if a['type'] == 'sling' else 'noir'} {pouces(a['id_pouces'])} ID "
+                 f"({'lance-pierre' if a['type'] == 'sling' else 'poteau d’entrée de couloir'})", "1") for a in M.ANNEAUX],
+              ("Caoutchoucs de palette 3\" (rouges)", "2"),
+              (f"Axes acier Ø 3 des cibles fixes (longueur = largeur du boîtier)", f"{sum(1 for p in M.PIECES if p['type'] == 'cible_face')}"), ("Billes 27 mm (1-1/16\")", "4"),
+              ("Pieds WPC 28-1/2\" thermolaqués + platines 01-11400-1 + vérins", "4"), ("Boulons 3/8\"-16 × 2-1/2\" tête bombée (pieds)", "8"), ("Barre de verrouillage, charnière et verrous de fronton", "1"),
               ("Verre trempé 4 mm (à mesurer sur la caisse)", "1"),
               ("ACHATS — détection et électronique", ""), (f"Micro-rupteurs KW11-3Z (levier long pour les rollovers)", f"{nkw}"),
               ("Corde à piano Ø 1,5 (rollovers), axe acier Ø 3 (cibles)", "1 m + 0,5 m"),
@@ -563,7 +588,8 @@ def p_nomenclature():
         for nom, x, y, l, h in fe:
             ax.add_patch(Rectangle((x, oy + y), l, h, fc="#f3e6d3", ec=NOIR, lw=0.4))
             ax.text(x + l / 2, oy + y + h / 2, f"{nom}\n{fmt(l)} × {fmt(h)}", fontsize=4, ha="center", va="center")
-    fig.text(215 / 420, 50 / 297, f"Plateau : contreplaqué bouleau 12 mm, {M.W} × {M.H} (1 panneau 1250 × 2500 ou 1220 × 1220 × 2). "
+    fig.text(215 / 420, 50 / 297, f"Plateau : contreplaqué bouleau 12 mm, {M.W} × {M.H} (1 panneau 1250 × 2500 ou 1220 × 1220 × 2), "
+             f"et sa rallonge fixe {M.W} × {fmt(M.RALLONGE['h'])} (encoche câbles {fmt(M.RALLONGE['encoche']['l'])} × {fmt(M.RALLONGE['encoche']['p'])}). "
              "Fond du fronton : contreplaqué 6 mm.", fontsize=5.2)
 
 

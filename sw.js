@@ -3,12 +3,13 @@
 // fichiers) : à chaque nouvelle version, l'ancien cache est remplacé au chargement suivant.
 
 // <version>
-const VERSION = 'ca7a09715cf8';
+const VERSION = '9fb2fcaeeaca';
 // </version>
 const CACHE = `fanny-pinball-${VERSION}`;
 const PRECACHE = [
 // <fichiers>
   './',
+  './assets/cao/caisse.glb',
   './assets/cao/pieces.glb',
   './assets/fanny_lancer.png',
   './assets/fanny_victoire.png',
@@ -90,7 +91,10 @@ const PRECACHE = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
+  // cache: 'reload' : on relit chaque fichier au serveur, sinon le cache HTTP du navigateur peut
+  // mélanger des fichiers de deux versions (par exemple une ancienne index.html avec un nouveau main.js)
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {

@@ -14,6 +14,8 @@ const PR = GEO.playRight;
 const mx = (x) => PR - x;
 const RE = GEO.rampEntries[0];
 const rampLamp = (k) => [RE.M.x - RE.u.x * k, RE.M.y - RE.u.y * k];
+// point devant la face d'une cible fixe encastrée (POINTER : lampe, étiquette)
+const devant = (id, k) => { const s = GEO.standups.find((c) => c.id === id); return [s.x + s.n.x * k, s.y + s.n.y * k]; };
 const cityPos = (i) => { const t = (i - 3) / 3; return [CX + t * 88, 655 + t * t * 24]; };
 
 // [nom de lampe, x, y, rayon, couleur, étiquette] — l'ordre = index des LED WS2812B
@@ -29,15 +31,80 @@ export const LAMP_LAYOUT = [
   ['mult4', CX + 15, 845, 9, '#ffb13d', '4'],
   ['mult5', CX + 45, 845, 9, '#ffb13d', '5'],
   ['extra', CX, 812, 9, '#ff5252', ''],
-  ['save', CX, 990, 8, '#62ffda', ''],
+  ['save', CX, 895, 8, '#62ffda', ''],
   ['carreau', CX, 420, 9, '#ff4a3d', ''],
   ['bouchon', GEO.bouchonLane.M.x + GEO.bouchonLane.u.x * 34, GEO.bouchonLane.M.y + GEO.bouchonLane.u.y * 34, 8, '#ffd23f', ''],
-  ['point', 82, 560, 7, '#7dff6a', ''],
+  ['point', ...devant('pointer', 44), 7, '#7dff6a', ''],
   ...GEO.leftTargets.map((t, i) => [`cible${i}`, t.x + 26, t.y, 6, '#ff3fa4', '']),
   ['extraLit', GEO.saucer.x - 34, GEO.saucer.y + 30, 8, '#ff5252', 'EB'],
 ];
 
 export { C as COLORS };
+
+// Tablier (« apron ») : plastron noir en V au bas du plateau, même bord avant que ses bras dans le jeu
+// (GEO.apron). Il cache le bac et l'autolanceur et porte les cartes d'instructions. Dessiné en 2D par-dessus
+// les billes, et peint sur le dessus du tablier de la CAO dans la vue 3D.
+function apronPath(ctx) {
+  const a = GEO.apron;
+  ctx.beginPath();
+  ctx.moveTo(0, H); ctx.lineTo(0, a.side);
+  ctx.arcTo(CX - a.half, a.front, CX + a.half, a.front, 30);
+  ctx.arcTo(CX + a.half, a.front, PR, a.side, 30);
+  ctx.lineTo(PR, a.side); ctx.lineTo(PR, a.lane); ctx.lineTo(W, a.lane); ctx.lineTo(W, H);
+  ctx.closePath();
+}
+
+const APRON_CARDS = [
+  { x: 14, titre: 'MULTIBALL TRIPLETTE', lignes: ['F-A-N-N-Y allume LE CERCLE', 'Cercle allumé : 3 billes en jeu',
+    'En multiball, la RAMPE = JACKPOT', '3 jackpots : SUPER JACKPOT au Cercle'] },
+  { x: 294, titre: 'BONUS · EXTRA BALL', lignes: ['T-O-U-R : bonus ×2, ×3 … ×5', '×5 : EXTRA BALL au Cercle',
+    'RAMPE : escale du World Tour', '7 escales : GRAND CHELEM + extra ball'] },
+];
+
+export function drawApron(ctx) {
+  const a = GEO.apron, y0 = a.front + 6, hc = H - 6 - y0;
+  ctx.save();
+  // ombre portée sur le plateau, devant la lèvre
+  ctx.save(); ctx.translate(0, -3); apronPath(ctx); ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fill(); ctx.restore();
+  apronPath(ctx);
+  const g = ctx.createLinearGradient(0, a.side, 0, H);
+  g.addColorStop(0, '#2a2a30'); g.addColorStop(0.25, '#141417'); g.addColorStop(1, '#0b0b0d');
+  ctx.fillStyle = g; ctx.fill();
+  ctx.save(); ctx.clip();
+  // lèvre arrondie : reflet le long du bord avant, filet chromé juste derrière
+  ctx.translate(0, 2.5); apronPath(ctx); ctx.strokeStyle = 'rgba(255,255,255,0.22)'; ctx.lineWidth = 3; ctx.stroke();
+  ctx.translate(0, 5); apronPath(ctx); ctx.strokeStyle = '#8d939c'; ctx.lineWidth = 1; ctx.stroke();
+  ctx.restore();
+  // cartes d'instructions
+  for (const c of APRON_CARDS) {
+    ctx.fillStyle = '#f3e6c8';
+    ctx.beginPath(); ctx.roundRect(c.x, y0, 170, hc, 3); ctx.fill();
+    ctx.fillStyle = '#c8342b';
+    ctx.beginPath(); ctx.roundRect(c.x, y0, 170, 15, [3, 3, 0, 0]); ctx.fill();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff6e0'; ctx.font = 'bold 9px system-ui, sans-serif';
+    ctx.fillText(c.titre, c.x + 85, y0 + 8, 160);
+    ctx.fillStyle = '#1d140c'; ctx.font = '600 7.2px system-ui, sans-serif';
+    c.lignes.forEach((l, i) => ctx.fillText(l, c.x + 85, y0 + 29 + i * 16, 162));
+  }
+  // centre : renvoi vers la lampe de sauvetage, entre les palettes
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#62ffda'; ctx.font = 'bold 10px system-ui, sans-serif';
+  ctx.fillText('▲', CX, y0 + 8);
+  ctx.fillStyle = '#f3e6c8'; ctx.font = 'bold 8px system-ui, sans-serif';
+  ctx.fillText('FANNY', CX, y0 + 22, 80); ctx.fillText('TE LA REND', CX, y0 + 32, 80);
+  ctx.font = '600 6px system-ui, sans-serif';
+  ctx.fillText('bille sauvée tant', CX, y0 + 46, 80);
+  ctx.fillText('que la lampe brille', CX, y0 + 54, 80);
+  ctx.fillStyle = '#e9b44c'; ctx.font = 'bold 6px system-ui, sans-serif';
+  ctx.fillText('PÉTANQUE', CX, y0 + 70, 80); ctx.fillText('WORLD TOUR', CX, y0 + 78, 80);
+  // couloir de lancement : sortie du lanceur
+  ctx.fillStyle = '#e9b44c'; ctx.font = 'bold 6px system-ui, sans-serif';
+  ctx.save(); ctx.translate((PR + W) / 2 + 1, (a.lane + H) / 2); ctx.rotate(-Math.PI / 2);
+  ctx.fillText('LANCER ▶', 0, 0); ctx.restore();
+  ctx.restore();
+}
+
 
 export class Renderer {
   constructor(canvas, sim) {
@@ -153,7 +220,7 @@ export class Renderer {
     g.fillStyle = art ? '#fff6d0' : '#5a3a1a';
     g.strokeStyle = '#2b1a10'; g.lineWidth = 3; g.lineJoin = 'round';
     const label = (t, x, y) => { if (art) g.strokeText(t, x, y); g.fillText(t, x, y); };
-    GEO.standups.forEach((s) => { if (s.id !== 'bouchon') label(s.label, s.x, s.y + 28); });
+    GEO.standups.forEach((s) => { if (s.id !== 'bouchon') label(s.label, ...(s.n ? devant(s.id, 26) : [s.x, s.y + 28])); });
     label('CARREAU', CX, 404);
     {
       const L = GEO.bouchonLane, m = { x: L.M.x + L.u.x * 56, y: L.M.y + L.u.y * 56 };
@@ -200,6 +267,13 @@ export class Renderer {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.drawImage(this.bg, 0, 0, this.canvas.width, this.canvas.height);
     ctx.setTransform(s, 0, 0, s, 0, 0);
+    // trou d'évacuation devant la lèvre du tablier (cotes de la CAO)
+    const [tl, th] = GEO.apron.trou, ey = GEO.apron.front - 2 - th;
+    ctx.beginPath(); ctx.roundRect(CX - tl / 2, ey, tl, th, th / 2 - 1);
+    const gt = ctx.createLinearGradient(0, ey, 0, ey + th);
+    gt.addColorStop(0, '#000'); gt.addColorStop(1, '#1c1814');
+    ctx.fillStyle = gt; ctx.fill();
+    ctx.strokeStyle = 'rgba(190,195,205,0.55)'; ctx.lineWidth = 1.2; ctx.stroke();
     for (const [name, x, y, r, col, label] of LAMP_LAYOUT) {
       const st = lamps[name] || 0;
       const lit = st === 1 || (st === 2 && blinkOn);
@@ -379,31 +453,8 @@ export class Renderer {
     ctx.restore();
   }
 
-  // Tablier (« apron ») sous les flippers : cache l'évacuation, porte la carte d'instructions.
-  apron(lamps, blinkOn) {
-    const ctx = this.ctx, top = 968, pr = PR;
-    ctx.beginPath();
-    ctx.moveTo(0, H); ctx.lineTo(0, top + 20);
-    ctx.quadraticCurveTo(CX - 120, top - 6, CX - 40, top);
-    ctx.lineTo(CX + 40, top);
-    ctx.quadraticCurveTo(CX + 120, top - 6, pr, top + 20);
-    ctx.lineTo(pr, H); ctx.closePath();
-    const g = ctx.createLinearGradient(0, top, 0, H);
-    g.addColorStop(0, '#2c4f86'); g.addColorStop(1, '#16294a');
-    ctx.fillStyle = g; ctx.fill();
-    ctx.strokeStyle = C.chrome; ctx.lineWidth = 3; ctx.stroke();
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#f6e9d2'; ctx.font = 'bold 9px system-ui, sans-serif';
-    ctx.fillText('F-A-N-N-Y ALLUME LE CERCLE · LE CERCLE = MULTIBALL', CX, 1024);
-    ctx.fillText('RAMPE = ESCALE · JACKPOT EN MULTIBALL · T-O-U-R = BONUS ×', CX, 1040);
-    const save = LAMP_LAYOUT.find((e) => e[0] === 'save');
-    const st = lamps.save || 0;
-    const lit = st === 1 || (st === 2 && blinkOn);
-    ctx.fillStyle = lit ? save[4] : 'rgba(255,255,255,0.15)';
-    ctx.beginPath(); ctx.arc(save[1], save[2], save[3], 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#f6e9d2'; ctx.font = 'bold 8px system-ui, sans-serif';
-    ctx.fillText('FANNY TE LA REND', CX, save[2] + 20);
-  }
+  // Tablier : voir drawApron
+  apron() { drawApron(this.ctx); }
 
   // Plastique décoré découpé à la forme d'un corps (lance-pierres) ; miroir pour le côté droit.
   decal(verts, img, mirror, hit) {

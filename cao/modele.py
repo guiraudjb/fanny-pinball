@@ -10,7 +10,7 @@ import json
 import math
 from pathlib import Path
 
-from cotes import CAISSE, DETECTION, LAMPES, MECA, PLATEAU, RAMPE, VISSERIE
+from cotes import CAISSE, CAOUTCHOUCS, CIBLES, DETECTION, LAMPES, MECA, PLATEAU, RAMPE, VISSERIE
 
 ICI = Path(__file__).resolve().parent
 G = json.load(open(ICI / "geometrie.json", encoding="utf-8"))
@@ -135,14 +135,24 @@ piece(id="arche", nom="Guide d'arche", type="ruban", pts=arc, t=10, h=H_PAROI, d
 
 # --- séparateur du couloir de lancement
 ls = GEO["laneSep"]
-ruban("sep_lanceur", "Séparateur du couloir de lancement", [(ls["x"], ls["y1"]), (ls["x"], H - 4)], ls["t"],
+ruban("sep_lanceur", "Séparateur du couloir de lancement (s'arrête au tablier)", [(ls["x"], ls["y1"]), (ls["x"], GEO["apron"]["lane"] - 6)], ls["t"],
       matiere="plat alu 4 × 30", achat=True)
 
-# --- guides des couloirs de retour (dans le prolongement des flippers)
+# --- guides des couloirs de retour (dans le prolongement des flippers) : ils s'arrêtent avant l'anneau du poteau d'entrée
+Z_CAOUT = V(CAOUTCHOUCS["z"])
+_cp = V(CAOUTCHOUCS["poteau"])
+
+
+def recule(pts, d):
+    """polyligne raccourcie de d à son début"""
+    u = unit(sub(pts[1], pts[0]))
+    return [(pts[0][0] + u[0] * d, pts[0][1] + u[1] * d)] + [tuple(p) for p in pts[1:]]
+
+
 for i, s in enumerate(GEO["separators"]):
-    ruban(f"guide_retour_{'GD'[i]}", f"Guide de couloir de retour {'gauche droit'.split()[i]}", s, 8)
+    ruban(f"guide_retour_{'GD'[i]}", f"Guide de couloir de retour {'gauche droit'.split()[i]}", recule(s, 6), 8)
 for i, s in enumerate(GEO.get("dividers", [])):
-    ruban(f"separateur_retour_{'GD'[i]}", f"Séparateur des couloirs de retour {'gauche droit'.split()[i]}", s, 8)
+    ruban(f"separateur_retour_{'GD'[i]}", f"Séparateur des couloirs de retour {'gauche droit'.split()[i]}", recule(s, 6), 8)
 # --- déflecteur
 for i, d in enumerate(GEO["deflectors"]):
     ruban(f"deflecteur_{i + 1}", "Déflecteur latéral", d, 8)
@@ -150,44 +160,105 @@ for i, d in enumerate(GEO["deflectors"]):
 for i, lp in enumerate(GEO["lanePosts"]):
     ruban(f"guide_tour_{i + 1}", f"Guide de couloir T-O-U-R n° {i + 1}", [(lp["x"], lp["y1"]), (lp["x"], lp["y2"])], 6)
 
-# --- entrée de rampe (deux parois + toit en pointe)
+# --- entrée de rampe : deux parois droites, fond ouvert (la rampe part de la bouche et prolonge le couloir)
 for r in GEO["rampEntries"]:
     w = r["half"] + 3
     Q = lambda b, k, a=0: (b["x"] + r["v"]["x"] * k + r["u"]["x"] * a, b["y"] + r["v"]["y"] * k + r["u"]["y"] * a)  # noqa: E731
-    ruban("entree_rampe", "Parois de l'entrée de rampe", [Q(r["M"], -w), Q(r["T"], -w), Q(r["T"], 0, 16), Q(r["T"], w), Q(r["M"], w)], 6)
+    for i, k in enumerate((-w, w)):
+        ruban(f"entree_rampe_{'GD'[i]}", f"Paroi {'gauche droite'.split()[i]} de l'entrée de rampe", [Q(r["M"], k), Q(r["T"], k, -3)], 6)
 
-# --- blocs pleins : pièce du bouchon (d'un seul tenant), mur des cibles rondes, bloc de la banque F-A-N-N-Y
-piece(id="piece_bouchon", nom="Pièce du bouchon (en U, coins arrondis)", type="bloc", pts=GEO["bouchonPiece"], r=9,
-      h=H_PAROI, fix=fixations_poly(GEO["bouchonPiece"]), decoupe_plateau=True)
+# --- blocs : carcasse du bouchon (creuse, parois de 6 mm, plots de fixation), mur des cibles rondes, banque F-A-N-N-Y
+EP_CARCASSE = 6.0
+_bp = GEO["bouchonPiece"]
+_bras = [_bp[i] for i in (2, 3, 4, 5)]                 # bras entre le couloir du bouchon et l'entrée de rampe : un plot au milieu
+_fix_bp = fixations_poly(_bp, marge=9, pas=28) + [(sum(p[0] for p in _bras) / 4, sum(p[1] for p in _bras) / 4)]
+piece(id="piece_bouchon", nom="Carcasse du bouchon (parois 6 mm, creuse, plots Ø 9)", type="bloc", pts=_bp, r=9,
+      h=H_PAROI, creux=EP_CARCASSE, fix=_fix_bp, decoupe_plateau=True)
 for wb in G["walls"]:
     if wb.get("plugin") and wb["plugin"].get("housing"):
         pts = [tuple(v) for v in wb["verts"]]
         cx = sum(p[0] for p in pts) / len(pts)
         if cx < W / 2:
-            pid, nom = "mur_cibles", "Mur des cibles rondes (3 fenêtres)"
+            pid, nom = "mur_cibles", "Mur des cibles rondes (3 poches pour les unités de cible)"
         else:
             pid, nom = "bloc_fanny", "Bloc arrière de la banque F-A-N-N-Y"
         piece(id=pid, nom=nom, type="bloc", pts=pts, r=6, h=H_PAROI, fix=fixations_poly(pts), decoupe_plateau=True)
 
 # --- poteaux (caoutchouc acheté) : coins des lance-pierres, bouts des guides
 POTEAU_D = 10
-poteaux = []
+_cs = V(CAOUTCHOUCS["sling"])
+
+
+def poteaux_sling(s):
+    """poteaux d'un lance-pierre, reculés vers l'intérieur pour que la face extérieure de l'anneau (gorge + corde)
+    tombe sur le contour de rebond du jeu ; les deux poteaux de la face gardent leur entraxe (gabarit du mécanisme)"""
+    pts = [tuple(p) for p in s["pts"]]
+    off = _cs["gorge_d"] / 2 + _cs["cord"]
+    A, C = pts[s["face"][0]], pts[s["face"][1]]
+    B = [p for k, p in enumerate(pts) if k not in s["face"]][0]
+    m = ((A[0] + C[0]) / 2, (A[1] + C[1]) / 2)
+    e_ = unit(sub(C, A)); n = (-e_[1], e_[0])
+    if n[0] * (B[0] - m[0]) + n[1] * (B[1] - m[1]) < 0:
+        n = (-n[0], -n[1])
+    A2, C2 = (A[0] + n[0] * off, A[1] + n[1] * off), (C[0] + n[0] * off, C[1] + n[1] * off)
+    # B : intersection des deux côtés BA et BC décalés vers l'intérieur
+    def dec(P, Q):
+        u = unit(sub(Q, P)); v = (-u[1], u[0])
+        cen = ((A[0] + B[0] + C[0]) / 3, (A[1] + B[1] + C[1]) / 3)
+        if v[0] * (cen[0] - P[0]) + v[1] * (cen[1] - P[1]) < 0:
+            v = (-v[0], -v[1])
+        return (P[0] + v[0] * off, P[1] + v[1] * off), u
+    (p1, u1), (p2, u2) = dec(B, A), dec(B, C)
+    det = u1[0] * (-u2[1]) - u1[1] * (-u2[0])
+    t = ((p2[0] - p1[0]) * (-u2[1]) - (p2[1] - p1[1]) * (-u2[0])) / det
+    B2 = (p1[0] + u1[0] * t, p1[1] + u1[1] * t)
+    out = list(pts)
+    out[s["face"][0]], out[s["face"][1]] = A2, C2
+    out[[k for k in range(3) if k not in s["face"]][0]] = B2
+    return out
+
+
+poteaux = []          # (x, y, type d'anneau)
 for s in GEO["slings"]:
-    poteaux += [tuple(p) for p in s["pts"]]
+    poteaux += [(x, y, "sling") for x, y in poteaux_sling(s)]
 for s in GEO["separators"] + GEO.get("dividers", []):
-    poteaux.append(tuple(s[0]))
-for i, p in enumerate(poteaux):
-    piece(id=f"poteau_{i + 1}", nom="Poteau Ø 10 (anneau caoutchouc acheté)", type="poteau", x=p[0], y=p[1], d=POTEAU_D,
-          h=H_PAROI + 6, fix=[p])
+    poteaux.append((s[0][0], s[0][1], "poteau"))
+for i, (x, y, ty) in enumerate(poteaux):
+    g = V(CAOUTCHOUCS[ty])
+    piece(id=f"poteau_{i + 1}", nom=f"Poteau Ø 10, gorge Ø {g['gorge_d']:g} (anneau caoutchouc acheté)", type="poteau",
+          x=x, y=y, d=POTEAU_D, h=H_PAROI + 6, fix=[(x, y)], gorge=(g["gorge_d"], Z_CAOUT, g["cord"] + 0.5))
+
+# caoutchoucs achetés (vue 3D, nomenclature) : anneaux des poteaux d'entrée, anneaux des lance-pierres
+_tailles, _tension = V(CAOUTCHOUCS["tailles"]), V(CAOUTCHOUCS["tension"])
+
+
+def taille_anneau(perimetre):
+    """anneau du commerce (ID en pouces) le plus proche de l'ID tendu voulu"""
+    voulu = _tension * perimetre / math.pi / 25.4
+    return min(_tailles, key=lambda t: abs(t - voulu))
+
+
+ANNEAUX = []
+for x, y, ty in poteaux:
+    if ty == "poteau":
+        ANNEAUX.append({"type": "poteau", "x": x, "y": y, "z": Z_CAOUT, "r": _cp["gorge_d"] / 2, "cord": _cp["cord"],
+                        "id_pouces": 0.125})
+for s in GEO["slings"]:
+    ps = poteaux_sling(s)
+    rc = _cs["gorge_d"] / 2 + _cs["cord"] / 2               # rayon de la ligne moyenne de la corde autour d'un poteau
+    perim = sum(dist(ps[k], ps[(k + 1) % 3]) for k in range(3)) + 2 * math.pi * rc
+    ANNEAUX.append({"type": "sling", "poteaux": ps, "z": Z_CAOUT, "r": _cs["gorge_d"] / 2, "cord": _cs["cord"],
+                    "face": s["face"], "id_pouces": taille_anneau(perim)})
 
 # --- lance-pierres : plastique décoré posé sur les poteaux + mécanisme acheté
 for i, s in enumerate(GEO["slings"]):
     pts = [tuple(p) for p in s["pts"]]
+    pps = poteaux_sling(s)
     piece(id=f"plastique_sling_{'GD'[i]}", nom=f"Plastique de lance-pierre {'gauche droit'.split()[i]}", type="plaque",
           pts=pts, r=8, ep=3, z=H_PAROI + 6, marge=7, matiere="PETG 3 mm décoré (ou acrylique 3 mm)")
-    A, C = pts[s["face"][0]], pts[s["face"][1]]
+    A, C = pps[s["face"][0]], pps[s["face"][1]]          # poteaux de la face : le gabarit du mécanisme s'y pose
     m = ((A[0] + C[0]) / 2, (A[1] + C[1]) / 2)
-    B = [p for k, p in enumerate(pts) if k not in s["face"]][0]
+    B = [p for k, p in enumerate(pps) if k not in s["face"]][0]
     n = unit(sub(B, m))
     # gabarit Pinball Makers posé sur les deux poteaux de la face : milieu sur milieu, axe sur axe, « intérieur » vers B
     gb = V(MECA["sling_gabarit"])
@@ -244,27 +315,68 @@ l, w = V(MECA["drop_lumiere"])
 for i, d in enumerate(GEO["drops"]):
     trou(f"drop_{d['letter']}{i + 1}", f"lumière de la cible tombante {d['letter']}", d["x"], d["y"], forme="oblong", l=l, w=w,
          angle=math.degrees(d["angle"]), src=MECA["drop_lumiere"]["src"])
-    piece(id=f"cible_drop_{i + 1}", nom=f"Cible tombante {d['letter']} (achetée)", type="drop", x=d["x"], y=d["y"],
-          angle=d["angle"], achat=True, matiere="acheté")
+    piece(id=f"cible_drop_{i + 1}", nom=f"Cible tombante {d['letter']} (lame de la banque achetée)", type="drop", x=d["x"], y=d["y"],
+          angle=d["angle"], achat=True, matiere="acheté", lettre=d["letter"])
 d0, d4 = GEO["drops"][0], GEO["drops"][-1]
-piece(id="meca_drop", nom="Banque de 5 cibles tombantes (achetée)", type="zone", x=(d0["x"] + d4["x"]) / 2,
-      y=(d0["y"] + d4["y"]) / 2, dims=V(MECA["drop_zone"]), angle=math.degrees(d0["angle"]), achat=True, matiere="acheté")
+piece(id="meca_drop", nom="Banque de 5 cibles tombantes (achetée) : châssis, bobine de remise, barre", type="banque",
+      x=(d0["x"] + d4["x"]) / 2, y=(d0["y"] + d4["y"]) / 2, dims=V(MECA["drop_zone"]), angle=math.degrees(d0["angle"]),
+      achat=True, matiere="acheté")
 
-# --- cibles fixes : POINTER, TIRER, cochonnet (unités imprimées : face pivotante + KW11)
+# --- cibles fixes : POINTER, TIRER, cochonnet, et les 3 cibles rondes du mur gauche (unités imprimées)
+# Repère d'une cible : u vers la bille (normale de la face), v en travers, z vers le haut. La face (disque + bras) pend
+# sous un axe acier Ø 3 tenu par les deux joues du boîtier ; le levier du KW11, sur la paroi du fond, la rappelle en avant.
+CF = V(CIBLES["fixe"])
 VISEE = (CX, H - 200)   # les faces regardent vers les flippers
-for s in GEO["standups"]:
-    n = unit(sub(VISEE, (s["x"], s["y"])))
-    if s["id"] == "bouchon":
-        L = GEO["bouchonLane"]; n = (-L["u"]["x"], -L["u"]["y"])
-    dos = (s["x"] - n[0] * 16, s["y"] - n[1] * 16)
+
+
+def cible_fixe(cid, label, x, y, r, n, dans_mur=False):
     t = (-n[1], n[0])
-    fix = [(dos[0] + t[0] * 10 - n[0] * 4, dos[1] + t[1] * 10 - n[1] * 4), (dos[0] - t[0] * 10 - n[0] * 4, dos[1] - t[1] * 10 - n[1] * 4)]
-    piece(id=f"cible_{s['id']}", nom=f"Cible fixe {s['label']} (face Ø {2 * s['r']:.0f}, KW11 dans le boîtier)", type="cible",
-          x=s["x"], y=s["y"], r=s["r"], n=n, fix=fix)
-    trou(f"cible_{s['id']}.fils", f"passe-fil de la cible {s['label']}", *dos, d=V(VISSERIE["passe_fil"]), groupe="passe-fil")
+    P_ = lambda u, v: (x + n[0] * u + t[0] * v, y + n[1] * u + t[1] * v)  # noqa: E731
+    zc = max(r + 1, Z_CAOUT)                                 # centre de la face
+    z_axe = zc + r + 3
+    w = 2 * r + 2 * CF["jeu"] + 2 * CF["paroi"]               # largeur hors tout du boîtier
+    geo = {"x": x, "y": y, "r": r, "n": n, "zc": zc, "z_axe": z_axe, "w": w, "u_axe": -CF["recul_axe"],
+           "prof": CF["profondeur"]}
+    fix = [P_(-CF["profondeur"] + 7, w / 2 - 5), P_(-CF["profondeur"] + 7, -(w / 2 - 5))]
+    piece(id=f"cible_{cid}", nom=f"Boîtier de la cible {label} (joues, axe Ø 3, KW11)", type="cible", fix=fix, **geo)
+    piece(id=f"face_{cid}", nom=f"Face pendulaire de la cible {label} (Ø {2 * r:.0f})", type="cible_face", **geo,
+          axe=(*P_(geo["u_axe"], 0), z_axe), axe_dir=t)
+    dos = P_(-CF["profondeur"] + 14, 0)
+    trou(f"cible_{cid}.fils", f"passe-fil du KW11 de la cible {label}", *dos, d=V(VISSERIE["passe_fil"]), groupe="passe-fil")
+    return geo
+
+
+# POINTER : encastrée dans la pièce du bouchon, à gauche de la bouche du couloir (normale du jeu)
+POCHES_BOUCHON = []
+for s in GEO["standups"]:
+    if s.get("n"):
+        n = (s["n"]["x"], s["n"]["y"])
+    elif s["id"] == "bouchon":
+        L = GEO["bouchonLane"]; n = (-L["u"]["x"], -L["u"]["y"])
+    else:
+        n = unit(sub(VISEE, (s["x"], s["y"])))
+    g = cible_fixe(s["id"], s["label"], s["x"], s["y"], s["r"], n)
+    if s.get("n"):                                           # poche : boîtier + 0,5 de jeu, ouverte vers le plateau
+        t, a, b = (-n[1], n[0]), g["w"] / 2 + 0.5, g["prof"] + 1
+        P_ = lambda u, v: (s["x"] + n[0] * u + t[0] * v, s["y"] + n[1] * u + t[1] * v)  # noqa: E731
+        POCHES_BOUCHON.append([P_(8, -a), P_(8, a), P_(-b, a), P_(-b, -a)])
+# cibles rondes : face avant à x + 1 (bord du corps de rebond du jeu), logées dans des poches du mur
+POCHES_MUR = []
 for t_ in GEO["leftTargets"]:
-    trou(f"{t_['id']}.fils", f"passe-fil de la cible ronde {t_['id']} (KW11 dans le mur)", 12, t_["y"], d=V(VISSERIE["passe_fil"]),
-         groupe="passe-fil")
+    g = cible_fixe(t_["id"], f"ronde {t_['id'][-1]}", t_["x"] - 1, t_["y"], t_["r"], (1.0, 0.0), dans_mur=True)
+    POCHES_MUR.append((g["x"] - g["prof"] - 1, g["y"] - g["w"] / 2 - 0.5, g["prof"] + 4, g["w"] + 1))
+# fixations de la pièce du bouchon hors de la poche de POINTER
+_pb = next(p for p in PIECES if p["id"] == "piece_bouchon")
+_dans_pb = lambda f: any(dans_poly(f, q) or d_bord(f, q) < 5 for q in POCHES_BOUCHON)  # noqa: E731
+_ids = {f"piece_bouchon.F{i + 1}" for i, f in enumerate(_pb["fix"]) if _dans_pb(f)}
+TROUS[:] = [t for t in TROUS if t["id"] not in _ids]
+_pb["fix"] = [f for f in _pb["fix"] if not _dans_pb(f)]
+# fixations du mur hors des poches
+_mur = next(p for p in PIECES if p["id"] == "mur_cibles")
+_dans = lambda f: any(x0 - 4 <= f[0] <= x0 + l + 4 and y0 - 4 <= f[1] <= y0 + w + 4 for x0, y0, l, w in POCHES_MUR)  # noqa: E731
+_ids = {f"mur_cibles.F{i + 1}" for i, f in enumerate(_mur["fix"]) if _dans(f)}
+TROUS[:] = [t for t in TROUS if t["id"] not in _ids]
+_mur["fix"] = [f for f in _mur["fix"] if not _dans(f)]
 
 # --- couloirs T-O-U-R : rollovers à fil
 l, w = V(DETECTION["rollover_lumiere"])
@@ -286,11 +398,37 @@ l, w = V(DETECTION["lanceur_lumiere"])
 trou("lancement.doigt", "doigt de l'autolanceur", pl["x"], pl["ballY"] + 22, forme="oblong", l=l, w=w, angle=90)
 trou("bac.montee", "montée de la bille du bac vers le couloir", pl["x"], H - 22, d=V(DETECTION["montee_bac"]))
 l, w = V(DETECTION["evacuation"])
-APRON_Y = 1000
-trou("evacuation", "évacuation (sous le bord du tablier)", CX, APRON_Y - 22, forme="oblong", l=l, w=w, angle=0)
-piece(id="tablier", nom="Tablier (apron)", type="plaque", pts=[(4, APRON_Y), (GEO["playRight"] - 4, APRON_Y),
-      (GEO["playRight"] - 4, H - 2), (4, H - 2)], r=10, ep=3, z=0, marge=8, matiere="PETG 3 mm décoré",
-      fix=[(30, APRON_Y + 30), (CX, APRON_Y + 40), (GEO["playRight"] - 30, APRON_Y + 30)])
+AP = GEO["apron"]
+APRON_Y = AP["front"]
+trou("evacuation", "évacuation (devant la lèvre du tablier)", CX, APRON_Y - 2 - w / 2, forme="oblong", l=l, w=w, angle=0)
+
+
+def conge(a, p, b, r, n=6):
+    """coin p de la polyligne a-p-b arrondi au rayon r (points de l'arc)"""
+    u = [(a[0] - p[0]), (a[1] - p[1])]; v = [(b[0] - p[0]), (b[1] - p[1])]
+    lu, lv = math.hypot(*u), math.hypot(*v); u = [c / lu for c in u]; v = [c / lv for c in v]
+    th = math.acos(max(-1, min(1, u[0] * v[0] + u[1] * v[1])))
+    d = r / math.tan(th / 2)
+    t1 = (p[0] + u[0] * d, p[1] + u[1] * d); t2 = (p[0] + v[0] * d, p[1] + v[1] * d)
+    bis = [u[0] + v[0], u[1] + v[1]]; lb = math.hypot(*bis)
+    c = (p[0] + bis[0] / lb * r / math.sin(th / 2), p[1] + bis[1] / lb * r / math.sin(th / 2))
+    a1, a2 = math.atan2(t1[1] - c[1], t1[0] - c[0]), math.atan2(t2[1] - c[1], t2[0] - c[0])
+    while a2 - a1 > math.pi: a2 -= 2 * math.pi
+    while a1 - a2 > math.pi: a2 += 2 * math.pi
+    return [(c[0] + r * math.cos(a1 + (a2 - a1) * k / n), c[1] + r * math.sin(a1 + (a2 - a1) * k / n)) for k in range(n + 1)]
+
+
+# tablier : coque noire en V (même bord avant que les bras du jeu, coins du fond R 30), lèvre de AP["lip"] mm.
+# Il couvre le bas du plateau, le bac, la montée de la bille et l'autolanceur, et porte les cartes d'instructions.
+_yb = lambda x: AP["side"] + (AP["front"] - AP["side"]) * (x / (CX - AP["half"]) if x < CX else (GEO["playRight"] - x) / (GEO["playRight"] - CX - AP["half"]))
+_xl, _xr, _xd = CX - AP["half"], CX + AP["half"], GEO["playRight"] - 2
+BORD_TABLIER = ([(2, _yb(2))] + conge((0, AP["side"]), (_xl, APRON_Y), (_xr, APRON_Y), 30)
+                + conge((_xl, APRON_Y), (_xr, APRON_Y), (GEO["playRight"], AP["side"]), 30) + [(_xd, _yb(_xd)), (_xd, AP["lane"])])
+piece(id="tablier", nom="Tablier (apron) : coque noire en V, cartes d'instructions", type="tablier",
+      pts=BORD_TABLIER + [(W - 2, AP["lane"]), (W - 2, H - 2), (2, H - 2)], h=AP["lip"], ep=3,
+      matiere="PETG noir 3 mm (3 tronçons collés) + cartes plastifiées",
+      fix=[(30, 1030), (CX, 1035), (GEO["playRight"] - 30, 1030)],
+      note="bord avant = bras du jeu ; la lèvre ramène vers l'évacuation la bille des couloirs extérieurs")
 piece(id="bac", nom="Bac à billes (3 billes, 3 KW11) sous le plateau", type="bac", x=CX, y=H - 40)
 
 # --- portillon à sens unique (haut du couloir de lancement)
@@ -332,6 +470,27 @@ for i, (x, y, z, s) in enumerate(supports):
 S_IR = L_RAMPE - 120
 piece(id="rampe", nom="Rampe (tronçons PETG, barrière IR en sortie)", type="rampe", pts3d=RAMPE_3D, s_ir=S_IR,
       larg=V(RAMPE["larg_int"]), ep=V(RAMPE["ep"]), h=V(RAMPE["h_flanc"]))
+
+
+def sous_rampe(p, jeu):
+    """le point (x, y) est-il dans l'emprise de la rampe là où elle passe sous z_max (jeu compris) ?"""
+    hw = V(RAMPE["larg_int"]) / 2 + V(RAMPE["ep"]) + jeu
+    return any(d_seg(p, a[:2], b[:2]) < hw for a, b in zip(RAMPE_3D, RAMPE_3D[1:]) if a[3] < 200)
+
+
+# --- plastiques décorés sur entretoises (comme sur un vrai flipper) :
+#  • au-dessus de la carcasse du bouchon, 4 mm de débord sur les couloirs, posé sur ses plots ; échancré sous la rampe
+#  • enseigne « ESCALE » à cheval sur la bouche de l'entrée de rampe, posée sur les deux parois, plus haut
+H_ENTRETOISE = 6.0
+_pb = next(p for p in PIECES if p["id"] == "piece_bouchon")
+piece(id="plastique_bouchon", nom="Plastique du bouchon (sur entretoises de 6 mm)", type="plaque", pts=GEO["bouchonPiece"],
+      r=9, ep=3, z=H_PAROI + H_ENTRETOISE, marge=4, sous_rampe=True, matiere="PETG 3 mm décoré (ou acrylique 3 mm)",
+      entretoises=[f for f in _pb["fix"] if not sous_rampe(f, 8)], h_entretoise=H_ENTRETOISE)
+_r = GEO["rampEntries"][0]; _w = _r["half"] + 3
+_ent = [(_r["M"]["x"] + _r["v"]["x"] * k + _r["u"]["x"] * 6, _r["M"]["y"] + _r["v"]["y"] * k + _r["u"]["y"] * 6) for k in (-_w, _w)]
+piece(id="plastique_rampe", nom="Enseigne d'entrée de rampe « ESCALE » (sur entretoises de 12 mm)", type="plaque",
+      pts=[tuple(q) for q in GEO["enseigneRampe"]], r=5, ep=3, z=H_PAROI + 2 * H_ENTRETOISE, marge=0,
+      matiere="PETG 3 mm décoré (ou acrylique 3 mm)", entretoises=_ent, h_entretoise=2 * H_ENTRETOISE)
 
 
 # ------------------------------------------------------------------ caisse (repère caisse : X largeur, Y vers l'arrière depuis la façade, Z vers le haut)
@@ -385,6 +544,36 @@ PANNEAUX["fronton_dessous"] = {"nom": "Dessous du fronton", "contour": [(0, 0), 
                                (0, fr["p_bas"])], "ep": EPC, "oblong_cables": {"l": 160, "h": 50}}
 PANNEAUX["fronton_fond"] = {"nom": "Fond du fronton", "contour": [(0, 0), (fr["l"] - 2 * EPC, 0), (fr["l"] - 2 * EPC, fr["h"] - 2 * EPC),
                             (0, fr["h"] - 2 * EPC)], "ep": 6.0, "matiere": "contreplaqué 6 mm"}
+# ------------------------------------------------------------------ pieds (repère caisse, coin avant gauche ; les autres par symétrie)
+# Cornière pliée plaquée sur les deux faces extérieures de l'angle ; 2 boulons en diagonale à 45° à travers l'arête
+# de la caisse, vissés dans la platine d'angle intérieure. Le bas reçoit une plaque soudée et le vérin.
+H_SOL = 930.0 - HAV                       # bas de caisse au-dessus du sol (barre de verrouillage ≈ 930 mm)
+_pd, _vs = V(CAISSE["pieds"]), V(CAISSE["verin"])
+PIED = {
+    **_pd, **{k: v for k, v in V(CAISSE["pied_section"]).items()},
+    "z_bas": -H_SOL + _vs["saillie"],                       # bas de la cornière
+    "z_haut": -H_SOL + _vs["saillie"] + _pd["l"],           # haut de la cornière (au-dessus du bas de caisse)
+}
+PIED["recouvrement"] = PIED["z_haut"]
+PIED["z_trous"] = [PIED["z_haut"] - _pd["trou_bas"], PIED["z_haut"] - _pd["trou_bas"] + _pd["entraxe_trous"]]
+COINS_PIEDS = [("AVG", 0.0, 0.0, 1, 1), ("AVD", LARG, 0.0, -1, 1), ("ARG", 0.0, LONG, 1, -1), ("ARD", LARG, LONG, -1, -1)]  # nom, X, Y, sens X, sens Y
+
+
+def aile_pied(z):
+    """largeur d'une aile du pied à la hauteur z (droite sur la zone boulonnée, puis effilée)"""
+    p = PIED
+    z_droit = p["z_haut"] - p["droit"]
+    if z >= z_droit:
+        return p["aile_haut"]
+    return p["aile_bas"] + (p["aile_haut"] - p["aile_bas"]) * (z - p["z_bas"]) / (z_droit - p["z_bas"])
+
+
+# rallonge fixe dans le prolongement du plateau (même pente), jusqu'au panneau arrière
+_ra = V(CAISSE["rallonge"])
+RALLONGE = {"nom": "Rallonge du plateau", "l": W, "ep": EP, "jeu": _ra["jeu_arriere"],
+            "h": round((LONG - EPC - _ra["jeu_arriere"] - (Y_PF_AV + H * math.cos(PENTE_PF))) / math.cos(PENTE_PF), 1),
+            "encoche": {"l": _ra["encoche"][0], "p": _ra["encoche"][1]}}
+
 TASSEAU = {"section": (20, 30), "longueur": round((LONG - 2 * EPC - Y_PF_AV) / math.cos(PENTE_PF) - 60)}
 
 if __name__ == "__main__":

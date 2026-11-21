@@ -9,6 +9,8 @@ SOURCE :
   « PM »      : gabarits de perçage Pinball Makers (Pop-bumper-template.stl, Slingshot-template.stl), mesurés dans FreeCAD
   « DWG »     : plans de perçage DWG Pinball Makers (A-15205, banque de 5, 500-5849…), lus avec LibreDWG 0.14
                 (dwg2dxf, relevé assets/brut/analyse_dxf.py ; plans en pouces sauf la banque de 5, en mm)
+  « PW »      : PinWiki « Pinball Leg Guide » et relevés publiés sur VPForums / Pinside (pieds, boulons, vérins),
+                fiches Marco Specialties (boulons 4322-01125-40, vérins LL2/LL3, platine 01-11400-1)
   « HYP »     : hypothèse à CONFIRMER sur la pièce achetée avant de percer (affichée en orange sur les plans)
 """
 
@@ -19,6 +21,7 @@ SOURCES = {
     "choix": "Choix de conception du projet",
     "PM": "Gabarits de perçage Pinball Makers (STL), mesurés",
     "DWG": "Plans de perçage Pinball Makers (DWG), relevés",
+    "PW": "PinWiki Pinball Leg Guide, VPForums, Pinside, Marco Specialties (pieds)",
     "HYP": "Hypothèse — à confirmer sur la pièce achetée",
 }
 
@@ -74,11 +77,38 @@ DETECTION = {
     "rollover_fil": c(1.5, "choix", "corde à piano Ø 1,5 cintrée en U, saillie 6 mm, soudée au levier du KW11"),
     "shooter_lumiere": c((20.0, 6.0), "choix", "levier du KW11 sous la bille au repos (couloir de lancement)"),
     "cercle_trou": c(40.0, "choix", "trou de la cuvette du Cercle (cuvette imprimée Ø int. 32, profondeur 18)"),
-    "evacuation": c((70.0, 40.0), "choix", "trou oblong d'évacuation sous le tablier"),
+    "evacuation": c((70.0, 34.0), "choix", "trou oblong d'évacuation devant la lèvre du tablier (sous les pointes des flippers : 34 de profondeur)"),
     "montee_bac": c(31.0, "choix", "trou de montée de la bille du bac vers le couloir de lancement"),
     "lanceur_lumiere": c((30.0, 12.0), "choix", "lumière du doigt de l'autolanceur"),
     "ir_rampe": c("LED IR 940 nm + phototransistor Ø 5 mm", "choix", "barrière infrarouge en travers de la rampe (sortie)"),
     "cible_axe": c(3.0, "choix", "axe acier Ø 3 des faces de cibles fixes (pivot), retour par le levier du KW11"),
+}
+
+# ------------------------------------------------------------------ caoutchoucs (achetés) : leur face extérieure = contour de rebond du jeu
+CAOUTCHOUCS = {
+    "z": c(13.5, "table", "hauteur des anneaux : centre de la bille (rayon 13,5)"),
+    "poteau": c({"gorge_d": 5.0, "cord": 2.5}, "HYP",
+                "poteaux d'entrée des couloirs (rebond du jeu : rayon 5) : mini-anneau noir 1/8\" ID dans une gorge Ø 5 "
+                "du poteau Ø 10 ; il affleure le poteau, sinon le couloir de 34 mm deviendrait trop étroit pour la bille"),
+    "sling": c({"gorge_d": 8.0, "cord": 4.0}, "HYP",
+               "anneau blanc du lance-pierre tendu autour des 3 poteaux, dans une gorge de 1 mm ; poteaux reculés pour que "
+               "la face extérieure du caoutchouc tombe sur la face de rebond du jeu"),
+    "palette": c({"cord": 4.0}, "HYP", "caoutchouc rouge de palette 3\" (section ≈ 5/32\") dans la gorge de la palette"),
+    "tailles": c([0.25, 0.3125, 0.375, 0.4375, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0], "PW",
+                 "diamètres intérieurs courants des anneaux de flipper (pouces)"),
+    "tension": c(0.88, "choix", "un anneau se monte tendu d'environ 12 % : ID ≈ 0,88 × périmètre / π"),
+}
+
+# ------------------------------------------------------------------ cibles
+CIBLES = {
+    "drop": c({"l": 22.5, "e": 8.1, "h_dessus": 33.0, "r_haut": 6.0, "h_dessous": 50.0}, "HYP",
+              "lame de cible tombante : section 22,5 × 8,1 (plan DWG de la banque de 5) ; dépasse de 33 mm, coins hauts R 6 "
+              "(cotes de hauteur à relever sur la banque achetée)"),
+    "banque": c({"h": 95.0, "bobine": (38.0, 60.0), "ep": 2.0}, "HYP",
+                "châssis de la banque sous le plateau (platine 171,5 × 89 du plan DWG) ; hauteur et bobine de remise à relever"),
+    "fixe": c({"axe_d": 3.0, "jeu": 1.0, "face_ep": 4.0, "paroi": 3.0, "profondeur": 30.0, "recul_axe": 5.0}, "choix",
+              "cible fixe imprimée : face pendulaire sur un axe acier Ø 3 en haut, le levier du KW11 la rappelle en avant ; "
+              "une bille qui frappe la face la fait basculer et ferme le KW11"),
 }
 
 # ------------------------------------------------------------------ lampes
@@ -119,7 +149,23 @@ CAISSE = {
     "arriere_oblongs": c({"l": 157.0, "h": 52.0, "z": 335.6, "x_gauche": 86.0}, "WPC", "2 oblongs R26 (aération / passage)"),
     "arriere_ventil": c({"d": 86.0, "x": 163.0, "z": 87.0, "vis": 6.0, "entraxe": 80.0}, "WPC", "trou de ventilateur + 4 vis"),
     "fronton": c({"l": 730.25, "h": 723.9, "p_haut": 250.83, "p_bas": 161.93, "l_int": 692.15}, "WPC", "fronton (backbox)"),
-    "pieds": c({"l": 813.0, "boulons": "3/8\"-16 × 2-1/2\"", "vérin": "3/8\"-16"}, "HYP", "pieds standard 32\" achetés avec leurs boulons et vérins"),
+    "pieds": c({"l": 723.9, "entraxe_trous": 57.15, "trou_bas": 127.0, "d_trou": 10.0}, "PW",
+               "pieds WPC 28-1/2\" (Williams 1989-1999) ; 2 trous 3/8\" à 2-1/4\" d'entraxe, le trou du bas à 5\" du haut du pied"),
+    "pied_section": c({"aile_haut": 76.0, "aile_bas": 50.0, "ep": 2.7, "droit": 230.0}, "HYP",
+                      "cornière d'acier pliée (équerre) : ailes ≈ 3\" en haut, droites sur la zone boulonnée, puis effilées "
+                      "vers ≈ 2\" en bas ; tôle ≈ 12 ga. Cotes non publiées : à mesurer sur les pieds achetés"),
+    "pied_boulons": c({"filet": "3/8\"-16", "l": 63.5, "tete": 15.9}, "PW",
+                      "2 boulons par pied, tête bombée 5/8\", 3/8\"-16 × 2-1/2\", passés EN DIAGONALE dans l'angle de la caisse"),
+    "pied_platine": c({"h": 127.0, "ailes": 40.0, "ep": 3.0, "retrait": 40.0}, "HYP",
+                      "platine d'angle intérieure Williams 01-11400-1 (écrous PEM) : cotes non publiées ; "
+                      "retrait = distance de sa face diagonale à l'arête extérieure de la caisse"),
+    "verin": c({"tige": 76.2, "d": 9.5, "patin": 44.5, "h_patin": 10.0, "contre_ecrou": 15.9, "saillie": 25.0}, "PW",
+               "vérin 3/8\"-16, tige 3\" (arrière) ou 2\" (avant), patin Ø 1-3/4\", contre-écrou 5/8\" ; "
+               "saillie sous le pied : choix (caisse de niveau, la pente est dans la caisse)"),
+    "pied_finition": c("acier thermolaqué noir satiné", "choix", "les pieds WPC d'origine étaient chromés ; noir « Pac-Black » sur quelques jeux"),
     "z_plateau_avant": c(330.0, "choix", "hauteur du dessus du plateau à l'avant, au-dessus du bas de caisse"),
     "vitre": c(4.0, "choix", "verre trempé 4 mm dans les rainures des flancs"),
+    "rallonge": c({"jeu_arriere": 3.0, "encoche": (160.0, 40.0)}, "choix",
+                  "rallonge fixe du plateau (contreplaqué 12) : le plateau du jeu (42\") est plus court que celui d'une caisse WPC "
+                  "(46\") ; elle comble le vide jusqu'au panneau arrière, encoche au centre pour les câbles du fronton"),
 }

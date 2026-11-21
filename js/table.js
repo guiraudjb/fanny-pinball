@@ -68,7 +68,8 @@ function rampEntry(side, M, len, half) {
 }
 
 const DROP_DIR = { x: Math.cos(deg(75)), y: Math.sin(deg(75)) }; // 75° comme la banque H-O-L-E de Black Hole
-const DROP_BANK = { x0: 396, y0: 472, dir: DROP_DIR, n: { x: -DROP_DIR.y, y: DROP_DIR.x } }; // n : face avant
+// remontée de 60 mm le long de son axe : la rampe, qui redescend le long du mur droit, passe au large de la cible Y
+const DROP_BANK = { x0: 396 - DROP_DIR.x * 60, y0: 472 - DROP_DIR.y * 60, dir: DROP_DIR, n: { x: -DROP_DIR.y, y: DROP_DIR.x } }; // n : face avant
 // Pas et taille des cibles : banque de 5 Williams (plan DWG Pinball Makers) — pas 1-1/4" = 31,75 mm,
 // cible 22,5 × 8,1 mm (au lieu du pas de 28 mm relevé sur Black Hole, une Gottlieb).
 const DROP_PITCH = 31.75;
@@ -84,6 +85,17 @@ const BOUCHON = (() => {
   return { B, u: { x: ux, y: uy }, v: { x: -uy, y: ux }, len, half, M: { x: B.x - ux * len, y: B.y - uy * len } };
 })();
 
+const RAMPE_E = rampEntry('L', { x: 160, y: 450 }, 85, 26);   // entrée de 52 mm (Black Knight : 50 à 56 mm)
+
+// POINTER, à gauche de la bouche du couloir du bouchon : encastrée dans le bloc entre le mur et le couloir,
+// face tournée vers les flippers. Face sur l'arête a → b du bloc, à s mm de a (boîtier de 30 × 30 derrière).
+function cibleEncastree(a, b, s) {
+  const l = Math.hypot(b.x - a.x, b.y - a.y), e = { x: (b.x - a.x) / l, y: (b.y - a.y) / l };
+  const n = e.x < 0 ? { x: e.y, y: -e.x } : { x: -e.y, y: e.x };         // normale vers le bas du plateau (y > 0)
+  return { x: a.x + e.x * s + n.x, y: a.y + e.y * s + n.y, n };
+}
+const boucheBouchon = (k) => ({ x: BOUCHON.M.x + BOUCHON.v.x * k, y: BOUCHON.M.y + BOUCHON.v.y * k });
+const CIBLE_POINTER = cibleEncastree(boucheBouchon(-(BOUCHON.half + 3)), { x: -2, y: 478 }, 24);
 export const GEO = {
   ellipse: { cx: W / 2, cy: 160, rx: W / 2, ry: 150 },
   playRight: PLAY_R,
@@ -130,7 +142,7 @@ export const GEO = {
   leftWall: { x: 30, y1: 520, y2: 640 },
   leftTargets: [0, 1, 2].map((i) => ({ id: `boule${i + 1}`, x: 30, y: 540 + 40 * i, r: 13 })),
   standups: [
-    { id: 'pointer', label: 'POINTER', x: 82, y: 590, r: 11 },
+    { id: 'pointer', label: 'POINTER', ...CIBLE_POINTER, r: 11 },
     { id: 'tirer', label: 'TIRER', x: CX, y: 450, r: 11 },
     { id: 'bouchon', label: 'BOUCHON', x: BOUCHON.B.x, y: BOUCHON.B.y, r: 8 },  // cochonnet au fond du couloir
   ],
@@ -141,11 +153,16 @@ export const GEO = {
   saucer: { x: 400, y: 318, r: 7, ring: 18, kick: { x: -6.5, y: 3.5 } },
   // entrées de rampe : couloir court fermé en haut, capteur près du fond
   // entrée de rampe : couloir incliné dont l'axe vise le milieu de la palette droite levée
-  rampEntries: [rampEntry('L', { x: 160, y: 450 }, 85, 26)], // entrée de 52 mm (Black Knight : 50 à 56 mm)
+  rampEntries: [RAMPE_E],
   // une seule rampe, qui exploite l'arrondi supérieur du plateau
   ramps: { L: null },
   inlaneTop: { x: (SEP_X + DIV_X) / 2, y: 690 },  // haut du couloir de retour extérieur (sortie de rampe)
   drainY: H + 8,
+  // tablier (apron) : plastron noir en V au bas du plateau. Ses deux bras, parallèles aux flippers au repos,
+  // laissent 31 mm (un peu plus qu'une bille) sous l'arrière des flippers et ramènent les billes des couloirs
+  // extérieurs vers le trou d'évacuation, au centre ; il cache le bac et l'autolanceur. Lèvre de 20 mm.
+  // Dans le couloir de lancement, son bord est sous la bille au repos (lane).
+  apron: { side: 846, front: 964, half: 42, lane: 1000, lip: 20, trou: [70, 34] },
   cities: ['Marseille', 'Paris', 'Londres', 'New York', 'Tokyo', 'Rio', 'Sydney'],
 };
 
@@ -361,7 +378,8 @@ export function buildTable(engine) {
     }
     // contour unique de la pièce (en U autour du couloir), dessiné avec des coins arrondis ;
     // arrondis aussi dans la physique aux deux coins saillants
-    GEO.bouchonPiece = [[-2, 312], roofR, Q(R.T, -wr), Q(R.M, -wr), P(L.M, w), P(L.B, w, 14),
+    // côté rampe, la pièce s'arrête à la face extérieure de la paroi gauche de l'entrée (pièce à part)
+    GEO.bouchonPiece = [[-2, 312], roofR, Q(R.T, -wr - 3), Q(R.M, -wr - 3), P(L.M, w), P(L.B, w, 14),
       P(L.B, -w, 14), P(L.M, -w), [-2, 478]];
     // cercle inscrit dans le coin (tangent aux deux faces) : centré sur le coin, il dépassait du toit
     // et formait un petit barrage où la bille s'arrêtait (lâcher en grille du 20/11)
@@ -403,14 +421,21 @@ export function buildTable(engine) {
     const P = (base, k) => [base.x + r.v.x * k, base.y + r.v.y * k];
     T.walls.push(add(seg(...P(r.M, -w), ...P(r.T, -w), 6)));
     T.walls.push(add(seg(...P(r.M, w), ...P(r.T, w), 6)));
-    // toit en pointe : aucune surface plate tournée vers le haut, la bille ne peut pas s'y poser
-    const peak = [r.T.x + r.u.x * 16, r.T.y + r.u.y * 16];
-    T.walls.push(add(seg(...P(r.T, -w), ...peak, 6)));
-    T.walls.push(add(seg(...peak, ...P(r.T, w), 6)));
+    // fond ouvert : la rampe part de la bouche et prolonge le couloir ; derrière T, le bloc du bouchon ferme
+    // le plan (la bille y est déjà sur la rampe). Enseigne en plastique posée sur les deux parois, à la bouche.
+    const E = (k, a) => [r.M.x + r.v.x * k + r.u.x * a, r.M.y + r.v.y * k + r.u.y * a];
+    GEO.enseigneRampe = [E(-w - 3, -4), E(w + 3, -4), E(w + 3, 16), E(-w - 3, 16)];
     T.rampSensors.push(add(Bodies.rectangle(r.sensor.x, r.sensor.y, r.half * 2 - 6, 14, {
       isStatic: true, isSensor: true, angle: Math.atan2(r.v.y, r.v.x), label: 'rampEntry',
       plugin: { side: r.side, u: r.u },
     })));
+  }
+
+  // --- bras du tablier : leur face suit le bord avant du tablier
+  const ap = GEO.apron;
+  for (const [a, b] of [[[0, ap.side], [CX - ap.half, ap.front]], [[CX + ap.half, ap.front], [PLAY_R, ap.side]]]) {
+    const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), nx = -dy / l * 3, ny = dx / l * 3;
+    T.walls.push(add(seg(a[0] + nx, a[1] + ny, b[0] + nx, b[1] + ny, 6, { restitution: 0.2, label: 'apron', plugin: { hidden: true } })));
   }
 
   // --- évacuation

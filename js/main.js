@@ -9,6 +9,7 @@ const canvas = document.getElementById('table');
 const view3dEl = document.getElementById('view3d');
 const viewBtn = document.getElementById('view');
 const camBtn = document.getElementById('camera');
+const lockBtn = document.getElementById('verrou');
 const playfieldEl = document.getElementById('playfield');
 const dispScore = document.getElementById('disp-score');
 const dispInfo = document.getElementById('disp-info');
@@ -52,6 +53,13 @@ function viewLabel() {
   viewBtn.textContent = !mode3d ? 'Vue : 2D' : renderer3d.light ? 'Vue : 3D légère' : 'Vue : 3D';
   camBtn.hidden = !mode3d;
   if (mode3d) camBtn.textContent = `Caméra : ${renderer3d.cameraNom}`;
+  // vue machine : on choisit l'angle et le zoom, puis on verrouille pour jouer
+  lockBtn.hidden = !mode3d || !renderer3d.enMachine;
+  if (!lockBtn.hidden) {
+    const v = renderer3d.vueMachine?.verrou;
+    lockBtn.textContent = v ? 'Déverrouiller la vue' : 'Verrouiller la vue';
+    lockBtn.classList.toggle('actif', !!v);
+  }
 }
 // bouton Vue / touche V : 2D → 3D → 3D légère → 2D
 function nextView() {
@@ -129,6 +137,7 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyM') muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui';
   if (e.code === 'KeyV') nextView();
   if (e.code === 'KeyK' && mode3d) { renderer3d.cycleCamera(); viewLabel(); }
+  if (e.code === 'KeyL' && mode3d && renderer3d.enMachine) { renderer3d.basculerVerrou(); viewLabel(); }
 });
 window.addEventListener('keyup', (e) => {
   if (KEYS.left.includes(e.code)) setFlipper('L', false);
@@ -146,6 +155,12 @@ function toTable(e) {
 for (const el of [canvas, view3dEl]) el.addEventListener('pointerdown', (e) => {
   unlockAudio(); audioReady = true;
   el.setPointerCapture(e.pointerId);
+  // caméra « tour » ou vue machine déverrouillée : glisser fait tourner la vue (le jeu reste au clavier)
+  if (mode3d && renderer3d.pilotable) {
+    pointeurs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointeurs.size === 1) renderer3d.tourDown(e.clientX, e.clientY); else renderer3d.tourUp();
+    e.preventDefault(); return;
+  }
   const { x, y } = toTable(e);
   if (rules.mode === 'attract' || rules.mode === 'over') { pressStart(); return; }
   let what;
@@ -162,10 +177,37 @@ const release = (e) => {
   }
 };
 for (const el of [canvas, view3dEl]) { el.addEventListener('pointerup', release); el.addEventListener('pointercancel', release); }
+// pilotage de la caméra : un doigt tourne, deux doigts pincent pour zoomer
+const pointeurs = new Map();
+const ecart = () => { const [a, b] = [...pointeurs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+view3dEl.addEventListener('pointermove', (e) => {
+  if (!renderer3d?.pilotable || !pointeurs.has(e.pointerId)) return;
+  if (pointeurs.size === 2) {
+    const avant = ecart();
+    pointeurs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (avant > 0) renderer3d.zoomer(avant / ecart());
+  } else {
+    pointeurs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    renderer3d.tourMove(e.clientX, e.clientY);
+  }
+});
+for (const t of ['pointerup', 'pointercancel']) view3dEl.addEventListener(t, (e) => {
+  pointeurs.delete(e.pointerId);
+  if (!renderer3d) return;
+  renderer3d.tourUp();
+  const [reste] = pointeurs.values();
+  if (reste) renderer3d.tourDown(reste.x, reste.y);
+});
+view3dEl.addEventListener('wheel', (e) => {
+  if (!mode3d || !renderer3d.pilotable) return;
+  renderer3d.tourZoom(e.deltaY);
+  e.preventDefault();
+}, { passive: false });
 
 startBtn.addEventListener('click', () => { pressStart(); startBtn.blur(); });
 viewBtn.addEventListener('click', () => { nextView(); viewBtn.blur(); });
 camBtn.addEventListener('click', () => { renderer3d.cycleCamera(); viewLabel(); camBtn.blur(); });
+lockBtn.addEventListener('click', () => { renderer3d.basculerVerrou(); viewLabel(); lockBtn.blur(); });
 muteBtn.addEventListener('click', () => { unlockAudio(); audioReady = true; muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui'; muteBtn.blur(); });
 
 // ------------------------------------------------------------ mise en page

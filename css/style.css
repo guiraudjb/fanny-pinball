@@ -26,6 +26,7 @@ body { overscroll-behavior: none; }
 button { font: inherit; font-weight: 700; padding: 8px 14px; border-radius: 6px; cursor: pointer;
   border: 2px solid var(--accent); background: var(--panel); color: var(--ink); }
 button#start { background: var(--red); border-color: #ffb3a8; }
+button.actif { background: var(--accent); color: var(--panel); }
 button:hover { filter: brightness(1.15); }
 .help { color: var(--muted); font-size: 13px; }
 .help summary { cursor: pointer; color: var(--ink); }

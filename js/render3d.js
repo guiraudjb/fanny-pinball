@@ -6,20 +6,74 @@
 // exactement les coordonnées du jeu. Le groupe est incliné de la pente du plateau.
 
 import * as THREE from '../vendor/three.module.min.js';
-import { W, H, GEO, BALL_R, pointAt } from './table.js';
-import { Renderer, LAMP_LAYOUT } from './render.js';
+import { W, H, CX, GEO, BALL_R, pointAt } from './table.js';
+import { Renderer, LAMP_LAYOUT, COLORS, drawApron } from './render.js';
+import { drawSegDisplay } from './segfont.js';
 
 const PENTE = (6.5 * Math.PI) / 180;      // pente du plateau (cao/cotes.py)
 const H_PAROI = 32;                        // parois et guides imprimés
 const RAMPE = { z: 62, pente: Math.tan((14 * Math.PI) / 180), desc: 300, larg: 39, flanc: 25 };
 const TEX = 2;                             // résolution des textures peintes (px par mm)
-const APRON_Y = 975;                       // au-delà, la bille est sous le tablier
+// la bille passe sous le tablier quand son centre dépasse le bord avant (bras en V, GEO.apron)
+function sousTablier(x, y) {
+  const a = GEO.apron;
+  const bord = x < CX - a.half ? a.side + (a.front - a.side) * (x / (CX - a.half))
+    : x >= GEO.playRight ? a.lane
+    : x > CX + a.half ? a.side + (a.front - a.side) * ((GEO.playRight - x) / (GEO.playRight - CX - a.half)) : a.front;
+  return y > bord - 4;
+}
+const Z_CAOUT = BALL_R;                    // les caoutchoucs sont à hauteur du centre de la bille (cao/cotes.py)
+const CORDE_PALETTE = 4;                   // section du caoutchouc de palette ; sa face extérieure = contour de rebond
+const DROP = { l: 22.5, e: 8.1, h: 33, r: 6, lumiere: [23.5, 9] };   // lame de cible tombante (cao/cotes.py, CIBLES)
+
+// contour d'une palette (repère de la palette au repos, comme flipperBody de table.js), rayons ra au pivot, rb à la pointe
+function contourPalette(f, ra, rb) {
+  const sgn = f.side === 'L' ? 1 : -1, pts = [];
+  for (let i = 0; i <= 12; i++) { const a = -Math.PI / 2 + (Math.PI * i) / 12; pts.push([f.len + Math.cos(a) * rb, Math.sin(a) * rb]); }
+  for (let i = 0; i <= 16; i++) { const a = Math.PI / 2 + (Math.PI * i) / 16; pts.push([Math.cos(a) * ra, Math.sin(a) * ra]); }
+  const c = Math.cos(f.rest), s = Math.sin(f.rest);
+  return pts.map(([x, y]) => [x * sgn * c - y * s, x * sgn * s + y * c]);
+}
+
+// corde de caoutchouc fermée (tube) le long d'un contour du plateau, à la hauteur z
+function corde(pts, rayon, z, material, seg = 120) {
+  const courbe = new THREE.CatmullRomCurve3(pts.map(([x, y]) => new THREE.Vector3(x, y, -z)), true, 'centripetal');
+  const m = new THREE.Mesh(new THREE.TubeGeometry(courbe, seg, rayon, 10, true), material);
+  m.castShadow = true;
+  return m;
+}
+
+// ligne moyenne d'un anneau tendu autour de poteaux (enveloppe convexe des cercles de rayon rc) ; « bombe » pousse
+// le milieu d'un côté vers l'extérieur (bras du lance-pierre)
+function enveloppe(posts, rc, bombe = null) {
+  let aire = 0;
+  posts.forEach(([x, y], i) => { const [x2, y2] = posts[(i + 1) % posts.length]; aire += x * y2 - x2 * y; });
+  const P = aire > 0 ? posts : [...posts].reverse(), n = P.length, out = [];
+  const normale = (a, b) => { const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy); return Math.atan2(-dx / l, dy / l); };
+  for (let i = 0; i < n; i++) {
+    const a0 = normale(P[(i - 1 + n) % n], P[i]);
+    let a1 = normale(P[i], P[(i + 1) % n]);
+    while (a1 < a0) a1 += 2 * Math.PI;
+    for (let k = 0; k <= 6; k++) { const a = a0 + ((a1 - a0) * k) / 6; out.push([P[i][0] + rc * Math.cos(a), P[i][1] + rc * Math.sin(a)]); }
+    const Q = P[(i + 1) % n], na = a1;
+    const A = [P[i][0] + rc * Math.cos(na), P[i][1] + rc * Math.sin(na)], B = [Q[0] + rc * Math.cos(na), Q[1] + rc * Math.sin(na)];
+    const face = bombe && ((P[i] === bombe.A && Q === bombe.C) || (P[i] === bombe.C && Q === bombe.A));
+    for (let k = 1; k < 8; k++) {
+      const t = k / 8, d = face ? bombe.d * 4 * t * (1 - t) : 0;
+      out.push([A[0] + (B[0] - A[0]) * t + Math.cos(na) * d, A[1] + (B[1] - A[1]) * t + Math.sin(na) * d]);
+    }
+  }
+  return out;
+}
 // points de vue : élévation de la caméra au-dessus de l'horizontale, champ vertical
 export const CAMERAS = [
   { nom: 'joueur', elev: 38, fov: 32 },       // à la place du joueur, comme la vue « bureau » de Visual Pinball
   { nom: 'haute', elev: 55, fov: 32 },
   { nom: 'plateau', elev: 80, fov: 28 },      // presque de dessus : écrans verticaux, téléphones
+  { nom: 'machine', elev: 16, fov: 30, machine: true },   // tout le flipper ; angle et zoom au choix, puis vue verrouillée pour jouer
+  { nom: 'tour', elev: 20, fov: 30, tour: true },         // tour de la machine, angles variés ; glisser / molette pour la piloter
 ];
+const TOUR = { tour_s: 48, elev_s: 31, zoom_s: 19, elevMin: 6, elevMax: 55, reprise_ms: 5000 };
 const lire = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const ecrire = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
@@ -28,6 +82,22 @@ function zRampe(s, L) {
   const montee = Math.min(RAMPE.z, s * RAMPE.pente);
   if (s > L - RAMPE.desc) return Math.max(3, Math.min(montee, (RAMPE.z * (L - s)) / RAMPE.desc + 3));
   return montee;
+}
+
+// Enseigne de l'entrée de rampe (plastique de la CAO, posé sur les deux parois) : bandeau bleu nuit,
+// filet jaune, « ESCALE » lisible depuis les palettes. pts : coins dans l'ordre, le premier côté le long de la bouche.
+function enseigne(g, pts) {
+  const [a, b, , d] = pts;
+  const cx = pts.reduce((t, p) => t + p[0], 0) / 4, cy = pts.reduce((t, p) => t + p[1], 0) / 4;
+  const l = Math.hypot(b[0] - a[0], b[1] - a[1]), h = Math.hypot(d[0] - a[0], d[1] - a[1]);
+  g.save();
+  g.translate(cx, cy); g.rotate(Math.atan2(b[1] - a[1], b[0] - a[0]));
+  g.fillStyle = '#1f2a6b'; g.fillRect(-l / 2 - 3, -h / 2 - 3, l + 6, h + 6);
+  g.strokeStyle = '#ffd23f'; g.lineWidth = 1.4; g.strokeRect(-l / 2 + 2.5, -h / 2 + 2.5, l - 5, h - 5);
+  g.font = 'italic 900 10px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineJoin = 'round'; g.lineWidth = 2.6; g.strokeStyle = '#e8392c'; g.strokeText('★ ESCALE ★', 0, 0.8);
+  g.fillStyle = '#ffffff'; g.fillText('★ ESCALE ★', 0, 0.8);
+  g.restore();
 }
 
 // Mesh extrudé d'un contour du jeu, posé sur le plateau, de hauteur h (z de −h à 0)
@@ -81,7 +151,7 @@ export class Renderer3D {
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#170d07');
-    this.camera = new THREE.PerspectiveCamera(34, 0.7, 10, 6000);
+    this.camera = new THREE.PerspectiveCamera(34, 0.7, 10, 12000);
 
     // plateau incliné, puis repère de la table
     this.tilt = new THREE.Group();
@@ -113,7 +183,9 @@ export class Renderer3D {
     this.onQualite = null;                       // rappel quand la qualité change d'elle-même
     this.applyQuality();
     this.loadCAO();
+    this.loadCaisse();
     this.lastFloorKey = '';
+    this.lastDisp = '';
   }
 
   // ------------------------------------------------------------ lumière et matières
@@ -154,6 +226,7 @@ export class Renderer3D {
       chrome: new THREE.MeshStandardMaterial({ color: 0xd9dde3, metalness: 1, roughness: 0.22, envMapIntensity: 1.6 }),
       steel: new THREE.MeshStandardMaterial({ color: 0xffffff, metalness: 1, roughness: 0.1, envMapIntensity: 2.6 }),
       rubber: new THREE.MeshStandardMaterial({ color: 0xf4f1ea, roughness: 0.75 }),
+      rubberNoir: new THREE.MeshStandardMaterial({ color: 0x17171a, roughness: 0.7 }),
       redRubber: new THREE.MeshStandardMaterial({ color: 0xd8342a, roughness: 0.6 }),
       flipper: new THREE.MeshStandardMaterial({ color: 0xfbfbf8, roughness: 0.35 }),
       wood: new THREE.MeshStandardMaterial({ color: 0x4a2c18, roughness: 0.7 }),
@@ -222,14 +295,16 @@ export class Renderer3D {
     });
   }
 
-  // caisse en bois autour du plateau et barre de verrouillage
+  // caisse en bois autour du plateau et barre de verrouillage, en attendant la caisse de la CAO (loadCaisse)
   buildCabinet() {
+    this.caisseProvisoire = [];
     const box = (x0, y0, x1, y1, z0, z1, m) => {
       const g = new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0);
       const mesh = new THREE.Mesh(g, m);
       mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, -(z0 + z1) / 2);
       mesh.castShadow = true; mesh.receiveShadow = true;
       this.table.add(mesh);
+      this.caisseProvisoire.push(mesh);
     };
     const E = 20;
     box(-E, -E, 0, H + E, -40, 95, this.mat.wood);
@@ -243,7 +318,9 @@ export class Renderer3D {
     const pts = [[0, 0], [W, 0], [W, cy]];
     for (let i = 0; i <= 48; i++) { const a = -(Math.PI * i) / 48; pts.push([cx + rx * Math.cos(a), cy + ry * Math.sin(a)]); }
     pts.push([0, cy]);
-    this.table.add(extrude(pts, 40, this.mat.wood));
+    const coins = extrude(pts, 40, this.mat.wood);
+    this.table.add(coins);
+    this.caisseProvisoire.push(coins);
   }
 
   // ------------------------------------------------------------ pièces fixes
@@ -259,6 +336,7 @@ export class Renderer3D {
     for (const b of T.walls) if (b.plugin && b.plugin.housing) plastics.push(b.vertices.map((v) => [v.x, v.y]));
     for (const p of plastics) pr.plastic(p, 6);
     T.slings.forEach((b) => pr.plastic(b.vertices.map((v) => [v.x, v.y]), 5));
+    if (GEO.enseigneRampe) enseigne(pr.ctx, GEO.enseigneRampe);
     const tex = canvasTexture(cv);
     tex.repeat.set(1 / W, -1 / H);
     tex.offset.set(0, 1);
@@ -272,6 +350,7 @@ export class Renderer3D {
     for (const p of plastics) prov(extrude(p, H_PAROI, plasticMat), p);
 
     // parois et poteaux
+    this.anneauxProvisoires = [];
     for (const b of T.walls) {
       if (b.plugin && (b.plugin.hidden || b.plugin.housing)) continue;
       if (b.circleRadius) {
@@ -280,6 +359,7 @@ export class Renderer3D {
         ring.position.set(b.position.x, b.position.y, -14);
         ring.castShadow = true;
         this.table.add(ring);
+        this.anneauxProvisoires.push(ring);              // remplacés par les anneaux de la CAO (loadCAO)
       } else {
         const pts = b.vertices.map((v) => [v.x, v.y]);
         prov(extrude(pts, H_PAROI, this.mat.chrome), [cen(pts), ...pts]);
@@ -301,6 +381,7 @@ export class Renderer3D {
       this.table.add(band);
       for (const p of [A, C]) prov(cylinder(3.5, H_PAROI + 2, this.mat.chrome, p[0], p[1]), [p]);
       band.userData.sp = this.glow(0xfff0b0, 70, (A[0] + C[0]) / 2, (A[1] + C[1]) / 2, 16);
+      this.anneauxProvisoires.push(band);
       return band;
     });
 
@@ -329,6 +410,7 @@ export class Renderer3D {
     });
 
     // cibles fixes (cochonnets en bois peint)
+    this.ciblesProvisoires = {};
     T.standups.forEach((b) => {
       const jack = b.plugin.id === 'bouchon';
       const m = new THREE.Mesh(new THREE.SphereGeometry(b.circleRadius, 24, 16),
@@ -336,6 +418,7 @@ export class Renderer3D {
       m.position.set(b.position.x, b.position.y, -b.circleRadius);
       m.castShadow = true;
       this.table.add(m);
+      this.ciblesProvisoires[b.plugin.id] = m;           // remplacée par la cible de la CAO (boîtier + face pendulaire)
     });
 
     // cibles rondes du mur gauche : disques numérotés, face vers le plateau
@@ -352,8 +435,18 @@ export class Renderer3D {
       m.position.set(t.x, t.y, -t.r - 3);
       m.castShadow = true;
       this.table.add(m);
+      this.ciblesProvisoires[t.id] = m;
       return face;
     });
+    this.numeroCible = (i) => {                          // face numérotée des cibles rondes (pièces de la CAO)
+      const c = document.createElement('canvas'); c.width = c.height = 128;
+      const g = c.getContext('2d');
+      g.fillStyle = '#f7f2e8'; g.fillRect(0, 0, 128, 128);
+      g.strokeStyle = '#1f4e8c'; g.lineWidth = 8; g.beginPath(); g.arc(64, 64, 56, 0, 2 * Math.PI); g.stroke();
+      g.fillStyle = '#1f4e8c'; g.font = 'bold 78px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(String(i + 1), 64, 68);
+      return canvasTexture(c);
+    };
   }
 
   // ------------------------------------------------------------ pièces mobiles
@@ -362,8 +455,11 @@ export class Renderer3D {
     // flippers : contour du corps Matter.js autour de l'axe, tourné à chaque image
     this.flippers = T.flippers.map((fl) => {
       const { px, py } = fl.def;
-      const pts = fl.body.vertices.map((v) => [v.x - px, v.y - py]);
-      const m = extrude(pts, 20, [this.mat.flipper, this.mat.redRubber], 3);
+      // palette : corps en plastique dans le contour réduit de la corde, caoutchouc rouge tendu dans sa gorge ;
+      // la face extérieure du caoutchouc est le contour de rebond du jeu
+      const f = fl.def, c = CORDE_PALETTE;
+      const m = extrude(contourPalette(f, f.r1 - c + 0.6, f.r2 - c + 0.6), 21, this.mat.flipper, 2);
+      m.add(corde(contourPalette(f, f.r1 - c / 2, f.r2 - c / 2), c / 2, Z_CAOUT, this.mat.redRubber, 90));
       m.position.set(px, py, 0);
       const axe = cylinder(5, 24, this.mat.chrome, 0, 0, 2);
       m.add(axe);
@@ -379,12 +475,28 @@ export class Renderer3D {
       g.fillStyle = '#f7f2e8'; g.fillRect(0, 0, 96, 64);
       g.fillStyle = '#1f4e8c'; g.font = 'bold 44px system-ui'; g.textAlign = 'center'; g.textBaseline = 'middle';
       g.fillText(d.letter, 48, 36);
-      const mat = new THREE.MeshStandardMaterial({ map: canvasTexture(c), roughness: 0.4 });
-      const m = new THREE.Mesh(new THREE.BoxGeometry(d.w, d.h, 30), mat);
-      m.position.set(d.x, d.y, -15);
-      m.rotation.z = d.angle;
+      // lame : coins hauts arrondis, décalque de la lettre sur la face ; elle s'enfonce dans sa lumière quand elle tombe
+      const tex = canvasTexture(c);
+      tex.repeat.set(1 / DROP.l, 1 / DROP.h); tex.offset.set(0.5, 0);
+      const sh = new THREE.Shape(), { l, h, r, e } = DROP;
+      sh.moveTo(-l / 2, -2); sh.lineTo(l / 2, -2); sh.lineTo(l / 2, h - r);
+      sh.absarc(l / 2 - r, h - r, r, 0, Math.PI / 2, false); sh.lineTo(-l / 2 + r, h);
+      sh.absarc(-l / 2 + r, h - r, r, Math.PI / 2, Math.PI, false); sh.lineTo(-l / 2, -2);
+      const geo = new THREE.ExtrudeGeometry(sh, { depth: e, bevelEnabled: true, bevelSize: 0.6, bevelThickness: 0.6, bevelSegments: 2, curveSegments: 8 });
+      geo.translate(0, 0, -e / 2);
+      geo.rotateX(-Math.PI / 2);                 // hauteur → −z (vers le haut), épaisseur → y
+      geo.rotateZ(d.angle);
+      const m = new THREE.Mesh(geo, [new THREE.MeshStandardMaterial({ map: tex, roughness: 0.35 }),
+        new THREE.MeshStandardMaterial({ color: 0xf7f2e8, roughness: 0.35 })]);
+      m.position.set(d.x, d.y, 0);
       m.castShadow = true;
+      m.userData.z = 0;
       this.table.add(m);
+      // lumière dans le plateau, visible quand la cible est tombée
+      const lu = new THREE.Mesh(new THREE.PlaneGeometry(DROP.lumiere[0], DROP.lumiere[1]), new THREE.MeshBasicMaterial({ color: 0x050403 }));
+      lu.rotation.set(Math.PI, 0, -d.angle);
+      lu.position.set(d.x, d.y, -0.25);
+      this.table.add(lu);
       return m;
     });
 
@@ -526,15 +638,15 @@ export class Renderer3D {
   // ------------------------------------------------------------ pièces de la CAO
   // assets/cao/pieces.glb (outils/cao_web.py) : glTF binaire minimal, lu ici sans chargeur externe.
   // Chaque pièce remplace les volumes provisoires dont le centre tombe dans son contour au ras du plateau.
-  async loadCAO() {
+  async lireGLB(url) {
     let buf;
     try {
-      const r = await fetch('assets/cao/pieces.glb');
-      if (!r.ok) return;
+      const r = await fetch(url);
+      if (!r.ok) return null;
       buf = await r.arrayBuffer();
-    } catch { return; }
+    } catch { return null; }
     const dv = new DataView(buf);
-    if (dv.getUint32(0, true) !== 0x46546c67) return;
+    if (dv.getUint32(0, true) !== 0x46546c67) return null;
     const jlen = dv.getUint32(12, true);
     const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, jlen)));
     const bin = 20 + jlen + 8;
@@ -544,11 +656,29 @@ export class Renderer3D {
       const T = { 5126: Float32Array, 5123: Uint16Array, 5125: Uint32Array }[acc.componentType];
       return new T(buf.slice(bin + v.byteOffset, bin + v.byteOffset + n * T.BYTES_PER_ELEMENT));
     };
+    return { gltf, lire };
+  }
+
+  async loadCAO() {
+    const glb = await this.lireGLB('assets/cao/pieces.glb');
+    if (!glb) return;
+    const { gltf, lire } = glb;
     const blanc = new THREE.MeshStandardMaterial({ color: 0xf3efe6, roughness: 0.35, flatShading: true });
     const chrome = this.mat.chrome.clone(); chrome.flatShading = true;
-    const tablierCote = new THREE.MeshStandardMaterial({ color: 0x16294a, roughness: 0.5, flatShading: true });
-    const tablierDessus = new THREE.MeshStandardMaterial({ map: this.floorTex, roughness: 0.45, flatShading: true });
+    // tablier : plastique noir satiné, cartes d'instructions peintes sur le dessus (drawApron de render.js)
+    const TY0 = GEO.apron.side - 10, ta = document.createElement('canvas');
+    ta.width = 2048; ta.height = Math.round((2048 * (H - TY0)) / W);
+    const tg = ta.getContext('2d');
+    tg.setTransform(ta.width / W, 0, 0, ta.width / W, 0, (-TY0 * ta.width) / W);
+    drawApron(tg);
+    const texTablier = canvasTexture(ta);
+    texTablier.anisotropy = this.gl.capabilities.getMaxAnisotropy();
+    const tablierCote = new THREE.MeshPhysicalMaterial({ color: 0x0e0e11, roughness: 0.4, clearcoat: 0.4, clearcoatRoughness: 0.3 });
+    const tablierDessus = new THREE.MeshPhysicalMaterial({ map: texTablier, roughness: 0.45, clearcoat: 0.3, clearcoatRoughness: 0.35 });
     const plastCote = this.mat.plasticSide.clone(); plastCote.flatShading = true;
+    const boitierCible = new THREE.MeshStandardMaterial({ color: 0x24242b, roughness: 0.5, flatShading: true });
+    this.faces = [];
+    this.anneaux(gltf.scenes[0].extras?.anneaux);
     const contours = [];
     for (const node of gltf.nodes) {
       const { categorie, contour } = node.extras;
@@ -557,6 +687,7 @@ export class Renderer3D {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       let mat;
+      if (categorie === 'face') { this.faceCible(node, geo, pos, idx); continue; }
       if (categorie === 'plastique' || categorie === 'tablier') {
         // dessus (faces tournées vers le haut) : décor ; le reste : chant
         const dessus = [], cotes = [];
@@ -574,18 +705,18 @@ export class Renderer3D {
         const uv = new Float32Array((pos.length / 3) * 2);
         for (let i = 0; i < pos.length / 3; i++) {
           const x = pos[3 * i], y = pos[3 * i + 1];
-          if (categorie === 'tablier') { uv[2 * i] = x / W; uv[2 * i + 1] = 1 - y / H; } else { uv[2 * i] = x; uv[2 * i + 1] = y; }
+          if (categorie === 'tablier') { uv[2 * i] = x / W; uv[2 * i + 1] = 1 - (y - TY0) / (H - TY0); } else { uv[2 * i] = x; uv[2 * i + 1] = y; }
         }
         geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
         mat = categorie === 'tablier' ? [tablierDessus, tablierCote] : [this.plasticTop, plastCote];
       } else {
         geo.setIndex(new THREE.BufferAttribute(idx, 1));
-        mat = categorie === 'poteau' ? blanc : chrome;
+        mat = categorie === 'poteau' ? blanc : categorie === 'cible' ? boitierCible : chrome;
       }
       geo.computeVertexNormals();
       const m = new THREE.Mesh(geo, mat);
       m.name = node.name;
-      m.castShadow = categorie !== 'tablier';
+      m.castShadow = true;
       m.receiveShadow = true;
       this.table.add(m);
       for (const poly of contour) if (poly.length > 2) contours.push(poly);
@@ -614,8 +745,293 @@ export class Renderer3D {
       const ok = p.support ? supportsCAO : p.pts.filter(couvert).length * 2 > p.pts.length;
       if (ok) { p.mesh.visible = false; caches++; }
     }
+    for (const f of this.faces) if (this.ciblesProvisoires[f.id]) this.ciblesProvisoires[f.id].visible = false;
     this.cao = { pieces: gltf.nodes.length, caches, restants: this.provisoire.length - caches };
     this.envDirty = true;
+  }
+
+  // caoutchoucs de la CAO (scène de pieces.glb) : mini-anneaux des poteaux d'entrée des couloirs, anneaux des
+  // lance-pierres tendus autour de leurs 3 poteaux (deux formes : au repos, et poussé par le bras au choc)
+  anneaux(liste) {
+    if (!liste) return;
+    let slingIdx = 0;
+    for (const a of liste) {
+      if (a.type === 'poteau') {
+        const t = new THREE.Mesh(new THREE.TorusGeometry(a.r + a.cord / 2, a.cord / 2, 10, 32), this.mat.rubberNoir);
+        t.position.set(a.x, a.y, -a.z);
+        t.castShadow = true;
+        this.table.add(t);
+      } else {
+        const posts = a.poteaux, rc = a.r + a.cord / 2;
+        const bombe = { A: posts[a.face[0]], C: posts[a.face[1]], d: 6 };
+        const geos = [enveloppe(posts, rc), enveloppe(posts, rc, bombe)].map((pts) => corde(pts, a.cord / 2, a.z, null, 140).geometry);
+        const old = this.slings[slingIdx];
+        const m = new THREE.Mesh(geos[0], this.mat.rubber.clone());
+        m.castShadow = true;
+        m.userData = { sp: old.userData.sp, geos };
+        this.table.add(m);
+        this.slings[slingIdx++] = m;
+      }
+    }
+    for (const m of this.anneauxProvisoires) m.visible = false;
+  }
+
+  // face pendulaire d'une cible fixe : maillage de la CAO, accroché à son axe pour basculer au choc
+  faceCible(node, geo, pos, tris) {
+    const ex = node.extras, id = ex.cible;
+    const axe = new THREE.Vector3(...ex.axe), t = new THREE.Vector3(ex.axe_dir[0], ex.axe_dir[1], 0).normalize();
+    const n = new THREE.Vector2(ex.n[0], ex.n[1]);
+    const cx = ex.axe[0] - n.x * ex.u_axe, cy = ex.axe[1] - n.y * ex.u_axe;     // centre de la face
+    const uv = new Float32Array((pos.length / 3) * 2);
+    for (let i = 0; i < pos.length / 3; i++) {
+      const dx = pos[3 * i] - cx, dy = pos[3 * i + 1] - cy;
+      uv[2 * i] = 0.5 - (dx * t.x + dy * t.y) / (2 * ex.r);
+      uv[2 * i + 1] = 0.5 + (-pos[3 * i + 2] - ex.zc) / (2 * ex.r);
+    }
+    geo.setIndex(new THREE.BufferAttribute(tris, 1));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    geo.computeVertexNormals();
+    geo.translate(-axe.x, -axe.y, -axe.z);
+    const ronde = id.startsWith('boule');
+    const idx = ronde ? Number(id.slice(5)) - 1 : GEO.standups.findIndex((s) => s.id === id);
+    let mat;
+    if (ronde) {
+      mat = new THREE.MeshStandardMaterial({ map: this.numeroCible(idx), roughness: 0.4, emissive: 0xff3fa4, emissiveIntensity: 0, flatShading: true });
+      this.leftTargets[idx] = mat;                  // l'allumage de la lampe passe par cette matière
+    } else {
+      const c = document.createElement('canvas'); c.width = c.height = 128;
+      const g = c.getContext('2d');
+      const rg = g.createRadialGradient(48, 44, 6, 64, 64, 64);     // cochonnet en bois peint, vu de face
+      const coul = id === 'bouchon' ? ['#ff8a70', '#e8392c', '#7a1410'] : ['#ffc27a', '#d9822b', '#6b3a10'];
+      rg.addColorStop(0, coul[0]); rg.addColorStop(0.55, coul[1]); rg.addColorStop(1, coul[2]);
+      g.fillStyle = rg; g.fillRect(0, 0, 128, 128);
+      mat = new THREE.MeshStandardMaterial({ map: canvasTexture(c), roughness: 0.45, flatShading: true });
+    }
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = true;
+    const pivot = new THREE.Group();
+    pivot.position.copy(axe);
+    pivot.add(m);
+    this.table.add(pivot);
+    // sens de bascule : le bas de la face doit reculer (à l'opposé de la bille)
+    const bas = new THREE.Vector3(cx, cy, -ex.zc).sub(axe).applyAxisAngle(t, 0.2).add(axe);
+    const signe = (bas.x - cx) * n.x + (bas.y - cy) * n.y < 0 ? 1 : -1;
+    this.faces.push({ id, pivot, axe: t, signe, flash: ronde ? `target${idx}` : `standup${idx}` });
+  }
+
+  // ------------------------------------------------------------ caisse et fronton de la CAO
+  // assets/cao/caisse.glb (outils/cao_web.py) : panneaux de la caisse WPC, pieds et barre de verrouillage, dans le
+  // repère de la caisse (X largeur, Y vers l'arrière depuis la façade, Z vers le haut). La scène donne la place du
+  // plateau : le groupe this.machine ramène ce repère sur celui de la table. Le fronton reçoit ici sa vitre
+  // décorée et les afficheurs du score (mêmes TM1637 que la réplique).
+  async loadCaisse() {
+    const glb = await this.lireGLB('assets/cao/caisse.glb');
+    if (!glb) return;
+    const { gltf, lire } = glb;
+    const ex = gltf.scenes[0].extras;
+    const { plateau: pf, caisse: cs, fronton: fr } = ex;
+    // table → caisse : retournement (y vers l'arrière, z vers le haut), pente, puis place du plateau
+    const versCaisse = new THREE.Matrix4().makeTranslation(pf.x, pf.y, pf.z)
+      .multiply(new THREE.Matrix4().makeRotationX((pf.pente_deg * Math.PI) / 180))
+      .multiply(new THREE.Matrix4().makeRotationX(Math.PI))
+      .multiply(new THREE.Matrix4().makeTranslation(0, -H, 0));
+    const machine = new THREE.Group();
+    machine.matrixAutoUpdate = false;
+    machine.matrix.copy(versCaisse.invert());
+    this.table.add(machine);
+
+    const bois = this.mat.wood.clone(); bois.flatShading = true;
+    const chrome = this.mat.chrome.clone(); chrome.flatShading = true;
+    // pieds en acier thermolaqué noir satiné (une peinture : pas de reflet métallique) ; boulons, platines et vérins zingués
+    const thermolaque = new THREE.MeshPhysicalMaterial({ color: 0x17171a, roughness: 0.5, metalness: 0, clearcoat: 0.3,
+      clearcoatRoughness: 0.35, flatShading: true });
+    const zingue = new THREE.MeshStandardMaterial({ color: 0xc4c8ce, metalness: 1, roughness: 0.35, flatShading: true });
+    const mats = { bois, pied: thermolaque, quincaillerie: zingue, barre: chrome,
+      fronton_fond: new THREE.MeshStandardMaterial({ color: 0x120c08, roughness: 0.9, flatShading: true }) };
+    for (const node of gltf.nodes) {
+      const prim = gltf.meshes[node.mesh].primitives[0];
+      const geo = new THREE.BufferGeometry();
+      const pos = lire(prim.attributes.POSITION);
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setIndex(new THREE.BufferAttribute(lire(prim.indices), 1));
+      let mat = mats[node.extras.categorie] || bois;
+      if (node.extras.categorie === 'rallonge') mat = this.rallonge(geo, pos, machine.matrix, ex.rallonge.h);
+      geo.computeVertexNormals();
+      const m = new THREE.Mesh(geo, mat);
+      m.name = node.name;
+      m.castShadow = m.receiveShadow = true;
+      machine.add(m);
+    }
+
+    // porte du monnayeur, posée sur la découpe de la façade
+    const po = ex.porte;
+    const metal = new THREE.MeshStandardMaterial({ color: 0x202026, metalness: 0.7, roughness: 0.35 });
+    const bloc = (l, p, h, x, y, z, mat) => {
+      const m = new THREE.Mesh(new THREE.BoxGeometry(l, p, h), mat);
+      m.position.set(x, y, z);
+      machine.add(m);
+      return m;
+    };
+    const xc = po.x_gauche + po.l / 2, zc = po.z_bas + po.h / 2;
+    bloc(po.l + 14, 4, po.h + 14, xc, -2, zc, metal);
+    bloc(po.l - 30, 3, po.h - 30, xc, -5, zc, new THREE.MeshStandardMaterial({ color: 0x3b3b44, metalness: 0.8, roughness: 0.3 }));
+    const fente = new THREE.MeshBasicMaterial({ color: 0xff3a20 });
+    for (const dx of [-55, 55]) {
+      bloc(46, 6, 70, xc + dx, -7, zc + 40, metal);
+      bloc(5, 2, 34, xc + dx, -10.5, zc + 40, fente);
+    }
+    // boutons : start et lancer sur la façade, flippers sur les flancs
+    const Y = new THREE.Vector3(0, 1, 0);
+    for (const b of ex.boutons) {
+      const col = b.nom === 'start' ? 0xffd23f : b.nom === 'lancer' ? 0xe8392c : 0xf4f1ea;
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(b.d / 2, b.d / 2, 14, 24),
+        new THREE.MeshStandardMaterial({ color: col, roughness: 0.3 }));
+      const axe = new THREE.Vector3(...b.axe);
+      m.quaternion.setFromUnitVectors(Y, axe);
+      m.position.set(...b.p).addScaledVector(axe, 7);
+      machine.add(m);
+    }
+
+    // façade du fronton, inclinée : vitre décorée en haut, panneau des afficheurs en bas
+    const LG = cs.longueur, E = cs.ep, HAR = cs.h_arriere;
+    const yAt = (z) => LG - fr.p_bas - ((fr.p_haut - fr.p_bas) * (z - HAR)) / fr.h;
+    const zb = HAR + E, zt = HAR + fr.h - E;
+    const A = new THREE.Vector3((cs.largeur - fr.l) / 2 + E, yAt(zb), zb);
+    const up = new THREE.Vector3(0, yAt(zt) - A.y, zt - zb);
+    const hh = up.length(); up.normalize();
+    const ax = new THREE.Vector3(1, 0, 0), nrm = new THREE.Vector3().crossVectors(ax, up);
+    const rot = new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(ax, up, nrm));
+    const w = fr.l - 2 * E;
+    const plan = (v0, ph, mat) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, ph), mat);
+      m.quaternion.copy(rot);
+      m.position.copy(A).addScaledVector(ax, w / 2).addScaledVector(up, v0 + ph / 2).addScaledVector(nrm, -6);
+      machine.add(m);
+      return m;
+    };
+    // vitre rétroéclairée : l'illustration du fronton, sans éclairage de la scène
+    const gh = Math.min(hh * 0.72, (w * 832) / 1216);
+    const vitre = new THREE.MeshBasicMaterial({ color: 0x222222, toneMapped: false });
+    new THREE.TextureLoader().load('assets/fronton.jpg', (t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = this.gl.capabilities.getMaxAnisotropy();
+      vitre.map = t; vitre.color.set(0xffffff); vitre.needsUpdate = true;
+      this.envDirty = true;
+    });
+    plan(hh - gh, gh, vitre);
+    // panneau des afficheurs
+    const ph = hh - gh - 6;
+    const cv = document.createElement('canvas');
+    cv.width = 1024; cv.height = Math.round((1024 * ph) / w);
+    this.afficheurs = { cv, tex: canvasTexture(cv), fond: this.panneauAfficheurs(cv.width, cv.height) };
+    this.afficheurs.tex.anisotropy = this.gl.capabilities.getMaxAnisotropy();
+    plan(0, ph, new THREE.MeshBasicMaterial({ map: this.afficheurs.tex, toneMapped: false }));
+    this.lastDisp = '';
+    // baguette chromée entre la vitre et le panneau
+    const bag = plan(ph, 6, chrome);
+    bag.position.addScaledVector(nrm, 2);
+
+    // sol de la salle, avec une ombre douce sous la machine (l'ombre du soleil ne couvre que le plateau)
+    const sol = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000),
+      new THREE.MeshStandardMaterial({ color: 0x2a1c14, roughness: 0.85 }));
+    sol.position.set(cs.largeur / 2, LG / 2, -ex.h_sol);
+    machine.add(sol);
+    const oc = document.createElement('canvas'); oc.width = oc.height = 128;
+    const og = oc.getContext('2d');
+    const orad = og.createRadialGradient(64, 64, 10, 64, 64, 64);
+    orad.addColorStop(0, 'rgba(0,0,0,0.75)'); orad.addColorStop(1, 'rgba(0,0,0,0)');
+    og.fillStyle = orad; og.fillRect(0, 0, 128, 128);
+    const ombre = new THREE.Mesh(new THREE.PlaneGeometry(cs.largeur * 1.9, LG * 1.35),
+      new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(oc), transparent: true, depthWrite: false }));
+    ombre.position.set(cs.largeur / 2, LG / 2, -ex.h_sol + 1);
+    machine.add(ombre);
+
+    for (const m of this.caisseProvisoire) m.visible = false;
+    this.machine = machine;
+    this.machineBox = { x0: -70, x1: cs.largeur + 70, y0: -20, y1: LG, z0: -ex.h_sol, z1: HAR + fr.h };
+    this.envDirty = true;
+    if (this.cssW && (CAMERAS[this.camIdx]?.machine || this.enTour)) this.fitCamera();
+  }
+
+  // rallonge du plateau (derrière son bord haut, jusqu'au panneau arrière) : dessus peint et verni comme les coins
+  // du plateau, avec le titre du jeu ; chants en contreplaqué. Les UV viennent des coordonnées de la table.
+  rallonge(geo, pos, versTable, h) {
+    const idx = geo.index.array, dessus = [], chants = [];
+    const p = new THREE.Vector3(), n = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    const uv = new Float32Array((pos.length / 3) * 2);
+    for (let i = 0; i < pos.length / 3; i++) {
+      p.fromArray(pos, 3 * i).applyMatrix4(versTable);
+      uv[2 * i] = p.x / W; uv[2 * i + 1] = -p.y / h;           // haut de l'image côté panneau arrière (y = −h)
+    }
+    for (let i = 0; i < idx.length; i += 3) {
+      a.fromArray(pos, 3 * idx[i]); b.fromArray(pos, 3 * idx[i + 1]); c.fromArray(pos, 3 * idx[i + 2]);
+      n.subVectors(b, a).cross(c.clone().sub(a)).normalize();
+      (Math.abs(n.z) > 0.9 ? dessus : chants).push(idx[i], idx[i + 1], idx[i + 2]);
+    }
+    geo.setIndex([...dessus, ...chants]);
+    geo.addGroup(0, dessus.length, 0);
+    geo.addGroup(dessus.length, chants.length, 1);
+    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    const cv = document.createElement('canvas');
+    cv.width = W * TEX; cv.height = Math.round(h * TEX);
+    const g = cv.getContext('2d');
+    g.scale(TEX, TEX);
+    g.fillStyle = COLORS.wood; g.fillRect(0, 0, W, h);
+    g.strokeStyle = 'rgba(255,220,170,0.05)'; g.lineWidth = 1.2;       // fil du bois
+    for (let y = 3; y < h; y += 7) { g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(W / 3, y + 3, (2 * W) / 3, y - 3, W, y + 1); g.stroke(); }
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillStyle = '#e8c35a'; g.font = `bold ${h * 0.2}px Georgia, serif`;
+    g.fillText('FANNY', W / 2, h * 0.36);
+    g.fillStyle = '#f4e6c2'; g.font = `${h * 0.085}px Georgia, serif`;
+    g.fillText('★  PÉTANQUE WORLD TOUR  ★', W / 2, h * 0.56);
+    const tex = canvasTexture(cv);
+    tex.anisotropy = this.gl.capabilities.getMaxAnisotropy();
+    const dessusMat = new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.6, clearcoat: this.light ? 0 : 0.5,
+      clearcoatRoughness: 0.12, envMapIntensity: 0.5, flatShading: true });
+    this.rallongeMat = dessusMat;
+    return [dessusMat, new THREE.MeshStandardMaterial({ color: 0xc9a77a, roughness: 0.8, flatShading: true })];
+  }
+
+  // fond du panneau des afficheurs : tôle noire, deux grilles de haut-parleur, logements des TM1637
+  panneauAfficheurs(cw, ch) {
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    const g = c.getContext('2d');
+    const lg = g.createLinearGradient(0, 0, 0, ch);
+    lg.addColorStop(0, '#1c1620'); lg.addColorStop(1, '#0b080c');
+    g.fillStyle = lg; g.fillRect(0, 0, cw, ch);
+    const r = ch * 0.36;
+    for (const x of [ch * 0.5, cw - ch * 0.5]) {
+      g.fillStyle = '#060507';
+      g.beginPath(); g.arc(x, ch / 2, r, 0, 2 * Math.PI); g.fill();
+      g.fillStyle = '#2a2430';
+      for (let dy = -r; dy <= r; dy += 9) {
+        for (let dx = -r; dx <= r; dx += 9) if (dx * dx + dy * dy < (r - 6) ** 2) g.fillRect(x + dx - 2, ch / 2 + dy - 2, 4, 4);
+      }
+      g.strokeStyle = '#8a7f6a'; g.lineWidth = 4;
+      g.beginPath(); g.arc(x, ch / 2, r, 0, 2 * Math.PI); g.stroke();
+    }
+    g.strokeStyle = '#c9a24a'; g.lineWidth = 3;
+    g.strokeRect(4, 4, cw - 8, ch - 8);
+    return c;
+  }
+
+  // afficheurs du fronton : score (2 × 4 chiffres) et info (4 chiffres), comme dans la colonne de gauche
+  drawAfficheurs(d) {
+    const { cv, tex, fond } = this.afficheurs;
+    const g = cv.getContext('2d');
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.drawImage(fond, 0, 0);
+    const cw = cv.width, ch = cv.height;
+    const sw = cw - 2 * ch * 1.05, sh = ch * 0.42;
+    const x = (cw - sw) / 2;
+    g.fillStyle = '#000'; g.fillRect(x - 8, ch * 0.08 - 8, sw + 16, sh + 16);
+    drawSegDisplay(cv, d.score, { rect: [x, ch * 0.08, sw, sh] });
+    const iw = sw * 0.45, ih = ch * 0.34;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.fillStyle = '#000'; g.fillRect(x + sw - iw - 8, ch * 0.58 - 8, iw + 16, ih + 16);
+    drawSegDisplay(cv, d.info, { on: '#ffb020', off: 'rgba(255,176,32,0.08)', rect: [x + sw - iw, ch * 0.58, iw, ih] });
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    tex.needsUpdate = true;
   }
 
   // ------------------------------------------------------------ interface commune avec Renderer
@@ -634,6 +1050,7 @@ export class Renderer3D {
   applyQuality() {
     this.gl.shadowMap.enabled = !this.light;
     if (this.floorMat) this.floorMat.clearcoat = this.light ? 0 : 0.5;
+    if (this.rallongeMat) this.rallongeMat.clearcoat = this.light ? 0 : 0.5;
     this.scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
   }
 
@@ -661,6 +1078,119 @@ export class Renderer3D {
     this.fitCamera();
   }
 
+  get enTour() { return !!CAMERAS[this.camIdx]?.tour; }
+  get enMachine() { return !!CAMERAS[this.camIdx]?.machine; }
+  // la souris ou le doigt pilotent la caméra (et non les flippers) : tour, ou vue machine déverrouillée
+  get pilotable() { return this.enTour || (this.enMachine && !this.vueMachine?.verrou); }
+  get orbite() { return this.enTour ? this.tour : this.enMachine ? this.vueMachine : null; }
+
+  // vue machine : angle et zoom choisis à la souris, mémorisés avec le verrou
+  chargerVueMachine() {
+    let v = null;
+    try { v = JSON.parse(lire('fanny-pinball-vue-machine')); } catch {}
+    this.vueMachine = { az: 0, elev: CAMERAS.find((c) => c.machine).elev, zoom: 0.85, verrou: false, ...(v || {}), plateau: true };
+  }
+
+  memoriserVueMachine() {
+    const { az, elev, zoom, verrou } = this.vueMachine;
+    ecrire('fanny-pinball-vue-machine', JSON.stringify({ az, elev, zoom, verrou }));
+  }
+
+  basculerVerrou() {
+    if (!this.vueMachine) this.chargerVueMachine();
+    this.vueMachine.verrou = !this.vueMachine.verrou;
+    this.vueMachine.drag = null;
+    this.memoriserVueMachine();
+    return this.vueMachine.verrou;
+  }
+
+  // boîte englobante du flipper (repère du monde) : centre et rayon de la sphère qui la contient
+  sphereMachine() {
+    const pts = [];
+    if (this.machine) {
+      const b = this.machineBox;
+      for (const x of [b.x0, b.x1]) for (const y of [b.y0, b.y1]) for (const z of [b.z0, b.z1]) {
+        pts.push(this.machine.localToWorld(new THREE.Vector3(x, y, z)));
+      }
+    } else {
+      for (const [x, y] of [[-20, -40], [W + 20, -40], [-20, H + 26], [W + 20, H + 26]]) {
+        for (const z of [-40, 95]) pts.push(this.table.localToWorld(new THREE.Vector3(x, y, -z)));
+      }
+    }
+    const c = pts.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / pts.length);
+    return { c, r: Math.max(...pts.map((p) => p.distanceTo(c))) };
+  }
+
+  // tour de la machine : la caméra tourne seule (azimut, hauteur et distance varient à des rythmes différents,
+  // donc les angles ne se répètent pas à chaque tour) ; un glisser la pilote, la molette zoome, puis elle repart
+  updateTour() {
+    const t = this.tour, now = performance.now();
+    const auto = now - t.main > TOUR.reprise_ms;
+    const dt = Math.min(0.1, (now - (t.last || now)) / 1000);
+    t.last = now;
+    if (auto) {
+      t.az += (dt * 2 * Math.PI) / TOUR.tour_s;
+      t.ph += dt;
+      // la hauteur et le zoom glissent vers leur rythme automatique, sans saut après une reprise en main
+      const elevAuto = TOUR.elevMin + ((TOUR.elevMax - TOUR.elevMin) * (1 - Math.cos((2 * Math.PI * t.ph) / TOUR.elev_s))) / 2;
+      const zoomAuto = 0.82 + 0.2 * Math.cos((2 * Math.PI * t.ph) / TOUR.zoom_s);
+      const k = Math.min(1, dt * 0.8);
+      t.elev += (elevAuto - t.elev) * k;
+      t.zoom += (zoomAuto - t.zoom) * k;
+    }
+    this.placerOrbite(t);
+  }
+
+  // caméra en orbite autour du flipper : azimut, hauteur (degrés) et zoom (1 = tout le flipper dans l'image)
+  placerOrbite(t) {
+    const { c, r } = this.sphereMachine();
+    const cam = this.camera;
+    cam.clearViewOffset();
+    const v = (cam.fov * Math.PI) / 360, h = Math.atan(Math.tan(v) * cam.aspect);
+    const d = (r / Math.sin(Math.min(v, h))) * t.zoom;
+    const el = (t.elev * Math.PI) / 180;
+    const cible = c.clone();
+    if (t.plateau) {
+      // vue machine : en zoomant, on se rapproche du centre du plateau
+      const p = this.table.localToWorld(new THREE.Vector3(W / 2, H / 2, 0));
+      cible.lerp(p, Math.min(1, Math.max(0, (1 - t.zoom) / 0.7)));
+    } else cible.y += r * 0.12 * (1 - t.zoom);          // de près, on regarde un peu plus haut (plateau, fronton)
+    cam.position.set(cible.x + d * Math.sin(t.az) * Math.cos(el), cible.y + d * Math.sin(el), cible.z + d * Math.cos(t.az) * Math.cos(el));
+    cam.lookAt(cible);
+    cam.updateProjectionMatrix();
+  }
+
+  // pilotage à la souris ou au doigt (tour, vue machine déverrouillée) : glisser tourne, molette ou pincer zoome
+  tourDown(x, y) {
+    const t = this.pilotable && this.orbite;
+    if (t) { t.drag = { x, y }; t.main = performance.now(); }
+  }
+
+  tourMove(x, y) {
+    const t = this.pilotable && this.orbite;
+    if (!t || !t.drag) return;
+    t.az -= ((x - t.drag.x) / (this.cssW || 800)) * 2 * Math.PI * 0.6;
+    t.elev = Math.max(TOUR.elevMin, Math.min(80, t.elev + ((y - t.drag.y) / (this.cssH || 600)) * 90));
+    t.drag = { x, y };
+    this.bougee(t);
+  }
+
+  tourUp() { const t = this.orbite; if (t) t.drag = null; }
+
+  tourZoom(dy) { this.zoomer(Math.exp(dy * 0.001)); }
+
+  zoomer(facteur) {
+    const t = this.pilotable && this.orbite;
+    if (!t) return;
+    t.zoom = Math.max(t.plateau ? 0.18 : 0.35, Math.min(1.8, t.zoom * facteur));
+    this.bougee(t);
+  }
+
+  bougee(t) {
+    t.main = performance.now();
+    if (t === this.vueMachine) { this.placerOrbite(t); this.memoriserVueMachine(); }
+  }
+
   // caméra à la place du joueur : on recule jusqu'à voir toute la table
   fitCamera() {
     const vue = CAMERAS[this.camIdx >= 0 ? this.camIdx : this.camAuto()];
@@ -668,6 +1198,17 @@ export class Renderer3D {
     cam.fov = vue.fov;
     cam.clearViewOffset();
     this.scene.updateMatrixWorld(true);
+    if (vue.tour) {
+      if (!this.tour) this.tour = { az: 0, elev: vue.elev, zoom: 1, ph: 0, main: 0 };
+      this.updateTour();
+      return;
+    }
+    this.tour = null;
+    if (vue.machine) {
+      if (!this.vueMachine) this.chargerVueMachine();
+      this.placerOrbite(this.vueMachine);
+      return;
+    }
     const target = new THREE.Vector3(0, 0, 40);
     const dir = new THREE.Vector3(0, Math.sin(elev), Math.cos(elev));
     const corners = [];
@@ -680,7 +1221,7 @@ export class Renderer3D {
       cam.updateMatrixWorld(); cam.updateProjectionMatrix();
       return corners.every((c) => { const p = c.clone().project(cam); return Math.abs(p.x) < 0.98 && Math.abs(p.y) < 0.98; });
     };
-    let lo = 300, hi = 6000;
+    let lo = 300, hi = 9000;
     for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (fits(mid)) hi = mid; else lo = mid; }
     fits(hi);
     // recentrage vertical : la table occupe toute la hauteur
@@ -720,6 +1261,10 @@ export class Renderer3D {
         else this.qualiteAuto = false;           // la machine suit : on n'y touche plus
       }
     }
+    if (this.afficheurs) {
+      const d = rules.display();
+      if (d.score + d.info !== this.lastDisp) { this.lastDisp = d.score + d.info; this.drawAfficheurs(d); }
+    }
     const lamps = rules.lamps();
     const blinkOn = Math.floor(performance.now() / 220) % 2 === 0;
 
@@ -742,7 +1287,23 @@ export class Renderer3D {
     }
 
     for (const f of this.flippers) f.mesh.rotation.z = f.fl.angle - f.a0;
-    this.drops.forEach((m, i) => { m.visible = sim.dropsUp[i]; });
+    // cibles tombantes : elles s'enfoncent (ou remontent) en 60 ms environ
+    const tAnim = performance.now(), dtA = Math.min(0.1, (tAnim - (this.tAnim || tAnim)) / 1000);
+    this.tAnim = tAnim;
+    this.drops.forEach((m, i) => {
+      const cible = sim.dropsUp[i] ? 0 : DROP.h + 1;
+      m.userData.z += (cible - m.userData.z) * Math.min(1, dtA * 30);
+      m.position.z = m.userData.z;
+      m.visible = m.userData.z < DROP.h;
+    });
+    // faces pendulaires des cibles fixes : elles basculent sur leur axe au choc, puis le levier du KW11 les ramène
+    if (this.faces) {
+      for (const f of this.faces) {
+        const age = now - (sim.flash[f.flash] ?? -1e9);
+        const a = age < 160 ? 0.32 * Math.sin((Math.PI * age) / 160) : 0;
+        f.pivot.quaternion.setFromAxisAngle(f.axe, f.signe * a);
+      }
+    }
     this.bumpers.forEach((b, i) => {
       const hit = now - (sim.flash[`bumper${i}`] ?? -1e9) < 100;
       const want = b.tex[hit ? 1 : 0];
@@ -755,6 +1316,7 @@ export class Renderer3D {
       const hit = now - (sim.flash[`sling${i}`] ?? -1e9) < 90;
       band.material.emissive.setHex(hit ? 0xffd23f : 0x000000);
       band.userData.sp.visible = hit;
+      if (band.userData.geos) band.geometry = band.userData.geos[hit ? 1 : 0];     // le bras pousse le caoutchouc
     });
     this.leftTargets.forEach((face, i) => {
       const hit = now - (sim.flash[`target${i}`] ?? -1e9) < 150;
@@ -774,8 +1336,11 @@ export class Renderer3D {
       if (fp.mode === 'ramp') {
         const path = sim.ramps[fp.ramp], p = pointAt(path, fp.s);
         views.push([p.x, p.y, zRampe(fp.s, path.length) + 2]);
-      } else if (b.position.y < APRON_Y) {
-        views.push([b.position.x, b.position.y, fp.mode === 'saucer' ? -7 : 0]);
+      } else if (!sousTablier(b.position.x, b.position.y)) {
+        // au-dessus du trou d'évacuation, la bille s'y enfonce
+        const { x, y } = b.position, [tl, th] = GEO.apron.trou, ey = GEO.apron.front - 2 - th;
+        const trou = Math.abs(x - CX) < tl / 2 && y > ey ? -Math.min(BALL_R, (y - ey) * 0.5) : 0;
+        views.push([x, y, fp.mode === 'saucer' ? -7 : trou]);
       }
     }
     while (this.balls.length < views.length) {
@@ -791,6 +1356,7 @@ export class Renderer3D {
     });
 
     if (this.envDirty) { this.envDirty = false; this.captureEnv(); }
+    if (this.tour) this.updateTour();
     this.gl.render(this.scene, this.camera);
     this.drawOverlay();
   }

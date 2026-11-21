@@ -21,17 +21,24 @@ export function encode(ch) {
   return SEG[up] ?? 0;
 }
 
-// Dessine un afficheur de n chiffres dans un canvas.
-export function drawSegDisplay(canvas, text, { on = '#ff3b1f', off = 'rgba(255,59,31,0.08)', bg = '#120806' } = {}) {
+// Dessine un afficheur de n chiffres dans un canvas (tout le canvas, ou le rectangle `rect` [x, y, l, h]
+// en pixels du canvas : texture du fronton de la vue 3D).
+export function drawSegDisplay(canvas, text, { on = '#ff3b1f', off = 'rgba(255,59,31,0.08)', bg = '#120806', rect = null } = {}) {
   const ctx = canvas.getContext('2d');
   const n = text.length;
-  const dpr = window.devicePixelRatio || 1;
-  const cw = canvas.clientWidth, ch = canvas.clientHeight;
-  if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) {
-    canvas.width = Math.round(cw * dpr);
-    canvas.height = Math.round(ch * dpr);
+  let cw, ch;
+  if (rect) {
+    [, , cw, ch] = rect;
+    ctx.setTransform(1, 0, 0, 1, rect[0], rect[1]);
+  } else {
+    const dpr = window.devicePixelRatio || 1;
+    cw = canvas.clientWidth; ch = canvas.clientHeight;
+    if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) {
+      canvas.width = Math.round(cw * dpr);
+      canvas.height = Math.round(ch * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, cw, ch);
   const pad = ch * 0.12;

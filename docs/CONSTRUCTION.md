@@ -30,7 +30,7 @@ Pour tout régénérer après une modification de la table :
 python3 cao/exporter_geometrie.py
 freecadcmd cao/construire.py        # ~5 min
 python3 cao/plans.py
-python3 outils/cao_web.py           # pièces pour la vue 3D du jeu (assets/cao/pieces.glb)
+python3 outils/cao_web.py           # pièces et caisse pour la vue 3D du jeu (assets/cao/pieces.glb, caisse.glb)
 python3 outils/pwa.py               # cache de l'application installable
 ```
 
@@ -144,10 +144,12 @@ Recherche du 20 novembre 2026 :
   - Tasseaux d'angle 20 × 20.
   - Tasseaux 20 × 30 sous le plateau.
 - **Achats.**
-  - 4 pieds de flipper 32" avec platines, boulons 3/8"-16 et vérins.
+  - 4 pieds de flipper WPC 28-1/2" (724 mm), thermolaqués noir, avec 4 platines d'angle intérieures (Williams 01-11400-1), 8 boulons 3/8"-16 × 2-1/2" à tête bombée et 4 vérins 3/8"-16 (tige 2" à l'avant, 3" à l'arrière).
+  - Les boulons traversent l'arête de la caisse en diagonale, à 45°. Il faut percer les trous Ø 10 avec le pied en place, qui sert de gabarit. Les cotes de la section du pied et de la platine sont des hypothèses (HYP) à mesurer sur les pièces reçues.
   - Barre de verrouillage, charnière et verrous de fronton.
   - Verre trempé 4 mm.
   - Boutons d'arcade 28 mm (flippers, LANCER) et 25 mm (START).
   - Ventilateur 80 mm.
+  - Caoutchoucs : 4 mini-anneaux noirs 1/8" (poteaux d'entrée des couloirs), 2 anneaux blancs 2-1/2" (lance-pierres), 2 caoutchoucs de palette 3" rouges. Axes acier Ø 3 pour les 6 cibles fixes. Liste complète sur la planche 11.
 
 Le plateau est plus étroit que l'intérieur de la caisse : 514 mm pour 520,8 mm. Il reste donc 3,4 mm de jeu de chaque côté.
