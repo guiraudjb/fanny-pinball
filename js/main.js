@@ -4,6 +4,7 @@ import { Renderer } from './render.js';
 import { drawSegDisplay } from './segfont.js';
 import { unlockAudio, play, toggleMute, playMusic } from './audio.js';
 import { W, H, GEO } from './table.js';
+import { Robot } from './robot.js';
 
 const canvas = document.getElementById('table');
 const view3dEl = document.getElementById('view3d');
@@ -17,6 +18,7 @@ const dispScore = document.getElementById('disp-score');
 const dispInfo = document.getElementById('disp-info');
 const cityEl = document.getElementById('city');
 const startBtn = document.getElementById('start');
+const autoBtn = document.getElementById('autoplay');
 const muteBtn = document.getElementById('mute');
 
 // Le « matériel » vu par les règles : la simulation + les sons.
@@ -132,6 +134,29 @@ function nudge() {
 }
 
 let paused = false;
+// Autoplay : le robot (js/robot.js) lance et enchaîne les parties tout seul jusqu'à l'arrêt du mode.
+let autoplay = false;
+let autoplayAttente = 0;
+const AUTOPLAY_DELAI_MS = 2500;   // courte pause après la fin de partie / loterie avant de relancer
+const robot = new Robot(sim, rules, {
+  flip: (side, down) => setFlipper(side, down),
+  launch: (force) => { sim.force = force; rules.onSwitch(SW.LAUNCH); },
+  nudge: () => nudge(),
+});
+function setAutoplay(on) {
+  autoplay = !!on;
+  autoplayAttente = 0;
+  autoBtn.textContent = autoplay ? 'Autoplay : oui' : 'Autoplay';
+  autoBtn.classList.toggle('actif', autoplay);
+  if (autoplay) {
+    unlockAudio(); audioReady = true;
+    paused = false;
+    relacher(false);
+    if (rules.canStart()) pressStart();
+  } else {
+    robot.relacher();
+  }
+}
 // lanceur à ressort : maintenir pour tirer (pleine course en TIRAGE_S), relâcher pour lancer. La vitesse suit la
 // course : 30 % de la vitesse nominale à peine tiré (la bille retombe sur le lanceur), 110 % tiré à fond.
 const TIRAGE_S = 0.9;
@@ -149,12 +174,13 @@ function relacher(lancer = true) {
 window.addEventListener('keydown', (e) => {
   unlockAudio(); audioReady = true;
   if (e.repeat) { if ([...KEYS.left, ...KEYS.right, ...KEYS.launch, ...KEYS.nudge].includes(e.code)) e.preventDefault(); return; }
+  if (e.code === 'KeyA') { setAutoplay(!autoplay); e.preventDefault(); return; }
   if (KEYS.nudge.includes(e.code)) { nudge(); e.preventDefault(); return; }
-  if (KEYS.left.includes(e.code)) { setFlipper('L', true); e.preventDefault(); }
-  if (KEYS.right.includes(e.code)) { setFlipper('R', true); e.preventDefault(); }
-  if (KEYS.start.includes(e.code) && rules.canStart()) { pressStart(); e.preventDefault(); return; }
+  if (KEYS.left.includes(e.code)) { if (autoplay) setAutoplay(false); setFlipper('L', true); e.preventDefault(); }
+  if (KEYS.right.includes(e.code)) { if (autoplay) setAutoplay(false); setFlipper('R', true); e.preventDefault(); }
+  if (KEYS.start.includes(e.code) && rules.canStart()) { if (autoplay) setAutoplay(false); pressStart(); e.preventDefault(); return; }
   if (KEYS.coin.includes(e.code)) { rules.onSwitch(SW.COIN); e.preventDefault(); return; }
-  if (KEYS.launch.includes(e.code)) { tirer(); e.preventDefault(); }
+  if (KEYS.launch.includes(e.code)) { if (autoplay) setAutoplay(false); tirer(); e.preventDefault(); }
   if (e.code === 'KeyP' || e.code === 'Escape') paused = !paused;
   if (e.code === 'KeyM') muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui';
   if (e.code === 'KeyV') nextView();
@@ -187,6 +213,7 @@ for (const el of [canvas, view3dEl]) el.addEventListener('pointerdown', (e) => {
     e.preventDefault(); return;
   }
   const { x, y } = toTable(e);
+  if (autoplay) setAutoplay(false);
   if (rules.mode === 'attract' || rules.mode === 'over') { pressStart(); return; }
   let what;
   if (x > GEO.playRight - 10 && y > 700) { what = 'launch'; tirer(); }
@@ -230,7 +257,8 @@ view3dEl.addEventListener('wheel', (e) => {
   e.preventDefault();
 }, { passive: false });
 
-startBtn.addEventListener('click', () => { pressStart(); startBtn.blur(); });
+startBtn.addEventListener('click', () => { if (autoplay) setAutoplay(false); pressStart(); startBtn.blur(); });
+autoBtn.addEventListener('click', () => { setAutoplay(!autoplay); autoBtn.blur(); });
 viewBtn.addEventListener('click', () => { nextView(); viewBtn.blur(); });
 camBtn.addEventListener('click', () => { renderer3d.cycleCamera(); viewLabel(); camBtn.blur(); });
 skinBtn.addEventListener('click', () => { renderer3d.cycleHabillage(); viewLabel(); skinBtn.blur(); });
@@ -271,6 +299,20 @@ function frame(t) {
   if (!paused) {
     sim.step(dt);
     rules.tick(sim.time);
+    if (autoplay) {
+      if (rules.mode === 'play') {
+        autoplayAttente = 0;
+        robot.tick(dt);
+      } else {
+        robot.relacher();
+        if (rules.canStart()) {
+          autoplayAttente += dt;
+          if (autoplayAttente >= AUTOPLAY_DELAI_MS) { autoplayAttente = 0; pressStart(); }
+        } else {
+          autoplayAttente = 0;
+        }
+      }
+    }
   }
   try { view.draw(rules); } catch (e) {   // un défaut de dessin ne doit jamais arrêter la partie
     if (!frame.drawErr) { frame.drawErr = true; console.error('dessin', e); }
@@ -302,4 +344,4 @@ function frame(t) {
 requestAnimationFrame(frame);
 
 // accès console pour le réglage
-window.fanny = { sim, rules, get view() { return view; }, setView };
+window.fanny = { sim, rules, robot, get view() { return view; }, setView, setAutoplay };

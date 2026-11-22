@@ -26,9 +26,25 @@ function repere(fl, p) {
   return { r: Math.hypot(dx, dy), le: dx * c + dy * s, t: dx * s - dy * c };
 }
 
+// Étalonnage par défaut (issu d'outils/robot_tirs.json), embarqué pour jouer dans la page et hors ligne (PWA).
+export const TIRS_DEFAUT = {
+  L: [
+    [0, '-'], [17, '-'], [33, 'boule3'], [50, '-'], [67, '-'], [83, '-'], [100, 'boule1'], [117, 'bouchon'],
+    [133, 'pointer'], [150, 'pointer'], [167, 'pointer'], [183, 'ramp'], [200, 'ramp'], [217, 'tirer'],
+    [233, 'tirer'], [250, 'tirer'], [267, 'tirer'], [283, 'saucer'], [300, 'saucer'], [317, '-'],
+    [333, 'dropN1'], [350, 'dropN1'], [367, 'dropY'], [383, 'dropY'], [400, 'dropY'],
+  ].map(([d, cible]) => ({ d, cible })),
+  R: [
+    [0, '-'], [17, '-'], [33, '-'], [50, 'dropN1'], [67, 'dropN1'], [83, 'dropA'], [100, 'dropA'],
+    [117, 'dropN1'], [133, 'saucer'], [150, '-'], [167, '-'], [183, '-'], [200, '-'], [217, 'tirer'],
+    [233, 'tirer'], [250, '-'], [267, 'dropA'], [283, 'ramp'], [300, 'ramp'], [317, '-'], [333, '-'],
+    [350, '-'], [367, 'pointer'], [383, 'pointer'], [400, 'dropY'],
+  ].map(([d, cible]) => ({ d, cible })),
+};
+
 export class Robot {
   // act : { flip(side, down), launch(force), nudge() } ; tirs : étalonnage { L: [{ d, cible }], R: [...] }
-  constructor(sim, rules, act, tirs = { L: [], R: [] }) {
+  constructor(sim, rules, act, tirs = TIRS_DEFAUT) {
     this.sim = sim; this.rules = rules; this.act = act; this.tirs = tirs;
     this.etat = { L: { phase: 'libre', t: 0 }, R: { phase: 'libre', t: 0 } };
     this.lanceur = 0;
@@ -36,7 +52,10 @@ export class Robot {
     this.stats = { berceaux: 0, tirs: {}, sauvetages: 0, coups: 0 };
   }
 
-  log(m) { this.journal.push(`${(this.sim.time / 1000).toFixed(1)} s ${m}`); }
+  log(m) {
+    this.journal.push(`${(this.sim.time / 1000).toFixed(1)} s ${m}`);
+    if (this.journal.length > 500) this.journal.splice(0, this.journal.length - 500);
+  }
 
   // cible voulue selon les règles (ordre d'un joueur qui connaît le jeu)
   cibleVoulue() {
@@ -52,20 +71,26 @@ export class Robot {
   choisirTir(side, cible) {
     // le délai le plus sûr : celui dont les voisins (±5 ms) touchent aussi la cible
     const bon = (t) => t && (cible === 'drops' ? t.cible.startsWith('drop') : t.cible === cible);
-    const T = this.tirs[side];
+    const T = this.tirs[side] || [];
     let mieux = null, note = -1;
     T.forEach((t, i) => { if (!bon(t)) return; const n = bon(T[i - 1]) + bon(T[i + 1]); if (n > note) { note = n; mieux = t.d; } });
-    return mieux;
+    if (mieux !== null) return mieux;
+    // repli : n'importe quel tir étalonné sûr de ce côté (ne jamais figer la bille en berceau)
+    return T.find((t) => t.cible !== '-' && t.cible !== 'drain')?.d ?? 150;
   }
 
   tick(dtMs) {
     const sim = this.sim, r = this.rules;
     if (r.mode !== 'play') { this.relacher(); return; }
-    // lanceur : tiré à fond dès qu'une bille attend dans le couloir
+    // lanceur : tiré progressivement à fond dès qu'une bille attend dans le couloir
     if (sim.shooterClosed) {
       this.lanceur += dtMs;
-      if (this.lanceur > 600) { this.act.launch(1.1); this.lanceur = 0; this.log('lancer'); }
-    } else this.lanceur = 0;
+      sim.tirage = Math.min(1, this.lanceur / 600);
+      if (this.lanceur > 600) { sim.tirage = 0; this.act.launch(1.1); this.lanceur = 0; this.log('lancer'); }
+    } else {
+      if (this.lanceur) sim.tirage = 0;
+      this.lanceur = 0;
+    }
 
     const billes = sim.balls.filter((b) => b.plugin.fp.mode === 'table' && !b.retiree && !sim.dansLanceur(b));
     for (const fl of sim.T.flippers) this.palette(fl, billes, dtMs);
@@ -130,6 +155,8 @@ export class Robot {
   }
 
   relacher() {
+    this.lanceur = 0;
+    this.sim.tirage = 0;
     for (const s of ['L', 'R']) { this.act.flip(s, false); this.etat[s] = { phase: 'libre', t: 0 }; }
   }
 }

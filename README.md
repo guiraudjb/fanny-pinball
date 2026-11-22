@@ -68,6 +68,7 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 | Lancer | ↓, Entrée | couloir de lancement |
 | Bourrage (coup de caisse) | Espace | |
 | Nouvelle partie | Entrée | bouton Jouer |
+| Autoplay (le robot joue seul) | A | bouton Autoplay |
 | Pièce (crédit) | C | |
 | Pause / son | P / M | |
 | Vue 2D / 3D / 3D légère | V | bouton Vue |
