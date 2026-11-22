@@ -250,9 +250,16 @@ export class Sim {
     (T.leftTargets || []).forEach((b) => this.ajouter(b, 0, 30, 'cible', { type: 'target', ...b.plugin }));
     T.lanes.forEach((b) => this.ajouter(b, 0, 10, 'bois', { type: 'lane', ...b.plugin }));
     this.ajouter(T.saucer, 0, 8, 'bois', { type: 'saucer' });
-    // portillon à sens unique en haut du couloir de lancement
-    const g = this.matiere(this.prisme(T.gate.vertices.map((v) => [v.x, v.y]), 0, 22), 'metal');
-    w.createCollider(g.setCollisionGroups(groupes(GR.GATE, GR.BALL)));
+    // portillon à sens unique en haut du couloir de lancement : pavé analytique épais de 20 mm (face supérieure sur
+    // la ligne de T.gate, épaisseur vers le bas du couloir) pour qu'une bille ne puisse jamais s'y encastrer
+    {
+      const g = GEO.gate, dx = g.x2 - g.x1, dy = -g.drop, len = Math.hypot(dx, dy) + 6, ep = 20;
+      const a = Math.atan2(dy, dx), nx = -dy / Math.hypot(dx, dy), ny = dx / Math.hypot(dx, dy);
+      const cx = (g.x1 + g.x2) / 2 + nx * (ep / 2 - 2.5), cy = g.y + ny * (ep / 2 - 2.5);
+      const desc = this.matiere(R.ColliderDesc.cuboid((len / 2) * MM, (ep / 2) * MM, 16 * MM)
+        .setTranslation(cx * MM, cy * MM, -16 * MM).setRotation({ x: 0, y: 0, z: Math.sin(a / 2), w: Math.cos(a / 2) }), 'metal');
+      w.createCollider(desc.setCollisionGroups(groupes(GR.GATE, GR.BALL)));
+    }
     // barrière infrarouge en sortie de rampe (contact RAMPE), à hauteur de la bille sur la rampe
     const path = this.ramps.L, L = path.length, sIR = L - 120;
     const p = path.pts.reduce((m, q) => (Math.abs(q.s - sIR) < Math.abs(m.s - sIR) ? q : m));

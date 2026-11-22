@@ -5,16 +5,19 @@
 // Répertoire technique complet (voir docs/analyse_de_l_espacement_des_batteurs_et_des_techniques_de_flipper.md) :
 //   • Amorti & contrôle : Berceau (Cradle), Live Catch, Drop Catch, Séparation en multibille (Cradle Separation), Shatz
 //   • Transferts (Passing) : Dead Bounce (rebond mort), Post Pass, Tap / Alley Pass, Changement de couloir T-O-U-R
-//   • Tirs de précision : Coup droit (Forehand), Revers (Backhand), Flick / Tip Shot visé à la volée selon le
-//   • Sauvetage & bourrage : Slap Save (claque + nudge latéral), Slide Save (nudge anti-outlane), Center Nudge (sans Tilt)
+//   • Tirs de précision : Coup droit (Forehand), Revers (Backhand), Flick / Tip Shot — tous asservis sur la position
+//     réelle « le » de la bille le long de la palette (garde-fou anti-perte en bout de palette)
+//   • Sauvetage & bourrage : Slap Save (claque synchronisée sur le temps avant impact + nudge latéral),
+//     Slide Save (nudge prédictif devant les poteaux d'outlane), Center Nudge (plafonné sous le seuil de Tilt)
 import { GEO, BALL_R, CX } from './table.js';
 import { SW } from './rules.js';
 
 const MM = 0.001;
 const FLIP_LEN = GEO.flippers[0].len;   // 57,7 mm (géométrie moderne 3")
-const TENUE_TIR_MS = 180;               // palette tenue après une frappe
-const BERCEAU_MS = 280;                 // bille immobile en berceau depuis … avant tir / passe
-const TILT_SUR = 1.15;                  // plafond de sim.bob sous lequel le robot s'autorise un coup de caisse (TILT = 2,4)
+const TENUE_TIR_MS = 140;               // palette tenue après une frappe (assez courte pour ne pas rester figée)
+const BERCEAU_MS = 240;                 // bille immobile en berceau depuis … avant tir / passe
+const TILT_SUR = 1.25;                  // plafond de sim.bob avant un coup (+1 < 2,25 < TILT 2,4 : 0 Tilt garanti)
+const LE_GARDE = FLIP_LEN - 6.5;        // 51,2 mm : au-delà, frappe immédiate (empêche toute perte en bout de palette)
 
 const NOMS_GESTES = {
   berceau: 'Berceau',
@@ -44,7 +47,7 @@ function repere(fl, p) {
   return { r: Math.hypot(dx, dy), le: dx * c + dy * s, t: dx * s - dy * c };
 }
 
-// Étalonnage par défaut (issu d'outils/robot_tirs.json), embarqué pour jouer dans la page et hors ligne (PWA).
+// Étalonnage par défaut (issu d'outils/robot_tirs.json), conservé pour compatibilité avec outils/robot.mjs.
 export const TIRS_DEFAUT = {
   L: [
     [417, '-'], [433, '-'], [450, '-'], [467, '-'], [483, '-'], [500, 'boule3'], [517, '-'], [533, '-'],
@@ -60,10 +63,16 @@ export const TIRS_DEFAUT = {
   ].map(([d, cible]) => ({ d, cible })),
 };
 
-// Positions le (mm depuis le pivot) pour un tir visé à la volée sur bille roulante (étalonnées en simulation)
-const LE_TIRS = {
-  L: { tirer: 23, saucer: 26, drops: 34, ramp: 28, bouchon: 48, pointer: 46, boule: 50 },
-  R: { tirer: 23, ramp: 26, bouchon: 30, boule: 30, pointer: 37, drops: 54, saucer: 50 },
+// Positions « le » (mm depuis le pivot) étalonnées depuis un berceau (insensibles au point exact d'arrêt en berceau)
+const LE_BERCEAU = {
+  L: { tirer: 37, saucer: 28, drops: 50, boule: 14 },
+  R: { ramp: 31, tirer: 22, bouchon: 36, drops: 26, saucer: 18, boule: 47 },
+};
+
+// Positions « le » (mm depuis le pivot) pour un tir visé à la volée sur bille roulante (Flick)
+const LE_VOL = {
+  L: { tirer: 23, saucer: 26, drops: 34, ramp: 28, bouchon: 46, pointer: 44, boule: 48 },
+  R: { tirer: 23, ramp: 26, bouchon: 30, boule: 30, pointer: 37, drops: 49, saucer: 46 },
 };
 
 // Côté du plateau où se trouve chaque cible (pour distinguer Coup droit / Forehand et Revers / Backhand)
@@ -85,8 +94,8 @@ export class Robot {
     this.slap = null;                  // { first, second, t, phase }
     this.passeAlt = 0;                 // alterne passe / revers
     this.passeMode = 0;                // alterne Tap Pass (0) / Post Pass (1) / Shatz (2)
-    this.catchAlt = 0;                 // alterne Live Catch / Drop Catch sur les balles descendantes
-    this.dernierGeste = null;          // { code, nom, detail, jusqua } pour affichage HUD en Autoplay
+    this.catchAlt = 0;                 // alterne Live Catch / Drop Catch / Dead Bounce
+    this.dernierGeste = null;          // { code, nom, jusqua } pour affichage HUD en Autoplay
     this.journal = [];
     this.stats = { berceaux: 0, tirs: {}, sauvetages: 0, coups: 0, gestes: {} };
   }
@@ -118,27 +127,8 @@ export class Robot {
     return 'ramp';
   }
 
-  // d visé exact pour une cible sur ce batteur (exclut tout délai voisin d'un drain pour la fiabilité)
-  choisirTirExact(side, cible) {
-    const bon = (t) => t && (cible === 'drops' ? t.cible.startsWith('drop') : t.cible === cible);
-    const T = this.tirs[side] || [];
-    let mieux = null, note = -1;
-    T.forEach((t, i) => {
-      if (!bon(t)) return;
-      if (T[i - 1]?.cible === 'drain' || T[i + 1]?.cible === 'drain') return;
-      const n = bon(T[i - 1]) + bon(T[i + 1]);
-      if (n > note) { note = n; mieux = t.d; }
-    });
-    return mieux;
-  }
-
-  // d visé avec repli sûr (ne jamais figer une bille en berceau ni choisir un délai proche d'un drain)
-  choisirTir(side, cible) {
-    const exact = this.choisirTirExact(side, cible);
-    if (exact !== null) return exact;
-    const T = this.tirs[side] || [];
-    const sur = T.find((t, i) => t.cible !== '-' && t.cible !== 'drain' && T[i - 1]?.cible !== 'drain' && T[i + 1]?.cible !== 'drain');
-    return sur?.d ?? 600;
+  leBerceauExact(side, cible) {
+    return LE_BERCEAU[side]?.[cible] ?? null;
   }
 
   estRevers(side, cible) {
@@ -146,7 +136,7 @@ export class Robot {
   }
 
   nudgeSur(dx, code, detail = '') {
-    if (this.sim.bob >= TILT_SUR || this.sim.time - this.dernierNudge < 1100) return false;
+    if (this.sim.bob >= TILT_SUR || this.sim.time - this.dernierNudge < 550) return false;
     this.dernierNudge = this.sim.time;
     this.act.nudge(dx);
     this.stats.coups++;
@@ -161,7 +151,6 @@ export class Robot {
     // 1. Lanceur à ressort (tiré progressivement) + changement de couloir avant le lancer
     if (sim.shooterClosed) {
       if (this.lanceur === 0 && r.letters.some((l) => !l) && r.letters[2] && r.letters[3]) {
-        // décale une lettre éteinte sous les couloirs de droite où retombe le lancement
         this.act.flip('R', true); this.act.flip('R', false);
         this.noterGeste('laneChange', 'T-O-U-R');
       }
@@ -187,37 +176,39 @@ export class Robot {
       if (bHaut) {
         const idx = Math.max(0, Math.min(3, Math.floor((bHaut.position.x - 155) / 42)));
         if (r.letters[idx]) {
-          // choisir le sens qui amène la lettre éteinte la plus proche dans le couloir visé
           const versD = !r.letters[(idx + 3) % 4];
           const s = versD ? 'R' : 'L';
           this.act.flip(s, true);
-          this.etat[s] = { phase: 'tenue', t: TENUE_TIR_MS - 45 };
+          this.etat[s] = { phase: 'tenue', t: 0, duree: 45 };
           this.dernierLane = sim.time;
           this.noterGeste('laneChange', 'T-O-U-R');
         }
       }
     }
 
-    // 3. Slide Save : bourrage latéral préventif au-dessus des poteaux d'outlane (x ≈ 40 et x ≈ 438)
+    // 3. Slide Save : bourrage latéral prédictif UNIQUEMENT si la trajectoire vise un outlane (poteaux à x=40 et x=438)
     for (const b of billes) {
       const { x, y } = b.position, vx = b.velocity.x * 60 * MM, vy = b.velocity.y * 60 * MM;
-      if (y > 640 && y < 712 && vy > 0.15) {
-        if (x < 62 && x > 10 && vx <= 0.25) {
+      if (y > 600 && y < 702 && vy > 0.12) {
+        const dtPost = (696 - y) * MM / vy;
+        if (dtPost > 0.30) continue;
+        const xPost = x + (vx * dtPost) / MM;
+        if (xPost < 46 && x < 72) {
           this.nudgeSur(1, 'slideSave', 'outlane G');
-        } else if (x > 416 && x < 468 && vx >= -0.25) {
+        } else if (xPost > 432 && x > 406) {
           this.nudgeSur(-1, 'slideSave', 'outlane D');
         }
       }
     }
 
-    // 4. Slap Save (sauvetage par claque sur bille SDTM au centre) — coordonné sur les deux batteurs
+    // 4. Slap Save (sauvetage par claque sur bille SDTM au centre) — déclenché sur le temps réel avant impact
     if (this.slap) {
       const sl = this.slap;
       sl.t += dtMs;
-      if (sl.phase === 'first' && sl.t >= 48) {
+      if (sl.phase === 'first' && sl.t >= 42) {
         this.act.flip(sl.second, true);
         sl.phase = 'both';
-      } else if (sl.t >= 175) {
+      } else if (sl.t >= 140) {
         this.act.flip(sl.first, false);
         this.act.flip(sl.second, false);
         this.etat[sl.first] = { phase: 'libre', t: 0 };
@@ -232,16 +223,18 @@ export class Robot {
     if (librePourSlap) {
       for (const b of billes) {
         const { x, y } = b.position, vx = b.velocity.x * 60 * MM, vy = b.velocity.y * 60 * MM;
-        if (y > 785 && y < 902 && vy > 0.22) {
-          const dtCentre = Math.max(0, (895 - y) * MM / vy);
-          const xPred = x + (vx * dtCentre) / MM;
-          if (Math.abs(xPred - CX) < 26) {
+        if (y > 760 && y < 902 && vy > 0.18) {
+          const dtTips = Math.max(0, (892 - y) * MM / vy);
+          if (dtTips > 0.25) continue;
+          const xPred = x + (vx * dtTips) / MM;
+          if (Math.abs(xPred - CX) < 25) {
             const first = xPred <= CX ? 'L' : 'R', second = autre(first);
-            // coup latéral précoce pour décaler la bille sur la pointe du batteur le plus proche
-            if (y > 805 && y < 855 && Math.abs(xPred - CX) < 22) {
+            // coup latéral précoce (50 à 200 ms avant les pointes) pour décaler la bille sur le batteur le plus proche
+            if (dtTips >= 0.05 && dtTips <= 0.20 && Math.abs(xPred - CX) < 23) {
               this.nudgeSur(first === 'L' ? -1 : 1, 'centerNudge', first);
             }
-            if (y > 852 || dtCentre < 0.055) {
+            // claque synchronisée juste avant la ligne des pointes (jamais 200 ms trop tôt sur bille lente !)
+            if (dtTips <= 0.045 || y > 888) {
               this.act.flip(first, true);
               this.etat[first] = { phase: 'slap', t: 0 };
               this.etat[second] = { phase: 'slap', t: 0 };
@@ -259,7 +252,7 @@ export class Robot {
     for (const fl of sim.T.flippers) this.palette(fl, billes, dtMs);
   }
 
-  // Prépare le batteur opposé à recevoir une passe (Dead Bounce, Post Pass, Tap Pass)
+  // Prépare le batteur opposé à recevoir une passe (Dead Bounce, Post Pass, Tap Pass, Shatz)
   preparerReception(side, raison) {
     const e = this.etat[side];
     if (e.phase === 'libre' || e.phase === 'deadBounce') {
@@ -273,54 +266,49 @@ export class Robot {
     e.t += dtMs;
     const tenir = (down) => { if (this.trace) this.log(`${side} ${down ? 'lève' : 'baisse'} (${e.phase})`); this.act.flip(side, down); };
 
-    // --- phases minutées en cours ---
-    if (e.phase === 'tir') {
-      if (e.t >= e.d - 1) {
+    // billes dans la zone de la palette (calculé avant tir/passe pour l'asservissement en position q.le)
+    const proches = billes.map((b) => ({ b, q: repere(fl, b.position) }))
+      .filter(({ q }) => q.r < FLIP_LEN + BALL_R + 42 && q.t > -BALL_R && q.le > -26);
+
+    // --- phases asservies sur la position réelle q.le (plus de minuteur aveugle !) ---
+    if (e.phase === 'tir' || e.phase === 'passe') {
+      if (!proches.length) { e.phase = 'libre'; e.t = 0; return; }
+      const { q } = proches.reduce((m, x) => (x.b.position.y > m.b.position.y ? x : m));
+      // déclenche dès que la bille atteint le « le » visé, ou au garde-fou LE_GARDE (51,2 mm) avant la pointe
+      const pret = q.le >= e.leVise || q.le >= LE_GARDE || (e.t > 120 && q.t < 2) || e.t >= 950;
+      if (pret) {
         tenir(true);
-        e.phase = 'tenue'; e.t = 0; e.duree = TENUE_TIR_MS;
-        this.stats.tirs[e.cible] = (this.stats.tirs[e.cible] || 0) + 1;
-        this.noterGeste(this.estRevers(side, e.cible) ? 'backhand' : 'forehand', `${side} → ${e.cible}`);
-      }
-      return;
-    }
-    if (e.phase === 'passe') {
-      if (e.t >= e.d - 1) {
-        tenir(true);
-        e.phase = 'tenue'; e.t = 0; e.duree = e.hold;
-        this.noterGeste(e.typePasse, `${side}→${opp}`);
+        if (e.phase === 'tir') {
+          e.phase = 'tenue'; e.t = 0; e.duree = TENUE_TIR_MS;
+          this.stats.tirs[e.cible] = (this.stats.tirs[e.cible] || 0) + 1;
+          this.noterGeste(this.estRevers(side, e.cible) ? 'backhand' : 'forehand', `${side} → ${e.cible}`);
+        } else {
+          e.phase = 'tenue'; e.t = 0; e.duree = e.hold;
+          this.noterGeste(e.typePasse, `${side}→${opp}`);
+        }
       }
       return;
     }
     if (e.phase === 'cradleSep') {
-      // micro-relâchement de 65 ms puis reprise immédiate pour libérer la bille du dessus en multibille
-      if (e.t >= 65) {
-        tenir(true);
-        e.phase = 'berceau'; e.t = 0;
-      }
+      if (e.t >= 65) { tenir(true); e.phase = 'berceau'; e.t = 0; }
       return;
     }
     if (e.phase === 'dropCatch') {
-      // relâchement juste avant l'impact pour amortir, puis reprise en berceau 70 ms plus tard
       if (!e.lache && e.t >= e.attente) {
         tenir(false); e.lache = true; e.t = 0;
-      } else if (e.lache && e.t >= 70) {
+      } else if (e.lache && e.t >= 65) {
         tenir(true); e.phase = 'attrape'; e.t = 0; e.raison = 'dropCatch';
       }
       return;
     }
     if (e.phase === 'deadBounce') {
-      // laisse la bille rebondir sur la palette immobile au repos vers l'autre batteur levé
-      if (e.t > 380) { e.phase = 'libre'; e.t = 0; }
+      if (e.t > 340) { e.phase = 'libre'; e.t = 0; }
       return;
     }
     if (e.phase === 'tenue') {
       if (e.t >= (e.duree ?? TENUE_TIR_MS)) { tenir(false); e.phase = 'libre'; e.t = 0; }
       return;
     }
-
-    // billes de ce côté : dans la zone de la palette (y compris au fond du berceau, le jusqu'à −26 mm)
-    const proches = billes.map((b) => ({ b, q: repere(fl, b.position) }))
-      .filter(({ q }) => q.r < FLIP_LEN + BALL_R + 42 && q.t > -BALL_R && q.le > -26);
 
     // détection anticipée d'une bille descendant l'inlane de ce côté (pour lever tôt et réussir le Berceau)
     const bInlane = billes.find((b) => (side === 'L' ? b.position.x < 145 : b.position.x > 333)
@@ -331,8 +319,7 @@ export class Robot {
     }
 
     if (!proches.length) {
-      // attente de réception d'une passe, d'un berceau d'inlane ou d'un catch : ne pas relâcher trop tôt
-      const delai = e.raison === 'passe' ? 1600 : bInlane ? 1800 : 900;
+      const delai = e.raison === 'passe' ? 1500 : bInlane ? 1700 : 800;
       if (e.phase !== 'libre' && (e.phase !== 'attrape' || e.t > delai)) { tenir(false); e.phase = 'libre'; e.t = 0; }
       return;
     }
@@ -343,7 +330,6 @@ export class Robot {
 
     // --- berceau (Cradle) ---
     if (e.phase === 'berceau') {
-      // séparation en multibille (Cradle Separation) : une 2e bille arrive sur ce batteur déjà occupé
       if (proches.length >= 2 && e.t > 120) {
         tenir(false);
         e.phase = 'cradleSep'; e.t = 0;
@@ -354,12 +340,11 @@ export class Robot {
       if (e.t < BERCEAU_MS) return;
 
       const cible = this.cibleVoulue();
-      const dExact = this.choisirTirExact(side, cible);
-      const dOpp = this.choisirTirExact(opp, cible);
-      // transférer vers l'autre batteur si la cible n'est atteignable que de l'autre côté, OU si c'est un revers
-      // délicat alors que l'autre batteur offre un coup droit propre (ex. drops depuis D → passe à G)
-      const preferePasse = (dExact === null && dOpp !== null)
-        || (dOpp !== null && this.estRevers(side, cible) && !this.estRevers(opp, cible) && (this.passeAlt % 2 === 0));
+      const leExact = this.leBerceauExact(side, cible);
+      const leOpp = this.leBerceauExact(opp, cible);
+      // transférer vers l'autre batteur si la cible n'est atteignable que de l'autre côté, ou en alternance sur revers
+      const preferePasse = (leExact === null && leOpp !== null)
+        || (leOpp !== null && this.estRevers(side, cible) && !this.estRevers(opp, cible) && (this.passeAlt % 3 === 0));
 
       if (preferePasse && billes.length === 1 && this.etat[opp].phase === 'libre') {
         this.preparerReception(opp, 'passe');
@@ -367,22 +352,21 @@ export class Robot {
         this.passeAlt++;
         const mode = this.passeMode++ % 3;
         if (mode === 0) {
-          // Tap / Alley Pass de pointe (833 ms, micro-impulsion) : transfère sur le batteur opposé
-          e.phase = 'passe'; e.d = 833; e.hold = 25; e.typePasse = 'tapPass'; e.t = 0;
+          e.phase = 'passe'; e.leVise = 49; e.hold = 35; e.typePasse = 'tapPass'; e.t = 0;
         } else if (mode === 1) {
-          // Post Pass (500 ms) : renvoie via le plot / haut vers le batteur opposé
-          e.phase = 'passe'; e.d = 500; e.hold = 180; e.typePasse = 'postPass'; e.t = 0;
+          e.phase = 'passe'; e.leVise = 16; e.hold = 150; e.typePasse = 'postPass'; e.t = 0;
         } else {
-          // Shatz (700 ms, micro-impulsion de pointe) : remonte l'inlane opposé vers l'autre palette
-          e.phase = 'passe'; e.d = 700; e.hold = 25; e.typePasse = 'shatz'; e.t = 0;
+          e.phase = 'passe'; e.leVise = 45; e.hold = 35; e.typePasse = 'shatz'; e.t = 0;
         }
         return;
       }
       if (this.estRevers(side, cible) && !this.estRevers(opp, cible)) this.passeAlt++;
 
-      const d = this.choisirTir(side, cible);
+      // sur R, quand drops est voulu en revers, on peut aussi viser la rampe (coup droit très sûr à le=31)
+      const cibleFinale = leExact !== null ? cible : (side === 'R' ? 'ramp' : 'drops');
+      const leVise = Math.min(LE_GARDE, this.leBerceauExact(side, cibleFinale) ?? 34);
       tenir(false);
-      e.phase = 'tir'; e.d = d; e.cible = cible; e.t = 0;
+      e.phase = 'tir'; e.leVise = leVise; e.cible = cibleFinale; e.t = 0;
       return;
     }
 
@@ -395,7 +379,7 @@ export class Robot {
         e.raison = null;
         return;
       }
-      if (e.t > 2800) { tenir(false); e.phase = 'libre'; e.t = 0; }
+      if (e.t > 2400) { tenir(false); e.phase = 'libre'; e.t = 0; }
       return;
     }
 
@@ -403,26 +387,28 @@ export class Robot {
     const surPalette = q.t < BALL_R + 18;
     const dansInlane = (side === 'L' ? b.position.x < 145 : b.position.x > 333) && b.position.y > 740;
 
-    // A. Bille qui descend du plateau vers la palette (hors contact immédiat)
-    if (!surPalette && vy > 0.15 && q.le > -4 && q.le < FLIP_LEN + 22) {
+    // A. Bille qui descend du plateau vers la palette
+    if (!surPalette && vy > 0.15 && q.le > -4 && q.le < FLIP_LEN + 18) {
       const avance = vy * 1000;                      // mm/s
       const tImpMs = Math.max(0, ((q.t - BALL_R - 7) / avance) * 1000);
       const sg = side === 'L' ? 1 : -1;
       const leImp = q.le + (vx * sg * tImpMs);
 
-      // 1. Retour depuis l'inlane : lever tôt pour un Berceau propre (100 % stable sur Voie A)
+      // ne pas réagir sur une bille qui passe hors portée de cette palette (laisse le Slap Save gérer le centre)
+      if (leImp > FLIP_LEN + 10) return;
+
+      // 1. Retour depuis l'inlane : lever tôt pour un Berceau propre
       if (dansInlane && billes.length === 1 && tImpMs < 240) {
         tenir(true); e.phase = 'attrape'; e.t = 0; e.raison = 'berceau';
         return;
       }
 
-      // 2. Dead Bounce : bille de vitesse moyenne tombant au milieu de la palette → laisser rebondir palette morte
-      //    vers le batteur opposé levé quand la cible voulue est mieux placée de l'autre côté (ou en contrôle)
+      // 2. Dead Bounce : rebond mort vers le batteur opposé levé (uniquement dans la fenêtre sûre leImp ∈ [26..44])
       const cible = this.cibleVoulue();
-      const prefereOpp = this.choisirTirExact(side, cible) === null && this.choisirTirExact(opp, cible) !== null;
+      const prefereOpp = this.leBerceauExact(side, cible) === null && this.leBerceauExact(opp, cible) !== null;
       if (billes.length === 1 && this.etat[opp].phase === 'libre'
-          && v >= 0.72 && v <= 1.35 && Math.abs(vx) < 0.35 && leImp >= 24 && leImp <= 48 && tImpMs < 130
-          && (prefereOpp || (this.catchAlt % 4 === 3))) {
+          && v >= 0.80 && v <= 1.35 && Math.abs(vx) < 0.30 && leImp >= 26 && leImp <= 44 && tImpMs < 110
+          && (prefereOpp || (this.catchAlt % 5 === 4))) {
         this.catchAlt++;
         this.preparerReception(opp, 'passe');
         e.phase = 'deadBounce'; e.t = 0;
@@ -431,18 +417,16 @@ export class Robot {
       }
 
       // 3. Drop Catch ou Live Catch : amorti contrôlé sur bille descendante (en simple bille)
-      if (billes.length === 1 && v >= 0.45 && v <= 2.1 && Math.abs(vx) < 0.95 && leImp >= 10 && leImp <= 54) {
+      if (billes.length === 1 && v >= 0.45 && v <= 2.1 && Math.abs(vx) < 0.90 && leImp >= 10 && leImp <= 48) {
         const modeCatch = this.catchAlt % 2;
-        if (modeCatch === 0 && tImpMs > 40 && tImpMs < 130) {
-          // Drop Catch : on lève tôt, puis on relâche juste avant le contact pour absorber l'énergie
+        if (modeCatch === 0 && tImpMs > 42 && tImpMs < 120) {
           this.catchAlt++;
           tenir(true);
-          e.phase = 'dropCatch'; e.t = 0; e.lache = false; e.attente = Math.max(16, tImpMs - 30);
+          e.phase = 'dropCatch'; e.t = 0; e.lache = false; e.attente = Math.max(16, tImpMs - 28);
           this.noterGeste('dropCatch', side);
           return;
         }
-        if (tImpMs <= 45) {
-          // Live Catch : levée synchronisée au moment exact du contact, tenue haute
+        if (tImpMs <= 38) {
           this.catchAlt++;
           tenir(true);
           e.phase = 'attrape'; e.t = 0; e.raison = 'liveCatch';
@@ -452,8 +436,8 @@ export class Robot {
         return;
       }
 
-      // 4. Bille très rapide ou multibille : frappe de sauvetage / tir à la volée au bon timing
-      if (tImpMs <= 42) {
+      // 4. Bille très rapide ou multibille : frappe de sauvetage juste avant l'impact (jamais trop tôt)
+      if (tImpMs <= 34 && leImp >= 6) {
         tenir(true); e.phase = 'tenue'; e.t = 0; e.duree = TENUE_TIR_MS;
         this.stats.sauvetages++;
         this.noterGeste('sauvetage', side);
@@ -461,15 +445,15 @@ export class Robot {
       return;
     }
 
-    // B. Bille roulant sur la palette vers la pointe : Flick / tir visé au bon « le » (ou sauvetage en bout de course)
+    // B. Bille roulant sur la palette vers la pointe : Flick visé au bon « le », ou garde-fou LE_GARDE
     if (surPalette) {
       const cible = this.cibleVoulue();
-      const leCible = LE_TIRS[side][cible] ?? FLIP_LEN * 0.65;
-      if (q.le >= leCible && q.le <= FLIP_LEN + 10) {
+      const leCible = Math.min(LE_GARDE, LE_VOL[side][cible] ?? 36);
+      if (q.le >= leCible && q.le <= FLIP_LEN + 8) {
         tenir(true); e.phase = 'tenue'; e.t = 0; e.duree = TENUE_TIR_MS;
         this.stats.tirs[cible] = (this.stats.tirs[cible] || 0) + 1;
         this.noterGeste('flick', `${side} → ${cible}`);
-      } else if (q.le > FLIP_LEN * 0.85) {
+      } else if (q.le >= LE_GARDE) {
         tenir(true); e.phase = 'tenue'; e.t = 0; e.duree = TENUE_TIR_MS;
         this.stats.sauvetages++;
         this.noterGeste('sauvetage', side);
@@ -485,15 +469,12 @@ export class Robot {
   }
 }
 
-// Étalonnage des tirs depuis le berceau : pour chaque côté et chaque délai d (ms entre la palette baissée et la
-// frappe), première cible touchée.
-// creer() rend une simulation neuve ({ sim, contacts }) ; dure quelques dizaines de secondes.
+// Étalonnage des tirs depuis le berceau (utilisé par outils/robot.mjs --etalonner).
 export async function etalonner(creer) {
   const tirs = { L: [], R: [] };
   const { sim, contacts } = await creer();
   for (const side of ['L', 'R']) {
     const fl = sim.T.flippers.find((f) => f.def.side === side);
-    // le robot agit une fois par image (60 Hz) : les délais sont des nombres entiers d'images
     for (let n = 0; n <= 48; n++) {
       const d = Math.round(n * 1000 / 60);
       sim.clear(); contacts.length = 0;
@@ -501,7 +482,7 @@ export async function etalonner(creer) {
       for (let k = 0; k < 10; k++) sim.step(1000 / 60);
       const b = sim.makeBall(side === 'R' ? 417 : 61, 700);
       for (let k = 0; k < 210; k++) sim.step(1000 / 60);
-      if (repere(fl, b.position).r > FLIP_LEN + 30 || b.vitesse > 0.05) continue;     // pas en berceau
+      if (repere(fl, b.position).r > FLIP_LEN + 30 || b.vitesse > 0.05) continue;
       contacts.length = 0;
       let cible = null;
       for (let k = 0; k < 60 * 3 && !b.retiree; k++) {
