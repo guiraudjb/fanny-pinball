@@ -1,43 +1,147 @@
-// Simulation physique (Matter.js) : joue le rôle de la mécanique réelle.
-// Elle transforme les chocs en « contacts » (comme les micro-rupteurs) et exécute les
-// « bobines » demandées par les règles. Bumpers, lance-pierres et flippers réagissent
-// localement, exactement comme la réplique où le Mega tire la bobine dès que le contact
-// se ferme.
+// Simulation physique en 3D (Rapier) : joue le rôle de la mécanique réelle.
+// La bille est une sphère d'acier qui roule sur le plateau incliné ; elle touche les vraies surfaces de la
+// CAO (guides, carcasses, plastiques, rampe, pattes : assets/cao/collision.glb) et les éléments actifs
+// décrits par table.js, extrudés à leur hauteur (palettes en rotation, bumpers, lance-pierres, cibles).
+// Elle transforme les chocs en « contacts » (comme les micro-rupteurs) et exécute les « bobines »
+// demandées par les règles. Bumpers, lance-pierres et palettes réagissent localement, exactement comme la
+// réplique où le Mega tire la bobine dès que le contact se ferme.
+//
+// Repère : celui de la table, en mètres. X vers la droite, Y vers le joueur (bas du plateau),
+// Z vers l'intérieur du plateau : une hauteur h au-dessus du plateau est z = −h (comme la vue 3D).
+// Les positions exposées sont en mm, les vitesses en mm par image de 16,7 ms (unités de l'ancien moteur).
 
-import { buildTable, GEO, BALL_R, CAT, W, CX as CX_TABLE, rampPath, pointAt } from './table.js';
-
-const LANE_X = GEO.playRight + 4;            // intérieur du couloir de lancement
-const SHOOTER_Y = GEO.plunger.top - 120;    // zone de repos de la bille sur le lanceur
+import R from '../vendor/rapier.module.js';
+import { buildTable, GEO, BALL_R, W, H, CX as CX_TABLE, rampPath } from './table.js';
 import { SW, COIL } from './rules.js';
 
-const { Engine, Events, Composite, Bodies, Body } = window.Matter;
+const { Engine, Body } = window.Matter;
 
-const SUB_MS = 1000 / 600;        // pas fixe : 10 sous-pas par image à 60 i/s
-const GRAVITY = 2.2;              // ≈ 0,9 m/s² le long du plateau : un peu plus lent qu'un vrai (6,5°) pour le confort
-const MAX_SPEED = 50;             // px par 16,7 ms (8 px par sous-pas, < rayon de bille)
-const FLIP_UP = 0.045;            // rad/ms (course complète ≈ 22 ms, comme une vraie bobine)
-const FLIP_DOWN = 0.02;
-const LAUNCH_POWER = 36;             // calé pour suivre l'arrondi du haut et retomber sur les bumpers
-const BUMPER_KICK = 12;
-const SLING_KICK = 10;
-// Coup du lance-pierre : penché vers le bas (≈ 18° au-dessus de l'horizontale au lieu de 29°) et dispersé
-// (±6°, ±12 %). Mesure sur 60 billes lancées entre les lance-pierres : 24 orbites sans fin avant,
-// 0 après (1,3 coup en moyenne, 7 au plus).
-const SLING_TUNE = { kick: SLING_KICK, bias: 0.2, jitter: 6, spread: 0.12, keep: 0.5 };
-const NUDGE_KICK = 4.5;           // élan vers le haut donné par un coup de caisse
-const TILT_BOB = 2.4;             // amplitude du pendule qui ferme le contact TILT
-const BOB_TAU = 1500;             // amortissement du pendule (ms) : un coup par seconde reste sans danger
-const SAUCER_MAX_SPEED = 16;      // au-delà, la bille passe par-dessus le Cercle
-const RAMP_SPEED = 1.0;          // px/ms sur la rampe
-const RAMP_MIN_VY = -1.5;         // vitesse montante minimale pour franchir la rampe
+const MM = 0.001;
+const FRAME = 1000 / 60;                 // ms : unité de temps des vitesses exposées
+const v2si = (v) => (v * 60) * MM;        // mm/image → m/s
+const si2v = (v) => v / MM / 60;          // m/s → mm/image
+
+const DT_MS = 1000 / 480;                // pas fixe : 480 Hz (la pointe de palette avance de 6 mm par pas au plus)
+const PENTE = (6.5 * Math.PI) / 180;     // inclinaison du plateau
+const G = 9.81;
+const H_PAROI = 32;                       // mm, hauteur des parois et blocs (cao/cotes.py PLATEAU.h_paroi)
+const H_VITRE = 105;                      // mm, dessous de la vitre
+const MASSE = 0.080;                      // kg, bille de 1-1/16"
+const V_MAX = 6.0;                        // m/s
+// Résistance au roulement (Rapier n'en a pas) : la bille roulant au contact du plateau perd ROULEMENT × g
+// (m/s²) tant qu'elle avance. Réglée avec le caoutchouc des palettes : à 0,008 les billes du couloir de retour
+// passaient la pointe de la palette levée, à 0,016 elles s'arrêtaient à mi-palette. Sans elle, une bille descendant le couloir de retour
+// remontait la palette levée et passait par-dessus la pointe.
+const ROULEMENT = 0.012;
+const FLIP_UP = 45;                       // rad/s (course complète ≈ 22 ms, comme une vraie bobine)
+const FLIP_DOWN = 20;
+const LAUNCH_V = 2.35;
+const COURSE_LANCEUR = 50;               // mm : course du lanceur à ressort tiré à fond                    // m/s : suit l'arrondi du haut et retombe sur les bumpers
+const BUMPER_V = 1.25;                    // m/s, coup du bumper
+const SLING_V = 1.05;                     // m/s, coup du lance-pierre
+// Coup du lance-pierre : penché vers le bas et dispersé, comme un vrai : sans cela, la bille trouvait une
+// orbite stable d'un lance-pierre à l'autre et n'en sortait plus.
+const SLING_TUNE = { kick: SLING_V, bias: 0.2, jitter: 6, spread: 0.12, keep: 0.5 };
+const NUDGE_V = 0.27;                     // m/s, élan vers le haut donné par un coup de caisse
+const TILT_BOB = 2.4;                     // amplitude du pendule qui ferme le contact TILT
+const BOB_TAU = 1500;                     // amortissement du pendule (ms)
+const SAUCER_MAX_V = 0.95;                // m/s : au-delà, la bille passe par-dessus le Cercle
+
+// Matières : [rebond, frottement] effectifs contre la bille (règle « produit » ; la bille porte 0,95 et 1).
+const BILLE_E = 0.95;
+const MATIERES = {
+  bois: [0.3, 0.2],          // plateau vernis : la bille y roule sans glisser
+  verre: [0.3, 0.05],
+  plastique: [0.55, 0.15],   // guides et carcasses imprimés
+  acrylique: [0.5, 0.12],
+  rampe: [0.35, 0.12],
+  metal: [0.45, 0.1],
+  caoutchouc: [0.8, 0.7],    // anneaux, lance-pierres
+  palette: [0.5, 0.6],       // caoutchouc de palette
+  bumper: [0.6, 0.3],
+  cible: [0.45, 0.2],
+  mou: [0.2, 0.2],           // bras du tablier, lanceur
+};
+
+// Groupes de collision : le portillon du couloir de lancement ne touche que les billes qui l'ont passé.
+const GR = { WALL: 0x0001, GATE: 0x0002, BALL: 0x0004 };
+const groupes = (membre, filtre) => (membre << 16) | filtre;
+
+// hauteur du fond de rampe à l'abscisse s (même profil que cao/modele.py et render3d.js)
+const RAMPE = { z: 62, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), desc: 120 };
+function zRampe(s, L) {
+  const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente, s3 = L - RAMPE.desc;
+  let z = p0 * Math.max(0, s);   // pente de la languette d'entrée (3 mm sur 30)
+  for (const [sk, dm, h] of [[s1, RAMPE.pente - p0, 20], [s2, -RAMPE.pente, 50], [s3, -(RAMPE.z - RAMPE.zFin) / RAMPE.desc, 40]]) {
+    const x = s - sk;
+    z += dm * (x < -h ? 0 : x > h ? x : (x + h) ** 2 / (4 * h));
+  }
+  return Math.max(0, z);
+}
+
+// --- lecture minimale d'un glTF binaire (assets/cao/collision.glb, écrit par outils/cao_web.py)
+function lireGLB(buf) {
+  const dv = new DataView(buf);
+  const lj = dv.getUint32(12, true);
+  const gltf = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, lj)));
+  const bin = 20 + lj + 8;
+  const lire = (i) => {
+    const a = gltf.accessors[i], v = gltf.bufferViews[a.bufferView];
+    const T = a.componentType === 5126 ? Float32Array : a.componentType === 5125 ? Uint32Array : Uint16Array;
+    const n = a.count * (a.type === 'VEC3' ? 3 : 1);
+    return new T(buf.slice(bin + (v.byteOffset || 0), bin + (v.byteOffset || 0) + n * T.BYTES_PER_ELEMENT));
+  };
+  return gltf.nodes.map((n) => {
+    const p = gltf.meshes[n.mesh].primitives[0];
+    return { nom: n.name, ...n.extras, pos: lire(p.attributes.POSITION), idx: lire(p.indices) };
+  });
+}
+
+const dedans = (x, y, poly) => {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+};
+const pres = (x, y, poly, d) => poly.some(([xi, yi], i) => {
+  const [xj, yj] = poly[(i + 1) % poly.length];
+  const dx = xj - xi, dy = yj - yi, l2 = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((x - xi) * dx + (y - yi) * dy) / l2));
+  return Math.hypot(x - xi - t * dx, y - yi - t * dy) < d;
+});
+
+// Bille : corps Rapier + état de jeu (fp), position et vitesse dans les unités de l'ancien moteur
+class Bille {
+  constructor(body, collider) {
+    this.body = body;
+    this.collider = collider;
+    this.plugin = { fp: { mode: 'table', gate: false, still: 0, saucerIgnoreUntil: 0 } };
+  }
+  // après retrait du monde, le corps Rapier n'existe plus : on garde son dernier état
+  get t() { return this.fige ? this.fige.t : this.body.translation(); }
+  get v() { return this.fige ? this.fige.v : this.body.linvel(); }
+  figer() { this.fige = { t: this.body.translation(), v: this.body.linvel(), q: this.body.rotation() }; }
+  get position() { const t = this.t; return { x: t.x / MM, y: t.y / MM }; }
+  get hauteur() { return -this.t.z / MM - BALL_R; }   // dessous de la bille au-dessus du plateau
+  get velocity() { const v = this.v; return { x: si2v(v.x), y: si2v(v.y) }; }
+  get vitesse() { const v = this.v; return Math.hypot(v.x, v.y, v.z); }   // m/s
+  get rotation() { return this.fige ? this.fige.q : this.body.rotation(); }
+}
+
+// Création : Rapier (WebAssembly) et les surfaces de la CAO se chargent d'abord.
+export async function creerSim(onSwitch, { collision = 'assets/cao/collision.glb', glb = null } = {}) {
+  await R.init();
+  const buf = glb || await (await fetch(collision)).arrayBuffer();
+  return new Sim(onSwitch, lireGLB(buf));
+}
 
 export class Sim {
-  constructor(onSwitch) {
+  constructor(onSwitch, surfaces = []) {
     this.onSwitch = onSwitch;
-    this.engine = Engine.create({ enableSleeping: false, positionIterations: 8, velocityIterations: 6 });
-    this.engine.gravity.y = GRAVITY;
-    this.T = buildTable(this.engine);
-    this.world = this.engine.world;
+    // table.js décrit les formes avec des corps Matter.js : on s'en sert comme gabarits (et pour le rendu)
+    this.T = buildTable(Engine.create());
     this.ramps = { L: rampPath(GEO.ramps.L) };
     this.balls = [];
     this.post = [];
@@ -48,50 +152,182 @@ export class Sim {
     this.bob = 0;             // amplitude du pendule de tilt
     this.lastNudge = -1e9;
     this.shakeAt = -1e9;
-    this.launchPower = LAUNCH_POWER;
+    this.launchV = LAUNCH_V;
+    this.courseLanceur = COURSE_LANCEUR;
+    this.tirage = 0;            // lanceur à ressort : part de la course tirée (0..1), pour le rendu
+    this.force = 1;             // part de launchV donnée au prochain tir (main.js : suit le tirage)
     this.slingTune = { ...SLING_TUNE };
     this.shooterClosed = false;
     this.dropsUp = GEO.drops.map(() => true);
     this.flash = {};            // nom → instant du dernier choc (pour le rendu)
     this.cool = {};             // anti-rebond des contacts
-    Events.on(this.engine, 'collisionStart', (e) => this.onCollisions(e.pairs));
+    this.info = new Map();      // poignée de collider → rôle (bumper, sling, cible…)
+
+    this.world = new R.World({ x: 0, y: G * Math.sin(PENTE), z: G * Math.cos(PENTE) });
+    this.world.timestep = DT_MS / 1000;
+    this.world.integrationParameters.numSolverIterations = 8;
+    // échelle des objets : sans elle Rapier tolère 5 mm d'interpénétration (réglé pour des objets d'un mètre),
+    // et la bille qui aborde une pente en ressortait projetée vers la vitre
+    this.world.integrationParameters.lengthUnit = 0.01;
+    this.events = new R.EventQueue(true);
+    this.construire(surfaces);
+  }
+
+  // ---------------------------------------------------------------- monde
+  matiere(desc, nom) {
+    const [e, f] = MATIERES[nom];
+    return desc.setRestitution(e / BILLE_E).setFriction(f)
+      .setRestitutionCombineRule(R.CoefficientCombineRule.Multiply)
+      .setFrictionCombineRule(R.CoefficientCombineRule.Multiply);
+  }
+
+  // prisme vertical d'un contour 2D (mm), de la hauteur h0 à h1 au-dessus du plateau
+  prisme(pts, h0, h1) {
+    const v = new Float32Array(pts.length * 6);
+    pts.forEach(([x, y], i) => v.set([x * MM, y * MM, -h0 * MM, x * MM, y * MM, -h1 * MM], i * 6));
+    return R.ColliderDesc.convexHull(v);
+  }
+
+  cylindre(x, y, r, h0, h1) {
+    const s = Math.SQRT1_2;   // l'axe des cylindres Rapier est Y : quart de tour autour de X
+    return R.ColliderDesc.cylinder(((h1 - h0) / 2) * MM, r * MM)
+      .setTranslation(x * MM, y * MM, (-(h0 + h1) / 2) * MM).setRotation({ x: s, y: 0, z: 0, w: s });
+  }
+
+  // corps Matter (gabarit) → collider fixe ; role : informations pour les contacts
+  ajouter(b, h0, h1, matiere, role) {
+    const parts = b.parts.length > 1 ? b.parts.slice(1) : [b];
+    for (const p of parts) {
+      const desc = b.circleRadius ? this.cylindre(b.position.x, b.position.y, b.circleRadius, h0, h1)
+        : this.prisme(p.vertices.map((v) => [v.x, v.y]), h0, h1);
+      if (!desc) continue;
+      this.matiere(desc, matiere);
+      if (b.isSensor) desc.setSensor(true);
+      const c = this.world.createCollider(desc);
+      if (role) this.info.set(c.handle, { ...role, corps: b, collider: c });
+    }
+  }
+
+  construire(surfaces) {
+    const T = this.T, w = this.world;
+    // plateau et vitre
+    w.createCollider(this.matiere(R.ColliderDesc.cuboid((W / 2) * MM, (H / 2 + 40) * MM, 0.02)
+      .setTranslation((W / 2) * MM, (H / 2) * MM, 0.02), 'bois'));
+    w.createCollider(this.matiere(R.ColliderDesc.cuboid((W / 2) * MM, (H / 2 + 40) * MM, 0.005)
+      .setTranslation((W / 2) * MM, (H / 2) * MM, -(H_VITRE * MM + 0.005)), 'verre'));
+
+    // surfaces passives de la CAO (maillages)
+    const contours = [];
+    for (const s of surfaces) {
+      const v = new Float32Array(s.pos.length);
+      for (let i = 0; i < v.length; i++) v[i] = s.pos[i] * MM;
+      // FIX_INTERNAL_EDGES : sans lui, les arêtes entre deux facettes d'une même pièce (pied de rampe, cintrages)
+      // donnent des contacts fantômes qui font sauter la bille
+      const c = w.createCollider(this.matiere(R.ColliderDesc.trimesh(v, new Uint32Array(s.idx), R.TriMeshFlags.FIX_INTERNAL_EDGES),
+        MATIERES[s.categorie] ? s.categorie : 'plastique'));
+      this.info.set(c.handle, { type: 'surface', nom: s.nom });
+      for (const c of s.contour || []) contours.push(c);
+    }
+    // parois de table.js qui n'ont pas de pièce CAO (caisse, séparateur du couloir de lancement, bras du
+    // tablier…) ; les poteaux caoutchoutés restent des cylindres (leur anneau n'est pas dans le maillage)
+    const couvert = (b) => {
+      const pts = b.vertices.map((v) => [v.x, v.y]);
+      const ok = (x, y) => contours.some((c) => dedans(x, y, c) || pres(x, y, c, 4));
+      return ok(b.position.x, b.position.y) && pts.filter((p) => ok(...p)).length * 2 >= pts.length;
+    };
+    for (const b of T.walls) {
+      const pl = b.plugin || {};
+      if (pl.flanc) continue;                                   // flancs de la rampe : dans son maillage
+      const poteau = b.circleRadius && !pl.hidden;
+      if (!poteau && couvert(b)) continue;
+      const hors = b.position.x < 0 || b.position.x > W;       // murs de la caisse
+      const mat = poteau ? 'caoutchouc' : b.label === 'apron' || b.label === 'plunger' ? 'mou' : 'plastique';
+      this.ajouter(b, 0, hors ? H_VITRE + 10 : H_PAROI, mat, { type: 'paroi', nom: b.label, x: Math.round(b.position.x), y: Math.round(b.position.y) });
+    }
+    T.bumpers.forEach((b, i) => this.ajouter(b, 0, 40, 'bumper', { type: 'bumper', idx: i }));
+    T.slings.forEach((b) => this.ajouter(b, 0, H_PAROI, 'caoutchouc', { type: 'sling', ...b.plugin }));
+    T.drops.forEach((b, i) => this.ajouter(b, 0, 33, 'cible', { type: 'drop', idx: i }));
+    T.standups.forEach((b) => this.ajouter(b, 0, 30, 'cible', { type: 'standup', ...b.plugin }));
+    (T.leftTargets || []).forEach((b) => this.ajouter(b, 0, 30, 'cible', { type: 'target', ...b.plugin }));
+    T.lanes.forEach((b) => this.ajouter(b, 0, 10, 'bois', { type: 'lane', ...b.plugin }));
+    this.ajouter(T.saucer, 0, 8, 'bois', { type: 'saucer' });
+    // portillon à sens unique en haut du couloir de lancement
+    const g = this.matiere(this.prisme(T.gate.vertices.map((v) => [v.x, v.y]), 0, 22), 'metal');
+    w.createCollider(g.setCollisionGroups(groupes(GR.GATE, GR.BALL)));
+    // barrière infrarouge en sortie de rampe (contact RAMPE), à hauteur de la bille sur la rampe
+    const path = this.ramps.L, L = path.length, sIR = L - 120;
+    const p = path.pts.reduce((m, q) => (Math.abs(q.s - sIR) < Math.abs(m.s - sIR) ? q : m));
+    const cIR = w.createCollider(R.ColliderDesc.ball(16 * MM).setSensor(true)
+      .setTranslation(p.x * MM, p.y * MM, -(zRampe(p.s, L) + 3 + BALL_R) * MM));
+    this.info.set(cIR.handle, { type: 'ramp', side: 'L' });
+
+    // palettes : corps cinématiques en rotation autour de leur axe ; Rapier en déduit la vitesse de
+    // surface transmise à la bille
+    this.palettes = T.flippers.map((fl) => {
+      const { px, py } = fl.def;
+      const body = w.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(px * MM, py * MM, 0));
+      const pts = fl.body.vertices.map((v) => [v.x - px, v.y - py]);
+      const c = w.createCollider(this.matiere(this.prisme(pts, 3, 25), 'palette'), body);
+      this.info.set(c.handle, { type: 'palette', nom: fl.def.side });
+      return { fl, body, a0: fl.angle };
+    });
   }
 
   // ---------------------------------------------------------------- billes
   makeBall(x, y) {
-    const b = Bodies.circle(x, y, BALL_R, {
-      label: 'ball', restitution: 0.2, friction: 0.02, frictionStatic: 0, frictionAir: 0.0015,
-      density: 0.004, slop: 0.02,
-      collisionFilter: { category: CAT.BALL, mask: CAT.WALL | CAT.BALL },
-    });
-    b.plugin.fp = { mode: 'table', gate: false, still: 0, saucerIgnoreUntil: 0 };
-    Composite.add(this.world, b);
+    const body = this.world.createRigidBody(R.RigidBodyDesc.dynamic()
+      .setTranslation(x * MM, y * MM, -(BALL_R + 0.05) * MM).setCcdEnabled(true)
+      .setLinearDamping(0.02).setAngularDamping(0.05));
+    const r = BALL_R * MM;
+    const desc = R.ColliderDesc.ball(r).setDensity(MASSE / ((4 / 3) * Math.PI * r ** 3))
+      .setRestitution(BILLE_E).setFriction(1)
+      .setRestitutionCombineRule(R.CoefficientCombineRule.Multiply)
+      .setFrictionCombineRule(R.CoefficientCombineRule.Multiply)
+      .setActiveEvents(R.ActiveEvents.COLLISION_EVENTS)
+      .setCollisionGroups(groupes(GR.BALL, GR.WALL | GR.BALL));
+    const b = new Bille(body, this.world.createCollider(desc, body));
+    this.info.set(b.collider.handle, { type: 'ball', bille: b });
     this.balls.push(b);
     return b;
   }
 
+  setVitesse(b, vx, vy, vz = null) {
+    const v = b.body.linvel();
+    b.body.setLinvel({ x: v2si(vx), y: v2si(vy), z: vz ?? v.z }, true);
+  }
+
   removeBall(b, forget) {
-    Composite.remove(this.world, b);
+    if (!b.retiree) {
+      this.info.delete(b.collider.handle);
+      b.figer();
+      this.world.removeRigidBody(b.body);
+      b.retiree = true;
+    }
     if (forget) this.balls = this.balls.filter((o) => o !== b);
   }
 
   clear() {
-    for (const b of this.balls) Composite.remove(this.world, b);
+    for (const b of this.balls) this.removeBall(b, false);
     this.balls = [];
     this.shooterClosed = false;
     this.resetDrops();
+  }
+
+  dansLanceur(b) {
+    const { x, y } = b.position;
+    return x > GEO.playRight + 4 && y > GEO.plunger.top - 120;
   }
 
   // ---------------------------------------------------------------- bobines
   coil(name) {
     const P = GEO.plunger;
     if (name === COIL.TROUGH) {
-      const occupied = this.balls.some((b) => b.plugin.fp.mode === 'table' && b.position.x > LANE_X && b.position.y > SHOOTER_Y);
+      const occupied = this.balls.some((b) => b.plugin.fp.mode === 'table' && this.dansLanceur(b));
       this.makeBall(P.x, occupied ? P.ballY - 60 : P.ballY);
     } else if (name === COIL.LAUNCH) {
       for (const b of this.balls) {
-        if (b.plugin.fp.mode === 'table' && b.position.x > LANE_X && b.position.y > SHOOTER_Y) {
-          Body.setVelocity(b, { x: 0, y: -(this.launchPower + (Math.random() - 0.5) * 1.6) });
+        if (b.plugin.fp.mode === 'table' && this.dansLanceur(b)) {
+          b.body.setLinvel({ x: 0, y: -(this.launchV * this.force * (1 + (Math.random() - 0.5) * 0.04)), z: 0 }, true);
         }
       }
       this.flash.plunger = this.time;
@@ -101,10 +337,10 @@ export class Sim {
         if (b.plugin.fp.mode !== 'saucer') continue;
         b.plugin.fp.mode = 'table';
         b.plugin.fp.saucerIgnoreUntil = this.time + 900;
-        Body.setPosition(b, { x: s.x, y: s.y + 2 });
-        Composite.add(this.world, b);
+        b.body.setEnabled(true);
+        b.body.setTranslation({ x: s.x * MM, y: (s.y + 2) * MM, z: -(BALL_R + 0.5) * MM }, true);
         const k = s.kick || { x: 0, y: 7 };
-        Body.setVelocity(b, { x: k.x + (Math.random() - 0.5) * 2, y: k.y + (Math.random() - 0.5) * 2 });
+        this.setVitesse(b, k.x + (Math.random() - 0.5) * 2, k.y + (Math.random() - 0.5) * 2, 0);
       }
       this.flash.saucer = this.time;
     } else if (name === COIL.DROP_RESET) {
@@ -117,9 +353,8 @@ export class Sim {
   }
 
   resetDrops() {
-    this.T.drops.forEach((d, i) => {
-      if (!this.dropsUp[i]) { Composite.add(this.world, d); this.dropsUp[i] = true; }
-    });
+    for (const [, r] of this.info) if (r.type === 'drop') r.collider.setEnabled(true);
+    this.dropsUp = this.dropsUp.map(() => true);
   }
 
   // ---------------------------------------------------------------- chocs
@@ -129,114 +364,88 @@ export class Sim {
     return true;
   }
 
-  onCollisions(pairs) {
-    for (const pair of pairs) {
-      let ball = pair.bodyA, other = pair.bodyB;
-      if (ball.label !== 'ball') { ball = pair.bodyB; other = pair.bodyA; }
-      if (ball.label !== 'ball' || other.label === 'ball') continue;
-      const fp = ball.plugin.fp;
-      const d = other.plugin || {};
-
-      switch (other.label) {
-        case 'bumper':
-          if (!this.power || !this.debounce(`bumper${d.idx}`, 60)) break;
-          this.flash[`bumper${d.idx}`] = this.time;
-          this.post.push(() => {
-            let dx = ball.position.x - other.position.x, dy = ball.position.y - other.position.y;
-            const l = Math.hypot(dx, dy) || 1;
-            Body.setVelocity(ball, { x: (dx / l) * BUMPER_KICK, y: (dy / l) * BUMPER_KICK });
-          });
-          this.onSwitch(SW.BUMPERS[d.idx]);
-          break;
-
-        case 'sling': {
-          const { A, n } = d;
-          const side = (ball.position.x - A[0]) * n.x + (ball.position.y - A[1]) * n.y;
-          if (side < BALL_R * 0.5) break; // choc sur le dos du triangle : pas de tir
-          if (!this.power || !this.debounce(`sling${d.idx}`, 200)) break;
-          this.flash[`sling${d.idx}`] = this.time;
-          this.post.push(() => {
-            const v = Body.getVelocity(ball);
-            const tx = -n.y, ty = n.x;
-            const vt = v.x * tx + v.y * ty;
-            // direction du coup : perpendiculaire à la face, un peu penchée vers le bas (k.bias) et
-            // dispersée (k.jitter°, ±k.spread) comme un vrai lance-pierre : sans cela, la bille trouvait
-            // une orbite stable d'un lance-pierre à l'autre et n'en sortait plus
-            const k = this.slingTune;
-            let dx = n.x, dy = n.y + k.bias;
-            const a = ((Math.random() * 2 - 1) * k.jitter * Math.PI) / 180;
-            [dx, dy] = [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)];
-            const l = Math.hypot(dx, dy), p = k.kick * (1 + (Math.random() * 2 - 1) * k.spread);
-            Body.setVelocity(ball, { x: (dx / l) * p + tx * vt * k.keep, y: (dy / l) * p + ty * vt * k.keep });
-          });
-          this.onSwitch(SW.SLINGS[d.idx]);
-          break;
-        }
-
-        case 'drop':
-          if (!this.dropsUp[d.idx]) break;
-          this.dropsUp[d.idx] = false;
-          this.post.push(() => Composite.remove(this.world, other));
-          this.onSwitch(SW.DROPS[d.idx]);
-          break;
-
-        case 'standup':
-          if (!this.debounce(`standup${d.idx}`, 250)) break;
-          this.flash[`standup${d.idx}`] = this.time;
-          this.onSwitch(SW.STANDUPS[d.idx]);
-          break;
-
-        case 'target':
-          if (!this.debounce(`target${d.idx}`, 250)) break;
-          this.flash[`target${d.idx}`] = this.time;
-          this.onSwitch(d.id);
-          break;
-
-        case 'lane':
-          if (!this.debounce(`lane${d.idx}`, 300)) break;
-          this.onSwitch(SW.LANES[d.idx]);
-          break;
-
-        case 'saucer':
-          if (fp.mode !== 'table' || this.time < fp.saucerIgnoreUntil) break;
-          if (Body.getSpeed(ball) > SAUCER_MAX_SPEED) break; // trop rapide : elle saute le trou
-          fp.mode = 'saucer';
-          this.post.push(() => {
-            Composite.remove(this.world, ball);
-            Body.setPosition(ball, { x: GEO.saucer.x, y: GEO.saucer.y });
-            Body.setVelocity(ball, { x: 0, y: 0 });
-          });
-          this.onSwitch(SW.SAUCER);
-          break;
-
-        case 'rampEntry': {
-          if (fp.mode !== 'table') break;
-          const v = Body.getVelocity(ball);
-          if (v.x * d.u.x + v.y * d.u.y < -RAMP_MIN_VY) break; // trop lente : elle retombera du couloir
-          fp.mode = 'ramp';
-          fp.ramp = d.side;
-          fp.s = 0;
-          fp.rampSpeed = Math.max(RAMP_SPEED, Math.min(1.1, Math.hypot(v.x, v.y) / 16.7));
-          this.post.push(() => Composite.remove(this.world, ball));
-          break;
-        }
-
-        case 'drain':
-          if (fp.mode !== 'table') break;
-          fp.mode = 'gone';
-          this.post.push(() => this.removeBall(ball, true));
-          this.onSwitch(SW.DRAIN);
-          break;
+  // choc bille / élément : r = rôle de l'élément (voir construire)
+  contact(b, r) {
+    const fp = b.plugin.fp;
+    if (fp.mode !== 'table') return;
+    const { x, y } = b.position;
+    switch (r.type) {
+      case 'bumper': {
+        if (!this.power || !this.debounce(`bumper${r.idx}`, 60)) break;
+        this.flash[`bumper${r.idx}`] = this.time;
+        const c = r.corps.position;
+        this.post.push(() => {
+          const dx = x - c.x, dy = y - c.y, l = Math.hypot(dx, dy) || 1;
+          b.body.setLinvel({ x: (dx / l) * BUMPER_V, y: (dy / l) * BUMPER_V, z: 0 }, true);
+        });
+        this.onSwitch(SW.BUMPERS[r.idx]);
+        break;
       }
+      case 'sling': {
+        const { A, n, idx } = r;
+        const side = (x - A[0]) * n.x + (y - A[1]) * n.y;
+        if (side < BALL_R * 0.5) break; // choc sur le dos du triangle : pas de tir
+        if (!this.power || !this.debounce(`sling${idx}`, 200)) break;
+        this.flash[`sling${idx}`] = this.time;
+        this.post.push(() => {
+          const v = b.body.linvel();
+          const tx = -n.y, ty = n.x, vt = v.x * tx + v.y * ty;
+          // perpendiculaire à la face, un peu penché vers le bas (bias) et dispersé (jitter°, ±spread)
+          const k = this.slingTune;
+          let dx = n.x, dy = n.y + k.bias;
+          const a = ((Math.random() * 2 - 1) * k.jitter * Math.PI) / 180;
+          [dx, dy] = [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)];
+          const l = Math.hypot(dx, dy), p = k.kick * (1 + (Math.random() * 2 - 1) * k.spread);
+          b.body.setLinvel({ x: (dx / l) * p + tx * vt * k.keep, y: (dy / l) * p + ty * vt * k.keep, z: 0 }, true);
+        });
+        this.onSwitch(SW.SLINGS[idx]);
+        break;
+      }
+      case 'drop':
+        if (!this.dropsUp[r.idx]) break;
+        this.dropsUp[r.idx] = false;
+        this.post.push(() => r.collider.setEnabled(false));
+        this.onSwitch(SW.DROPS[r.idx]);
+        break;
+      case 'standup':
+        if (!this.debounce(`standup${r.idx}`, 250)) break;
+        this.flash[`standup${r.idx}`] = this.time;
+        this.onSwitch(SW.STANDUPS[r.idx]);
+        break;
+      case 'target':
+        if (!this.debounce(`target${r.idx}`, 250)) break;
+        this.flash[`target${r.idx}`] = this.time;
+        this.onSwitch(r.id);
+        break;
+      case 'lane':
+        if (!this.debounce(`lane${r.idx}`, 300)) break;
+        this.onSwitch(SW.LANES[r.idx]);
+        break;
+      case 'saucer':
+        if (this.time < fp.saucerIgnoreUntil || b.vitesse > SAUCER_MAX_V) break; // trop rapide : elle saute le trou
+        fp.mode = 'saucer';
+        this.post.push(() => {
+          b.body.setTranslation({ x: GEO.saucer.x * MM, y: GEO.saucer.y * MM, z: -(BALL_R - 7) * MM }, true);
+          b.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+          b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+          b.body.setEnabled(false);
+        });
+        this.onSwitch(SW.SAUCER);
+        break;
+      case 'ramp':
+        if (!this.debounce(`ramp${r.side}`, 400)) break;
+        this.flash[`ramp${r.side}`] = this.time;
+        this.onSwitch(SW.RAMP);
+        break;
     }
   }
 
   // ---------------------------------------------------------------- boucle
   step(dtMs) {
     this.acc += Math.min(dtMs, 100);
-    while (this.acc >= SUB_MS) {
-      this.acc -= SUB_MS;
-      this.substep(SUB_MS);
+    while (this.acc >= DT_MS) {
+      this.acc -= DT_MS;
+      this.substep(DT_MS);
     }
     this.frameChecks(dtMs);
   }
@@ -244,25 +453,36 @@ export class Sim {
   substep(dt) {
     this.time += dt;
 
-    for (const fl of this.T.flippers) {
+    for (const p of this.palettes) {
+      const { fl } = p;
       const held = this.power && this.held[fl.def.side];
       const target = held ? fl.def.up : fl.def.rest;
-      const speed = (held ? FLIP_UP : FLIP_DOWN) * dt;
+      const speed = ((held ? FLIP_UP : FLIP_DOWN) * dt) / 1000;
       const delta = Math.max(-speed, Math.min(speed, target - fl.angle));
       fl.angle += delta;
-      Body.rotate(fl.body, delta, { x: fl.def.px, y: fl.def.py }, true);
+      Body.rotate(fl.body, delta, { x: fl.def.px, y: fl.def.py });     // gabarit, pour le rendu
+      const a = (fl.angle - p.a0) / 2;
+      p.body.setNextKinematicRotation({ x: 0, y: 0, z: Math.sin(a), w: Math.cos(a) });
     }
 
     for (const b of this.balls) {
       const fp = b.plugin.fp;
       if (fp.mode !== 'table') continue;
-      // portillon à sens unique en haut du couloir de lancement
-      if (b.position.y < GEO.gate.y - GEO.gate.drop / 2 - BALL_R - 6) fp.gate = true;
-      else if (b.position.x > GEO.playRight && b.position.y > GEO.gate.y + GEO.gate.drop / 2 + BALL_R + 4) fp.gate = false;
-      b.collisionFilter.mask = CAT.WALL | CAT.BALL | (fp.gate ? CAT.GATE : 0);
+      // portillon : franchi vers le haut, il ferme ensuite le couloir de lancement
+      const { x, y } = b.position;
+      if (y < GEO.gate.y - GEO.gate.drop / 2 - BALL_R - 6) fp.gate = true;
+      else if (x > GEO.playRight && y > GEO.gate.y + GEO.gate.drop / 2 + BALL_R + 4) fp.gate = false;
+      b.collider.setCollisionGroups(groupes(GR.BALL, GR.WALL | GR.BALL | (fp.gate ? GR.GATE : 0)));
     }
 
-    Engine.update(this.engine, dt);
+    this.world.step(this.events);
+    this.events.drainCollisionEvents((h1, h2, debut) => {
+      if (!debut) return;
+      let a = this.info.get(h1), o = this.info.get(h2);
+      if (a?.type !== 'ball') [a, o] = [o, a];
+      if (a?.type !== 'ball' || !o || o.type === 'ball') return;
+      this.contact(a.bille, o);
+    });
 
     if (this.post.length) {
       const jobs = this.post;
@@ -272,30 +492,21 @@ export class Sim {
 
     for (const b of this.balls) {
       const fp = b.plugin.fp;
-      if (fp.mode === 'table') {
-        const v = Body.getVelocity(b);
-        const sp = Math.hypot(v.x, v.y);
-        if (sp > MAX_SPEED) Body.setVelocity(b, { x: (v.x / sp) * MAX_SPEED, y: (v.y / sp) * MAX_SPEED });
-        // filet de sécurité : bille sortie de la table
-        const { x, y } = b.position;
-        if (y > GEO.drainY + 40 || x < -20 || x > W + 20 || y < -40) {
-          fp.mode = 'gone';
-          this.post.push(() => this.removeBall(b, true));
-          this.onSwitch(SW.DRAIN);
-        }
-      } else if (fp.mode === 'ramp') {
-        const path = this.ramps[fp.ramp];
-        fp.s += fp.rampSpeed * dt;
-        if (fp.s >= path.length) {
-          const end = pointAt(path, path.length);
-          fp.mode = 'table';
-          fp.gate = true;
-          Body.setPosition(b, { x: end.x, y: end.y });
-          Composite.add(this.world, b);
-          Body.setVelocity(b, { x: end.dx * 6, y: end.dy * 6 });
-          this.flash[`ramp${fp.ramp}`] = this.time;
-          this.onSwitch(SW.RAMP);
-        }
+      if (fp.mode !== 'table' || b.retiree) continue;
+      const v = b.body.linvel(), sp = Math.hypot(v.x, v.y, v.z);
+      if (sp > V_MAX) b.body.setLinvel({ x: (v.x / sp) * V_MAX, y: (v.y / sp) * V_MAX, z: (v.z / sp) * V_MAX }, true);
+      else if (b.hauteur < 0.3 && sp > 0.005) {   // pas de freinage à l'arrêt : il retiendrait la bille en équilibre
+        // freinage de roulement : vitesse et rotation réduites ensemble (la bille continue de rouler sans glisser)
+        const k = Math.max(0, 1 - (ROULEMENT * G * dt) / 1000 / sp), w = b.body.angvel();
+        b.body.setLinvel({ x: v.x * k, y: v.y * k, z: v.z }, true);
+        b.body.setAngvel({ x: w.x * k, y: w.y * k, z: w.z * k }, true);
+      }
+      // évacuation (sous le tablier) et filet de sécurité : bille sortie de la table
+      const { x, y } = b.position;
+      if (y > GEO.drainY || x < -20 || x > W + 20 || y < -40 || b.hauteur > H_VITRE + 20 || b.hauteur < -40) {
+        fp.mode = 'gone';
+        this.post.push(() => this.removeBall(b, true));
+        this.onSwitch(SW.DRAIN);
       }
     }
   }
@@ -307,9 +518,9 @@ export class Sim {
     this.lastNudge = this.time;
     this.shakeAt = this.time;
     for (const b of this.balls) {
-      if (b.plugin.fp.mode !== 'table' || (b.position.x > LANE_X && b.position.y > SHOOTER_Y)) continue;
-      const v = Body.getVelocity(b);
-      Body.setVelocity(b, { x: v.x + (Math.random() - 0.5) * 3, y: v.y - NUDGE_KICK });
+      if (b.plugin.fp.mode !== 'table' || this.dansLanceur(b)) continue;
+      const v = b.body.linvel();
+      b.body.setLinvel({ x: v.x + (Math.random() - 0.5) * 0.18, y: v.y - NUDGE_V, z: v.z }, true);
     }
     this.bob += 1;
     if (this.bob >= TILT_BOB) { this.bob = 0.8; this.onSwitch(SW.TILT); }
@@ -319,8 +530,8 @@ export class Sim {
   frameChecks(dtMs) {
     this.bob *= Math.exp(-dtMs / BOB_TAU);
     // contact du couloir de lancement
-    const inShooter = this.balls.some((b) => b.plugin.fp.mode === 'table' && b.position.x > LANE_X
-      && b.position.y > GEO.plunger.ballY - 8 && Math.abs(Body.getVelocity(b).y) < 0.8);
+    const inShooter = this.balls.some((b) => b.plugin.fp.mode === 'table' && b.position.x > GEO.playRight + 4
+      && b.position.y > GEO.plunger.ballY - 8 && Math.abs(b.velocity.y) < 0.8);
     if (inShooter !== this.shooterClosed) {
       this.shooterClosed = inShooter;
       this.onSwitch(SW.SHOOTER, inShooter);
@@ -328,36 +539,29 @@ export class Sim {
     // bille immobile hors couloir (coincée) : petite secousse automatique
     for (const b of this.balls) {
       const fp = b.plugin.fp;
-      if (fp.mode !== 'table' || (b.position.x > GEO.playRight && b.position.y > SHOOTER_Y)) { fp.still = 0; continue; }
-      // bille tenue volontairement sur un flipper levé : on ne la secoue pas
-      const cradled = b.position.y > GEO.flippers[0].py - 90
-        && ((this.held.L && b.position.x < CX_TABLE) || (this.held.R && b.position.x >= CX_TABLE));
-      if (Body.getSpeed(b) < 0.15 && !cradled) fp.still += dtMs; else fp.still = 0;
+      if (fp.mode !== 'table' || b.retiree || this.dansLanceur(b)) { fp.still = 0; continue; }
+      const { x, y } = b.position;
+      // bille tenue volontairement sur une palette levée : on ne la secoue pas
+      const cradled = y > GEO.flippers[0].py - 90 && ((this.held.L && x < CX_TABLE) || (this.held.R && x >= CX_TABLE));
+      if (b.vitesse < 0.15 * 60 * MM && !cradled) fp.still += dtMs; else fp.still = 0;
       if (fp.still > 1500) {
         // secousses de plus en plus fortes, dirigées vers le centre de la table (comme un joueur qui
         // secoue la caisse) ; le compteur repart quand la bille a quitté l'endroit
         fp.still = 0;
-        if (!fp.stuckAt || Math.hypot(b.position.x - fp.stuckAt.x, b.position.y - fp.stuckAt.y) > 30) {
-          fp.stuckAt = { x: b.position.x, y: b.position.y }; fp.nudges = 0;
-        }
+        if (!fp.stuckAt || Math.hypot(x - fp.stuckAt.x, y - fp.stuckAt.y) > 30) { fp.stuckAt = { x, y }; fp.nudges = 0; }
         fp.nudges++;
-        let dx = CX_TABLE - b.position.x, dy = 480 - b.position.y;
-        const l = Math.hypot(dx, dy) || 1;
+        const dx = CX_TABLE - x, dy = 480 - y, l = Math.hypot(dx, dy) || 1;
         const k = 4 + 3 * Math.min(fp.nudges, 4);
-        Body.setVelocity(b, { x: (dx / l) * k + (Math.random() - 0.5) * 3, y: (dy / l) * k - 3 });
+        this.setVitesse(b, (dx / l) * k + (Math.random() - 0.5) * 3, (dy / l) * k - 3);
       }
     }
   }
 
-  // positions pour le rendu
+  // positions pour le rendu : z = hauteur du dessous de la bille au-dessus du plateau (mm)
   ballViews() {
-    return this.balls.filter((b) => b.plugin.fp.mode !== 'gone').map((b) => {
-      const fp = b.plugin.fp;
-      if (fp.mode === 'ramp') {
-        const p = pointAt(this.ramps[fp.ramp], fp.s);
-        return { x: p.x, y: p.y, onRamp: true };
-      }
-      return { x: b.position.x, y: b.position.y, onRamp: false, inSaucer: fp.mode === 'saucer' };
+    return this.balls.filter((b) => b.plugin.fp.mode !== 'gone' && !b.retiree).map((b) => {
+      const { x, y } = b.position, z = b.plugin.fp.mode === 'saucer' ? -7 : b.hauteur;
+      return { x, y, z, onRamp: z > 12, inSaucer: b.plugin.fp.mode === 'saucer', rotation: b.rotation };
     });
   }
 }

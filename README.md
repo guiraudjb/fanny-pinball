@@ -1,7 +1,7 @@
 # Fanny Pinball
 
 Flipper web avec Fanny, championne de pétanque : **Fanny Pétanque World Tour**.
-Prototype HTML5 + [Matter.js](https://brm.io/matter-js/), pensé dès le départ pour une
+Prototype HTML5, physique 3D [Rapier](https://rapier.rs/) (WebAssembly), pensé dès le départ pour une
 **réplique physique** pilotée par un Arduino Mega 2560 Pro (afficheurs TM1637, LED WS2812B,
 boutons d'arcade, pièces imprimées en 3D) : voir [docs/MATERIEL.md](docs/MATERIEL.md).
 
@@ -78,12 +78,13 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 
 | Fichier | Rôle |
 |---|---|
-| `js/table.js` | Géométrie en millimètres réels et corps Matter.js |
+| `js/table.js` | Géométrie en millimètres réels ; corps Matter.js servant de gabarits 2D (formes, rendu 2D) |
 | `js/rules.js` | Règles : contacts → bobines, lampes, afficheurs, sons (à porter en C++ sur le Mega) |
-| `js/sim.js` | Physique : transforme les chocs en contacts, exécute les bobines |
+| `js/sim.js` | Physique 3D (Rapier, `vendor/rapier.module.js`) : la bille d'acier roule et rebondit sur les surfaces réelles de la CAO (`assets/cao/collision.glb`) et sur les éléments actifs ; transforme les chocs en contacts, exécute les bobines |
 | `js/render.js` | Dessin du plateau en 2D ; `LAMP_LAYOUT` = ordre des LED WS2812B ; `drawFloor()` peint aussi la texture du plateau 3D |
 | `js/render3d.js` | Vue 3D (Three.js r170, `vendor/`, chargé à la demande) : plateau incliné, pièces de la CAO (`assets/cao/pieces.glb`), caisse, pieds et fronton avec afficheurs (`assets/cao/caisse.glb`), ombres, bille d'acier ; même physique |
-| `outils/cao_web.py` | Pièces et caisse de la CAO (STL) → `assets/cao/pieces.glb` et `caisse.glb` pour la vue 3D, sans dépendance |
+| `js/habillages.js` | Habillages provisoires de la caisse en 3D (bouton « Habillage » / touche H, caméras machine et tour) : huit décors dessinés aux cotes de la caisse WPC avec la palette et les sprites |
+| `outils/cao_web.py` | Pièces et caisse de la CAO (STL) → `assets/cao/pieces.glb` et `caisse.glb` pour la vue 3D, `collision.glb` pour la physique, sans dépendance |
 | `js/segfont.js` | Police 7 segments identique aux TM1637 |
 | `js/audio.js` | Bruitages `assets/sons/00NN.mp3` (= pistes du DFPlayer), musique ; synthèse en repli |
 

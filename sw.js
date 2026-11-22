@@ -3,13 +3,14 @@
 // fichiers) : à chaque nouvelle version, l'ancien cache est remplacé au chargement suivant.
 
 // <version>
-const VERSION = '9fb2fcaeeaca';
+const VERSION = '36fb7f3d554c';
 // </version>
 const CACHE = `fanny-pinball-${VERSION}`;
 const PRECACHE = [
 // <fichiers>
   './',
   './assets/cao/caisse.glb',
+  './assets/cao/collision.glb',
   './assets/cao/pieces.glb',
   './assets/fanny_lancer.png',
   './assets/fanny_victoire.png',
@@ -77,15 +78,18 @@ const PRECACHE = [
   './icons/icone-maskable-512.png',
   './index.html',
   './js/audio.js',
+  './js/habillages.js',
   './js/main.js',
   './js/render.js',
   './js/render3d.js',
+  './js/robot.js',
   './js/rules.js',
   './js/segfont.js',
   './js/sim.js',
   './js/table.js',
   './manifest.webmanifest',
   './vendor/matter.min.js',
+  './vendor/rapier.module.js',
   './vendor/three.module.min.js',
 // </fichiers>
 ];

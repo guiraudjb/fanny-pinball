@@ -25,17 +25,28 @@ PIECES = RACINE / "cao/sortie/pieces"
 CAISSE = RACINE / "cao/sortie/caisse"
 SORTIE = RACINE / "assets/cao/pieces.glb"
 SORTIE_CAISSE = RACINE / "assets/cao/caisse.glb"
+SORTIE_COLLISION = RACINE / "assets/cao/collision.glb"
 H = M.H
 
 # catégorie → matière dans la vue 3D
 CATEGORIES = [
-    ("guide", ["arche", "guide_retour_*", "separateur_retour_*", "deflecteur_*", "guide_tour_*", "entree_rampe_*"]),
+    ("guide", ["arche", "guide_retour_*", "separateur_retour_*", "deflecteur_*", "guide_tour_*"]),
     ("plastique", ["piece_bouchon", "bloc_fanny", "mur_cibles", "plastique_*"]),
     ("poteau", ["poteau_*"]),
-    ("support", ["support_rampe_*"]),
+    ("support", ["patte_rampe_*", "languette_rampe"]),
     ("tablier", ["tablier"]),
     ("cible", ["cible_pointer", "cible_tirer", "cible_bouchon", "cible_boule*"]),
     ("face", ["face_*"]),
+]
+# surfaces de collision de la physique (js/sim.js) : pièces passives de la CAO, par matière. Les pièces
+# actives (palettes, bumpers, cibles, poteaux caoutchoutés) restent décrites par js/table.js ; le tablier est
+# exclu (la bille passe dessous vers le trou d'évacuation).
+CATEGORIES_COLLISION = [
+    ("plastique", ["arche", "guide_retour_*", "separateur_retour_*", "deflecteur_*", "guide_tour_*",
+                   "piece_bouchon", "bloc_fanny", "mur_cibles", "cible_pointer", "cible_tirer", "cible_bouchon"]),
+    ("acrylique", ["plastique_*"]),
+    ("rampe", ["rampe_troncon_*"]),
+    ("metal", ["patte_rampe_*", "languette_rampe"]),
 ]
 CATEGORIES_CAISSE = [
     ("bois", ["flanc_*", "facade", "arriere", "fond", "dessus_arriere", "fronton_cote_*", "fronton_dessus", "fronton_dessous"]),
@@ -44,6 +55,14 @@ CATEGORIES_CAISSE = [
     ("pied", ["pied_*"]),
     ("quincaillerie", ["quincaillerie_*"]),
     ("barre", ["barre_verrouillage"]),
+    ("baguette", ["baguette_*"]),
+    ("lanceur", ["lanceur_boitier", "lanceur_ressort_*"]),
+    ("lanceur_tige", ["lanceur_tige"]),
+    ("pommeau", ["lanceur_pommeau"]),
+    ("embout", ["lanceur_embout"]),
+    ("charniere", ["charniere_*"]),
+    ("finition_chrome", ["finition_grille_ventil", "finition_boulons"]),
+    ("finition_noir", ["finition_ouies", "finition_ventilateur"]),
 ]
 
 
@@ -127,17 +146,20 @@ def main():
                       zc=p["zc"], r=p["r"], u_axe=p["u_axe"], cible=nom[len("face_"):])
         return ex
     ecrire_glb(SORTIE, CATEGORIES, PIECES, True, extras_piece, {"anneaux": M.ANNEAUX})
+    ecrire_glb(SORTIE_COLLISION, CATEGORIES_COLLISION, PIECES, True, lambda nom: {"contour": extras_piece(nom)["contour"]})
     fr = M.V(M.CAISSE["fronton"])
     ecrire_glb(SORTIE_CAISSE, CATEGORIES_CAISSE, CAISSE, False, lambda nom: {}, {
         "plateau": {"x": M.X_PF, "y": M.Y_PF_AV, "z": M.Z_PF_AV, "pente_deg": M.V(M.PLATEAU["pente_deg"])},
-        "caisse": {"largeur": M.LARG, "longueur": M.LONG, "ep": M.EPC, "h_avant": M.HAV, "h_arriere": M.HAR},
+        "caisse": {"largeur": M.LARG, "longueur": M.LONG, "ep": M.EPC, "h_avant": M.HAV, "h_arriere": M.HAR, "plat": M.PLAT},
         "fronton": {"l": fr["l"], "h": fr["h"], "p_haut": fr["p_haut"], "p_bas": fr["p_bas"]},
         "h_sol": sortie["h_sol"],
+        "lanceur": {"axe": list(M.LANCEUR["axe"])},
+        "charniere": {"y": M.CHARNIERE["y"], "z": M.CHARNIERE["z"]},
         "rallonge": {"h": M.RALLONGE["h"]},
         "porte": {k: M.V(M.CAISSE["porte"])[k] + (M.EPC if k == "x_gauche" else 0) for k in ("x_gauche", "z_bas", "l", "h", "r")},
         # boutons : centre (repère caisse), diamètre, axe sortant
-        "boutons": [{"nom": "start" if t["fonction"] == "bouton START" else "lancer", "p": [M.EPC + t["x"], 0, t["z"]],
-                     "d": t["d"], "axe": [0, -1, 0]} for t in M.PANNEAUX["facade"]["trous"]]
+        "boutons": [{"nom": "start", "p": [M.EPC + t["x"], 0, t["z"]], "d": t["d"], "axe": [0, -1, 0]}
+                    for t in M.PANNEAUX["facade"]["trous"] if t["fonction"] == "bouton START"]
                    + [{"nom": f"flipper_{c}", "p": [x, fp["x_avant"], fp["z"]], "d": fp["d"], "axe": [a, 0, 0]}
                       for c, x, a in (("G", 0, -1), ("D", M.LARG, 1)) for fp in [M.V(M.CAISSE["flipper_bouton"])]],
     })

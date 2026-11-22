@@ -1,4 +1,4 @@
-import { Sim } from './sim.js';
+import { creerSim } from './sim.js';
 import { Rules, SW, SND, CITIES } from './rules.js';
 import { Renderer } from './render.js';
 import { drawSegDisplay } from './segfont.js';
@@ -10,6 +10,8 @@ const view3dEl = document.getElementById('view3d');
 const viewBtn = document.getElementById('view');
 const camBtn = document.getElementById('camera');
 const lockBtn = document.getElementById('verrou');
+const skinBtn = document.getElementById('habillage');
+const transportBtn = document.getElementById('transport');
 const playfieldEl = document.getElementById('playfield');
 const dispScore = document.getElementById('disp-score');
 const dispInfo = document.getElementById('disp-info');
@@ -37,7 +39,8 @@ const rules = new Rules(hw);
 try { rules.highScore = Number(localStorage.getItem('fanny-pinball-hi')) || 0; } catch {}
 try { rules.credits = Number(localStorage.getItem('fanny-pinball-credits')) || 0; } catch {}
 
-sim = new Sim((id, closed = true) => {
+// physique 3D (Rapier) : moteur WebAssembly et surfaces de la CAO chargés avant la première image
+sim = await creerSim((id, closed = true) => {
   rules.onSwitch(id, closed);
   if (id === SW.DRAIN && rules.mode !== 'play') sim.clear();
 });
@@ -55,6 +58,11 @@ function viewLabel() {
   if (mode3d) camBtn.textContent = `Caméra : ${renderer3d.cameraNom}`;
   // vue machine : on choisit l'angle et le zoom, puis on verrouille pour jouer
   lockBtn.hidden = !mode3d || !renderer3d.enMachine;
+  // habillage de la caisse : visible quand la caméra montre la machine entière
+  skinBtn.hidden = !mode3d || !(renderer3d.enMachine || renderer3d.enTour);
+  if (!skinBtn.hidden) skinBtn.textContent = `Habillage : ${renderer3d.habillageNom}`;
+  transportBtn.hidden = skinBtn.hidden;
+  transportBtn.textContent = `Fronton : ${renderer3d.frontonPlie ? 'rabattu (transport)' : 'assemblé'}`;
   if (!lockBtn.hidden) {
     const v = renderer3d.vueMachine?.verrou;
     lockBtn.textContent = v ? 'Déverrouiller la vue' : 'Verrouiller la vue';
@@ -124,6 +132,20 @@ function nudge() {
 }
 
 let paused = false;
+// lanceur à ressort : maintenir pour tirer (pleine course en TIRAGE_S), relâcher pour lancer. La vitesse suit la
+// course : 30 % de la vitesse nominale à peine tiré (la bille retombe sur le lanceur), 110 % tiré à fond.
+const TIRAGE_S = 0.9;
+let tirageDebut = null;
+const tirer = () => { if (tirageDebut === null) tirageDebut = performance.now(); };
+function relacher(lancer = true) {
+  if (tirageDebut === null) return;
+  const p = Math.min(1, (performance.now() - tirageDebut) / 1000 / TIRAGE_S);
+  tirageDebut = null;
+  sim.tirage = 0;
+  if (!lancer) return;
+  sim.force = 0.3 + 0.8 * p;
+  rules.onSwitch(SW.LAUNCH);
+}
 window.addEventListener('keydown', (e) => {
   unlockAudio(); audioReady = true;
   if (e.repeat) { if ([...KEYS.left, ...KEYS.right, ...KEYS.launch, ...KEYS.nudge].includes(e.code)) e.preventDefault(); return; }
@@ -132,18 +154,21 @@ window.addEventListener('keydown', (e) => {
   if (KEYS.right.includes(e.code)) { setFlipper('R', true); e.preventDefault(); }
   if (KEYS.start.includes(e.code) && rules.canStart()) { pressStart(); e.preventDefault(); return; }
   if (KEYS.coin.includes(e.code)) { rules.onSwitch(SW.COIN); e.preventDefault(); return; }
-  if (KEYS.launch.includes(e.code)) { rules.onSwitch(SW.LAUNCH); e.preventDefault(); }
+  if (KEYS.launch.includes(e.code)) { tirer(); e.preventDefault(); }
   if (e.code === 'KeyP' || e.code === 'Escape') paused = !paused;
   if (e.code === 'KeyM') muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui';
   if (e.code === 'KeyV') nextView();
   if (e.code === 'KeyK' && mode3d) { renderer3d.cycleCamera(); viewLabel(); }
   if (e.code === 'KeyL' && mode3d && renderer3d.enMachine) { renderer3d.basculerVerrou(); viewLabel(); }
+  if (e.code === 'KeyH' && !skinBtn.hidden) { renderer3d.cycleHabillage(); viewLabel(); }
+  if (e.code === 'KeyT' && !transportBtn.hidden) { renderer3d.basculerFronton(); viewLabel(); }
 });
 window.addEventListener('keyup', (e) => {
   if (KEYS.left.includes(e.code)) setFlipper('L', false);
   if (KEYS.right.includes(e.code)) setFlipper('R', false);
+  if (KEYS.launch.includes(e.code)) relacher();
 });
-window.addEventListener('blur', () => { setFlipper('L', false); setFlipper('R', false); });
+window.addEventListener('blur', () => { setFlipper('L', false); setFlipper('R', false); relacher(false); });
 
 // tactile : moitié gauche / moitié droite = flippers, couloir de lancement = lanceur
 const touches = new Map();
@@ -164,7 +189,7 @@ for (const el of [canvas, view3dEl]) el.addEventListener('pointerdown', (e) => {
   const { x, y } = toTable(e);
   if (rules.mode === 'attract' || rules.mode === 'over') { pressStart(); return; }
   let what;
-  if (x > GEO.playRight - 10 && y > 700) { what = 'launch'; rules.onSwitch(SW.LAUNCH); }
+  if (x > GEO.playRight - 10 && y > 700) { what = 'launch'; tirer(); }
   else { what = x < W / 2 ? 'L' : 'R'; setFlipper(what, true); }
   touches.set(e.pointerId, what);
   e.preventDefault();
@@ -172,6 +197,7 @@ for (const el of [canvas, view3dEl]) el.addEventListener('pointerdown', (e) => {
 const release = (e) => {
   const what = touches.get(e.pointerId);
   touches.delete(e.pointerId);
+  if (what === 'launch') relacher(e.type === 'pointerup');
   if (what === 'L' || what === 'R') {
     if (![...touches.values()].includes(what)) setFlipper(what, false);
   }
@@ -207,6 +233,8 @@ view3dEl.addEventListener('wheel', (e) => {
 startBtn.addEventListener('click', () => { pressStart(); startBtn.blur(); });
 viewBtn.addEventListener('click', () => { nextView(); viewBtn.blur(); });
 camBtn.addEventListener('click', () => { renderer3d.cycleCamera(); viewLabel(); camBtn.blur(); });
+skinBtn.addEventListener('click', () => { renderer3d.cycleHabillage(); viewLabel(); skinBtn.blur(); });
+transportBtn.addEventListener('click', () => { renderer3d.basculerFronton(); viewLabel(); transportBtn.blur(); });
 lockBtn.addEventListener('click', () => { renderer3d.basculerVerrou(); viewLabel(); lockBtn.blur(); });
 muteBtn.addEventListener('click', () => { unlockAudio(); audioReady = true; muteBtn.textContent = toggleMute() ? 'Son : non' : 'Son : oui'; muteBtn.blur(); });
 
@@ -239,6 +267,7 @@ let lastDisp = '';
 function frame(t) {
   const dt = Math.min(100, t - last);   // rattrape le temps réel jusqu'à 10 images/s
   last = t;
+  if (tirageDebut !== null) sim.tirage = Math.min(1, (performance.now() - tirageDebut) / 1000 / TIRAGE_S);
   if (!paused) {
     sim.step(dt);
     rules.tick(sim.time);

@@ -93,6 +93,8 @@ CAOUTCHOUCS = {
     "sling": c({"gorge_d": 8.0, "cord": 4.0}, "HYP",
                "anneau blanc du lance-pierre tendu autour des 3 poteaux, dans une gorge de 1 mm ; poteaux reculés pour que "
                "la face extérieure du caoutchouc tombe sur la face de rebond du jeu"),
+    "centre": c({"gorge_d": 8.0, "cord": 3.5}, "choix",
+                "plot central entre les palettes : poteau Ø 10, gorge Ø 8, anneau noir 5/16\" ID (rebond du jeu : rayon 7,5)"),
     "palette": c({"cord": 4.0}, "HYP", "caoutchouc rouge de palette 3\" (section ≈ 5/32\") dans la gorge de la palette"),
     "tailles": c([0.25, 0.3125, 0.375, 0.4375, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0], "PW",
                  "diamètres intérieurs courants des anneaux de flipper (pouces)"),
@@ -123,7 +125,7 @@ RAMPE = {
     "ep": c(3.0, "choix", "fond et flancs imprimés (PETG)"),
     "h_flanc": c(25.0, "choix", "hauteur des flancs au-dessus du fond"),
     "z_haut": c(62.0, "choix", "fond de rampe au-dessus du plateau sur l'arrondi (passe au-dessus des parois de 32 mm)"),
-    "pente_entree": c(14.0, "choix", "pente de la montée (°)"),
+    "pente_entree": c(25.0, "choix", "pente de la montée (°) : 36 mm au moins au-dessus du toit du bouchon, que la bille passe dessous"),
     "pas_supports": c(140.0, "choix", "écart des poteaux de rampe"),
     "troncon_max": c(200.0, "choix", "longueur maxi d'un tronçon imprimé"),
 }
@@ -165,6 +167,24 @@ CAISSE = {
     "pied_finition": c("acier thermolaqué noir satiné", "choix", "les pieds WPC d'origine étaient chromés ; noir « Pac-Black » sur quelques jeux"),
     "z_plateau_avant": c(330.0, "choix", "hauteur du dessus du plateau à l'avant, au-dessus du bas de caisse"),
     "vitre": c(4.0, "choix", "verre trempé 4 mm dans les rainures des flancs"),
+    "charniere": c({"ep": 3.0, "r_pivot": 25.0, "boulon": 12.7, "patte": (100.0, 25.0), "y_patte": 4.0, "vis": 3,
+                    "jeu_baguette": 0.5}, "choix",
+                   "charnières du fronton (paire G/D) À L'EXTÉRIEUR des flancs : plaque d'acier chromée qui pivote sur le "
+                   "boulon de charnière (trou Ø 13 du plan WPC), juste en dehors de l'aile de la baguette ; patte repliée "
+                   "vissée sous le débord du fond du fronton (3 boulons, écrous dans le fronton). Sur les WPC elles sont "
+                   "dans la caisse, mais avec ce pivot la plaque balaierait le bout de la vitre en rabattant le fronton"),
+    "barre": c({"l": 566.7, "p": 70.0, "h": 32.0, "ep": 1.5, "r_av": 13.0, "r_ar": 5.0, "r_bout": 14.0, "jupe_ar": 14.0,
+                "debord_av": 10.0, "sous_dessus": 10.0}, "PW",
+               "barre de verrouillage WPC standard D-12615 : 22-5/16\", inox brossé ; profil (bombé avant, jupes, bouts "
+               "arrondis) relevé sur photos, à mesurer sur la pièce achetée"),
+    "baguette": c({"dessus": 25.0, "retour": 20.0, "ep": 1.5, "pointe": 8.0, "effile": (30.0, 110.0), "r_bout": 6.0}, "PW",
+                  "baguettes latérales WPC A-12359-3 (47-3/16\", inox) : cornière qui coiffe le dessus du flanc, aile "
+                  "extérieure effilée vers l'avant sous la barre ; section relevée sur photos"),
+    "lanceur": c({"tige": 9.5, "embout": (14.0, 12.0), "boitier": (19.0, 25.0), "trou": 24.0, "collerette": (30.0, 46.0, 3.0),
+                  "nez": (24.0, 6.0), "ressort_ext": (21.0, 1.4, 39.0), "ressort_int": (13.0, 1.0), "pommeau": (32.0, 10.0),
+                  "platine": 38.0, "sortie": 62.0}, "PW",
+                  "lanceur à ressort Williams B-12445 : tige 3/8\", boîtier chromé, ressorts extérieur et intérieur, "
+                  "pommeau champignon noir, embout caoutchouc ; platine de fixation intérieure (Ø en mm, longueurs le long de l'axe)"),
     "rallonge": c({"jeu_arriere": 3.0, "encoche": (160.0, 40.0)}, "choix",
                   "rallonge fixe du plateau (contreplaqué 12) : le plateau du jeu (42\") est plus court que celui d'une caisse WPC "
                   "(46\") ; elle comble le vide jusqu'au panneau arrière, encoche au centre pour les câbles du fronton"),

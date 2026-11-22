@@ -1,4 +1,4 @@
-// Vue 3D du plateau (Three.js, chargé à la demande). La physique reste celle de sim.js (2D + rampe) :
+// Vue 3D du plateau (Three.js, chargé à la demande). La physique est celle de sim.js (Rapier, en 3D) :
 // cette vue ne fait que dessiner. Le plateau peint (illustration, lampes, Cercle, tablier) est dessiné
 // par le moteur 2D dans une image qui sert de texture ; tout ce qui dépasse du plateau est en volume.
 //
@@ -9,10 +9,11 @@ import * as THREE from '../vendor/three.module.min.js';
 import { W, H, CX, GEO, BALL_R, pointAt } from './table.js';
 import { Renderer, LAMP_LAYOUT, COLORS, drawApron } from './render.js';
 import { drawSegDisplay } from './segfont.js';
+import { HABILLAGES, chargerImages, dessiner, estEmissif } from './habillages.js';
 
 const PENTE = (6.5 * Math.PI) / 180;      // pente du plateau (cao/cotes.py)
 const H_PAROI = 32;                        // parois et guides imprimés
-const RAMPE = { z: 62, pente: Math.tan((14 * Math.PI) / 180), desc: 300, larg: 39, flanc: 25 };
+const RAMPE = { z: 62, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), desc: 120, larg: 39, flanc: 25 };
 const TEX = 2;                             // résolution des textures peintes (px par mm)
 // la bille passe sous le tablier quand son centre dépasse le bord avant (bras en V, GEO.apron)
 function sousTablier(x, y) {
@@ -77,21 +78,50 @@ const TOUR = { tour_s: 48, elev_s: 31, zoom_s: 19, elevMin: 6, elevMax: 55, repr
 const lire = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
 const ecrire = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
-// hauteur du fond de rampe à l'abscisse curviligne s (même profil que cao/modele.py)
-function zRampe(s, L) {
-  const montee = Math.min(RAMPE.z, s * RAMPE.pente);
-  if (s > L - RAMPE.desc) return Math.max(3, Math.min(montee, (RAMPE.z * (L - s)) / RAMPE.desc + 3));
-  return montee;
+// Panneaux habillés de la caisse : nom dans caisse.glb → canevas de js/habillages.js. UV planes sur la face
+// extérieure, vue de dehors : flancs et côtés du fronton projetés sur Y-Z (le panneau droit est déjà dessiné en
+// miroir), façade sur X-Z, plaque arrière et dos du fronton sur X-Z vus de derrière, dessous et dessus du fronton
+// sur X-Y (le dessus vu d'en haut depuis l'avant : le haut de l'image vers l'arrière).
+const PANNEAUX = { flanc_G: 'flancG', flanc_D: 'flancD', facade: 'facade', fronton_cote_G: 'coteG', fronton_cote_D: 'coteD',
+  arriere: 'arriere', fronton_fond: 'dosFronton', fronton_dessous: 'dessous', fronton_dessus: 'dessus' };
+function uvPanneau(geo, pos, panneau) {
+  const n = pos.length / 3, b = { x: [1e9, -1e9], y: [1e9, -1e9], z: [1e9, -1e9] };
+  for (let i = 0; i < n; i++) ['x', 'y', 'z'].forEach((k, j) => { b[k][0] = Math.min(b[k][0], pos[i * 3 + j]); b[k][1] = Math.max(b[k][1], pos[i * 3 + j]); });
+  const uv = new Float32Array(n * 2), larg = 558.8, t = (k, v) => (v - b[k][0]) / (b[k][1] - b[k][0]);
+  for (let i = 0; i < n; i++) {
+    const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+    if (panneau === 'facade') uv.set([x / larg, t('z', z)], i * 2);
+    else if (panneau === 'dessous' || panneau === 'dessus') uv.set([t('x', x), t('y', y)], i * 2);
+    else if (panneau === 'arriere' || panneau === 'dosFronton') uv.set([1 - t('x', x), t('z', z)], i * 2);
+    else uv.set([panneau.endsWith('G') ? 1 - t('y', y) : t('y', y), t('z', z)], i * 2);
+  }
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  // dimensions (mm) du canevas pour les panneaux sans cote fixe
+  geo.userData.dims = panneau === 'dessous' || panneau === 'dessus' ? [b.x[1] - b.x[0], b.y[1] - b.y[0]] : [b.x[1] - b.x[0], b.z[1] - b.z[0]];
 }
 
-// Enseigne de l'entrée de rampe (plastique de la CAO, posé sur les deux parois) : bandeau bleu nuit,
-// filet jaune, « ESCALE » lisible depuis les palettes. pts : coins dans l'ordre, le premier côté le long de la bouche.
-function enseigne(g, pts) {
+// hauteur du fond de rampe à l'abscisse curviligne s (même profil que cao/modele.py)
+function zRampe(s, L) {
+  const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente, s3 = L - RAMPE.desc;
+  let z = p0 * Math.max(0, s);   // pente de la languette d'entrée (3 mm sur 30)
+  for (const [sk, dm, h] of [[s1, RAMPE.pente - p0, 20], [s2, -RAMPE.pente, 50], [s3, -(RAMPE.z - RAMPE.zFin) / RAMPE.desc, 40]]) {
+    const x = s - sk;
+    z += dm * (x < -h ? 0 : x > h ? x : (x + h) ** 2 / (4 * h));
+  }
+  return Math.max(0, z);
+}
+
+// Enseigne de l'entrée de rampe (plastique incliné de la CAO, sur les flancs de la rampe) : bandeau bleu nuit,
+// filet jaune, « ESCALE » lisible depuis les palettes. pts : empreinte vue de dessus, le premier côté le long
+// de la bouche ; k : cosinus de l'inclinaison (le décor est écrasé d'autant, la pente le remet d'aplomb).
+function enseigne(g, pts, k = 1) {
   const [a, b, , d] = pts;
   const cx = pts.reduce((t, p) => t + p[0], 0) / 4, cy = pts.reduce((t, p) => t + p[1], 0) / 4;
-  const l = Math.hypot(b[0] - a[0], b[1] - a[1]), h = Math.hypot(d[0] - a[0], d[1] - a[1]);
+  const l = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  let h = Math.hypot(d[0] - a[0], d[1] - a[1]);
   g.save();
   g.translate(cx, cy); g.rotate(Math.atan2(b[1] - a[1], b[0] - a[0]));
+  g.scale(1, k); h /= k;
   g.fillStyle = '#1f2a6b'; g.fillRect(-l / 2 - 3, -h / 2 - 3, l + 6, h + 6);
   g.strokeStyle = '#ffd23f'; g.lineWidth = 1.4; g.strokeRect(-l / 2 + 2.5, -h / 2 + 2.5, l - 5, h - 5);
   g.font = 'italic 900 10px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -172,6 +202,8 @@ export class Renderer3D {
     this.buildRamp();
 
     this.raycaster = new THREE.Raycaster();
+    this.panneaux = {}; this.habillages = {}; this.lanceur = []; this.boutons = {};
+    this.habillage = lire('fanny-pinball-habillage') || 'bois';
     const cam = CAMERAS.findIndex((c) => c.nom === lire('fanny-pinball-camera'));
     this.camIdx = cam >= 0 ? cam : -1;           // -1 : choisie selon la forme de l'écran
     // version légère : réglage mémorisé, sinon automatique (téléphone, ou machine trop lente)
@@ -336,7 +368,7 @@ export class Renderer3D {
     for (const b of T.walls) if (b.plugin && b.plugin.housing) plastics.push(b.vertices.map((v) => [v.x, v.y]));
     for (const p of plastics) pr.plastic(p, 6);
     T.slings.forEach((b) => pr.plastic(b.vertices.map((v) => [v.x, v.y]), 5));
-    if (GEO.enseigneRampe) enseigne(pr.ctx, GEO.enseigneRampe);
+    if (GEO.enseigneRampe) enseigne(pr.ctx, GEO.enseigneRampe.pts, Math.cos((GEO.enseigneRampe.incl * Math.PI) / 180));
     const tex = canvasTexture(cv);
     tex.repeat.set(1 / W, -1 / H);
     tex.offset.set(0, 1);
@@ -352,7 +384,7 @@ export class Renderer3D {
     // parois et poteaux
     this.anneauxProvisoires = [];
     for (const b of T.walls) {
-      if (b.plugin && (b.plugin.hidden || b.plugin.housing)) continue;
+      if (b.plugin && (b.plugin.hidden || b.plugin.housing || b.plugin.flanc)) continue;
       if (b.circleRadius) {
         prov(cylinder(b.circleRadius, H_PAROI + 4, this.mat.chrome, b.position.x, b.position.y), [[b.position.x, b.position.y]]);
         const ring = new THREE.Mesh(new THREE.TorusGeometry(b.circleRadius + 1.5, 2.2, 10, 28), this.mat.rubber);
@@ -517,12 +549,12 @@ export class Renderer3D {
   }
 
   // Rampe en plastique transparent : décor appliqué sur la longueur (liserés rouge et jaune, chevrons à l'entrée,
-  // « WORLD TOUR » sur l'arrondi), flancs teintés, rails chromés, lèvre d'entrée, poteaux de support.
+  // « WORLD TOUR » sur l'arrondi), flancs teintés, rails chromés, lèvre d'entrée.
   buildRamp() {
     const path = this.sim.ramps.L;
     if (!path) return;
     this.rampPath = path;
-    const L = path.length, half = RAMPE.larg / 2;
+    const L = path.length, half = RAMPE.larg / 2, bouche = GEO.rampEntries[0];
     const pos = [], uv = [], idxFond = [], idxFlanc = [];
     const rails = [[], []];
     const pts = path.pts;
@@ -530,8 +562,9 @@ export class Renderer3D {
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1;
       const nx = -dy / l, ny = dx / l, z = zRampe(p.s, L);
+      const hp = half + Math.max(0, (bouche.half - half) * (1 - p.s / bouche.evase));   // entonnoir de la bouche
       for (const [k, sg] of [[0, 1], [1, -1]]) {
-        const x = p.x + nx * half * sg, y = p.y + ny * half * sg;
+        const x = p.x + nx * hp * sg, y = p.y + ny * hp * sg;
         pos.push(x, y, -z, x, y, -(z + RAMPE.flanc));
         const v = k === 0 ? 0 : 1;                  // v = 0 : côté droit du sens de montée
         uv.push(p.s / L, v, p.s / L, v);
@@ -592,19 +625,12 @@ export class Renderer3D {
     }
     // lèvre métallique de l'entrée, posée sur le plateau
     const p0 = pointAt(path, 7);
-    const lip = new THREE.Mesh(new THREE.BoxGeometry(16, RAMPE.larg + 4, 1.5), this.mat.chrome);
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(16, 2 * bouche.half + 4, 1.5), this.mat.chrome);
     lip.position.set(p0.x, p0.y, -0.8);
     lip.rotation.z = Math.atan2(p0.dy, p0.dx);
     lip.receiveShadow = true;
     this.table.add(lip);
-    for (let s = 140; s < L - 40; s += 140) {
-      const z = zRampe(s, L);
-      if (z < 20) continue;
-      const p = pointAt(path, s);
-      const m = cylinder(3, z, this.mat.chrome, p.x, p.y, 0, 12);
-      this.provisoire.push({ mesh: m, pts: [[p.x, p.y]], support: true });
-      this.table.add(m);
-    }
+    // pas de poteaux dans le plateau : la rampe est portée par des pattes murales (pièces de la CAO)
   }
 
   // Reflets : la bille et les chromes reflètent la vraie table (capture faite une fois, et quand
@@ -820,6 +846,60 @@ export class Renderer3D {
   }
 
   // ------------------------------------------------------------ caisse et fronton de la CAO
+  // Bouton de flipper (Williams A-16883, axe 1-1/8") : bague-collerette plaquée sur le flanc, capuchon en plastique
+  // translucide à face bombée creusée d'anneaux concentriques. Groupe : axe Y sortant, origine sur la face du flanc ;
+  // le capuchon (userData.capuchon) s'enfonce quand la palette est tenue.
+  boutonFlipper(d) {
+    const v = (pts) => pts.map(([r, h]) => new THREE.Vector2(r, h)).reverse();   // profil parcouru du haut vers le bas : faces vers l'extérieur
+    const g = new THREE.Group();
+    const plast = new THREE.MeshPhysicalMaterial({ color: 0xd11a25, roughness: 0.12, transmission: 0.55, thickness: 6, ior: 1.5,
+      clearcoat: 1, clearcoatRoughness: 0.08, attenuationColor: 0x8a0710, attenuationDistance: 12 });
+    const bague = new THREE.Mesh(new THREE.LatheGeometry(v([[d / 2, 0], [d / 2 + 6.5, 0], [d / 2 + 7.2, 0.7], [d / 2 + 7.2, 2.2],
+      [d / 2 + 6.3, 3], [d / 2 - 0.5, 3]]), 48), plast);
+    const r = d / 2 + 2.5;
+    const capuchon = new THREE.Mesh(new THREE.LatheGeometry(v([[0, 17.6], [4, 17.5], [4.4, 16.9], [4.9, 17.4], [8.6, 17.2],
+      [9, 16.6], [9.5, 17.1], [r - 2.6, 16.8], [r - 0.6, 16], [r, 14.6], [r, 5.2], [r - 0.8, 4], [d / 2 - 1, 4]]), 48), plast);
+    g.add(bague, capuchon);
+    g.userData.capuchon = capuchon;
+    return g;
+  }
+
+  // Bouton START (Williams 20-9663) : lunette noire crantée, lentille rouge translucide marquée START, éclairée par
+  // sa lampe (userData.lentille : matériau dont on règle l'émission).
+  boutonStart(d) {
+    const v = (pts) => pts.map(([r, h]) => new THREE.Vector2(r, h)).reverse();   // profil parcouru du haut vers le bas : faces vers l'extérieur
+    const g = new THREE.Group();
+    const noir = new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.55 });
+    const R0 = d / 2 + 5, ri = d / 2 + 0.3;
+    g.add(new THREE.Mesh(new THREE.LatheGeometry(v([[ri, 0], [R0, 0], [R0 + 0.5, 0.6], [R0 + 0.5, 7.2], [R0 - 0.4, 8.6],
+      [ri + 0.8, 8.6], [ri, 7.6], [ri, 6]]), 64), noir));
+    const cran = new THREE.BoxGeometry(1.1, 6, 0.9);
+    for (let i = 0; i < 36; i++) {                    // moletage de la lunette
+      const a = (i / 36) * Math.PI * 2, m = new THREE.Mesh(cran, noir);
+      m.position.set(Math.cos(a) * (R0 + 0.6), 3.9, Math.sin(a) * (R0 + 0.6));
+      m.rotation.y = -a;
+      g.add(m);
+    }
+    const cv = document.createElement('canvas'); cv.width = cv.height = 256;
+    const c = cv.getContext('2d');
+    const grad = c.createRadialGradient(128, 118, 10, 128, 128, 128);
+    grad.addColorStop(0, '#ff5a4a'); grad.addColorStop(1, '#a3121b');
+    c.fillStyle = grad; c.fillRect(0, 0, 256, 256);
+    c.fillStyle = '#1a0405'; c.font = '900 62px Georgia, serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText('START', 128, 132, 210);
+    const tex = canvasTexture(cv);
+    const lentille = new THREE.MeshPhysicalMaterial({ map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.15,
+      roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.1 });
+    const dome = new THREE.LatheGeometry(v([[0, 7.4], [ri * 0.6, 7.2], [ri - 0.6, 6.8], [ri, 6.2], [ri, 4]]), 48);
+    // UV planes (vue de face) pour que le marquage reste droit sur la face bombée
+    const pos = dome.attributes.position, uv = dome.attributes.uv;
+    for (let i = 0; i < pos.count; i++) uv.setXY(i, 0.5 - pos.getX(i) / (2 * ri), 0.5 + pos.getZ(i) / (2 * ri));
+    // posé sur la façade, le groupe est retourné d'un demi-tour autour de Z : X local vers la gauche du joueur
+    g.add(new THREE.Mesh(dome, lentille));
+    g.userData.lentille = lentille;
+    return g;
+  }
+
   // assets/cao/caisse.glb (outils/cao_web.py) : panneaux de la caisse WPC, pieds et barre de verrouillage, dans le
   // repère de la caisse (X largeur, Y vers l'arrière depuis la façade, Z vers le haut). La scène donne la place du
   // plateau : le groupe this.machine ramène ce repère sur celui de la table. Le fronton reçoit ici sa vitre
@@ -846,8 +926,27 @@ export class Renderer3D {
     const thermolaque = new THREE.MeshPhysicalMaterial({ color: 0x17171a, roughness: 0.5, metalness: 0, clearcoat: 0.3,
       clearcoatRoughness: 0.35, flatShading: true });
     const zingue = new THREE.MeshStandardMaterial({ color: 0xc4c8ce, metalness: 1, roughness: 0.35, flatShading: true });
-    const mats = { bois, pied: thermolaque, quincaillerie: zingue, barre: chrome,
+    // barre en inox brossé, baguettes et lanceur chromés (surfaces courbes : ombrage lissé), pommeau en bakélite
+    // noire, embout en caoutchouc
+    const inox = this.mat.chrome.clone(); inox.roughness = 0.32;
+    const chromeLisse = this.mat.chrome.clone();
+    const mats = { bois, pied: thermolaque, quincaillerie: zingue, barre: inox, baguette: chrome, lanceur: chromeLisse,
+      lanceur_tige: chromeLisse,
+      pommeau: new THREE.MeshPhysicalMaterial({ color: 0x0c0c0e, roughness: 0.25, clearcoat: 0.8, clearcoatRoughness: 0.15 }),
+      embout: new THREE.MeshStandardMaterial({ color: 0x18181a, roughness: 0.8 }),
+      // finitions des perçages : grille du ventilateur et boulons chromés, ouïes et ventilateur en plastique noir
+      finition_chrome: chromeLisse, charniere: chromeLisse,
+      finition_noir: new THREE.MeshStandardMaterial({ color: 0x141416, roughness: 0.6 }),
       fronton_fond: new THREE.MeshStandardMaterial({ color: 0x120c08, roughness: 0.9, flatShading: true }) };
+    // fronton basculant : ses panneaux, ses charnières et sa façade sont posés dans un groupe qui pivote sur l'axe des
+    // boulons de charnière (X), pour le rabattre sur la caisse comme pour le transport
+    const ch = ex.charniere;
+    const pivot = new THREE.Group();
+    pivot.position.set(0, ch.y, ch.z);
+    const fronton = new THREE.Group();
+    fronton.position.set(0, -ch.y, -ch.z);
+    pivot.add(fronton);
+    machine.add(pivot);
     for (const node of gltf.nodes) {
       const prim = gltf.meshes[node.mesh].primitives[0];
       const geo = new THREE.BufferGeometry();
@@ -860,8 +959,12 @@ export class Renderer3D {
       const m = new THREE.Mesh(geo, mat);
       m.name = node.name;
       m.castShadow = m.receiveShadow = true;
-      machine.add(m);
+      (/^(fronton_|charniere_)/.test(node.name) ? fronton : machine).add(m);
+      if (PANNEAUX[node.name]) { uvPanneau(geo, pos, PANNEAUX[node.name]); m.userData.mat0 = mat; this.panneaux[node.name] = m; }
+      if (['lanceur_tige', 'lanceur_pommeau', 'lanceur_embout'].includes(node.name)) this.lanceur.push(m);
     }
+    // le lanceur à ressort de la caisse remplace la tige simplifiée du plateau
+    if (this.lanceur.length) { this.lanceurAxe = new THREE.Vector3(...ex.lanceur.axe); this.plunger.visible = false; }
 
     // porte du monnayeur, posée sur la découpe de la façade
     const po = ex.porte;
@@ -880,16 +983,15 @@ export class Renderer3D {
       bloc(46, 6, 70, xc + dx, -7, zc + 40, metal);
       bloc(5, 2, 34, xc + dx, -10.5, zc + 40, fente);
     }
-    // boutons : start et lancer sur la façade, flippers sur les flancs
-    const Y = new THREE.Vector3(0, 1, 0);
+    // boutons : start sur la façade, flippers sur les flancs
     for (const b of ex.boutons) {
-      const col = b.nom === 'start' ? 0xffd23f : b.nom === 'lancer' ? 0xe8392c : 0xf4f1ea;
-      const m = new THREE.Mesh(new THREE.CylinderGeometry(b.d / 2, b.d / 2, 14, 24),
-        new THREE.MeshStandardMaterial({ color: col, roughness: 0.3 }));
+      const g = b.nom === 'start' ? this.boutonStart(b.d) : this.boutonFlipper(b.d);
       const axe = new THREE.Vector3(...b.axe);
-      m.quaternion.setFromUnitVectors(Y, axe);
-      m.position.set(...b.p).addScaledVector(axe, 7);
-      machine.add(m);
+      g.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), axe);
+      g.position.set(...b.p);
+      g.userData.axe = axe;
+      machine.add(g);
+      this.boutons[b.nom] = g;
     }
 
     // façade du fronton, inclinée : vitre décorée en haut, panneau des afficheurs en bas
@@ -906,7 +1008,7 @@ export class Renderer3D {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(w, ph), mat);
       m.quaternion.copy(rot);
       m.position.copy(A).addScaledVector(ax, w / 2).addScaledVector(up, v0 + ph / 2).addScaledVector(nrm, -6);
-      machine.add(m);
+      fronton.add(m);
       return m;
     };
     // vitre rétroéclairée : l'illustration du fronton, sans éclairage de la scène
@@ -948,9 +1050,72 @@ export class Renderer3D {
 
     for (const m of this.caisseProvisoire) m.visible = false;
     this.machine = machine;
+    this.setHabillage(this.habillage);
+    // angle du fronton rabattu : la façade (arêtes avant du dessous et du dessus du fronton) se pose sur les baguettes
+    // des flancs, avec 12 mm de couverture de protection sous l'arête haute (l'arête basse, près du pivot, frôle
+    // seulement le haut de la caisse)
+    const zBaguette = (y) => cs.h_avant + (HAR - cs.h_avant) * Math.min(1, y / (LG - cs.plat)) + 1.5;
+    const aretes = [[LG - fr.p_bas, HAR, 0], [LG - fr.p_haut, HAR + fr.h, 12]];
+    let plie = 0;
+    for (let a = 0; a < Math.PI * 0.62; a += 0.002) {
+      const c = Math.cos(a), s = Math.sin(a);
+      const touche = ([y, z, jeu]) => {             // seulement au-dessus des baguettes (pente des flancs)
+        const y2 = ch.y + (y - ch.y) * c - (z - ch.z) * s;
+        return y2 < LG - cs.plat && ch.z + (y - ch.y) * s + (z - ch.z) * c < zBaguette(y2) + jeu;
+      };
+      if (aretes.some(touche)) break;
+      plie = a;
+    }
+    this.fronton = { pivot, angle: 0, cible: 0, plie, t: 0 };
     this.machineBox = { x0: -70, x1: cs.largeur + 70, y0: -20, y1: LG, z0: -ex.h_sol, z1: HAR + fr.h };
     this.envDirty = true;
     if (this.cssW && (CAMERAS[this.camIdx]?.machine || this.enTour)) this.fitCamera();
+  }
+
+  // ------------------------------------------------------------ fronton : assemblé ou rabattu pour le transport
+  get frontonPlie() { return !!this.fronton?.cible; }
+  basculerFronton() {
+    const f = this.fronton;
+    if (f) f.cible = f.cible ? 0 : f.plie;
+  }
+  animerFronton() {
+    const f = this.fronton, t = performance.now();
+    const dt = Math.min(0.1, (t - (f.t || t)) / 1000);
+    f.t = t;
+    if (f.angle === f.cible) return;
+    const pas = 0.9 * dt;                       // ≈ 2 s pour rabattre le fronton
+    f.angle = Math.abs(f.cible - f.angle) <= pas ? f.cible : f.angle + Math.sign(f.cible - f.angle) * pas;
+    f.pivot.rotation.x = f.angle;
+    if (f.angle === f.cible) this.envDirty = true;
+  }
+
+  // ------------------------------------------------------------ habillages de la caisse (js/habillages.js)
+  get habillageNom() { return HABILLAGES.find((h) => h.id === this.habillage)?.nom ?? 'bois'; }
+  cycleHabillage() {
+    const i = HABILLAGES.findIndex((h) => h.id === this.habillage);
+    this.setHabillage(HABILLAGES[(i + 1) % HABILLAGES.length].id);
+  }
+  async setHabillage(id) {
+    if (!HABILLAGES.some((h) => h.id === id)) id = 'bois';
+    this.habillage = id;
+    ecrire('fanny-pinball-habillage', id);
+    if (!this.machine) return;          // appliqué quand la caisse sera chargée
+    if (id !== 'bois' && !this.habillages[id]) {
+      const im = await chargerImages();
+      const mats = {};
+      for (const [nom, panneau] of Object.entries(PANNEAUX)) {
+        const tex = new THREE.CanvasTexture(dessiner(id, panneau, im, 1.6, this.panneaux[nom]?.geometry.userData.dims));
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = this.gl.capabilities.getMaxAnisotropy();
+        // vinyle imprimé, mat satiné ; le décor néon s'éclaire lui-même
+        mats[nom] = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55, metalness: 0, flatShading: true,
+          ...(estEmissif(id) ? { emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.55 } : {}) });
+      }
+      this.habillages[id] = mats;
+    }
+    if (this.habillage !== id) return;  // un autre choix est arrivé pendant le dessin
+    for (const [nom, m] of Object.entries(this.panneaux)) m.material = id === 'bois' ? m.userData.mat0 : this.habillages[id][nom];
+    this.envDirty = true;
   }
 
   // rallonge du plateau (derrière son bord haut, jusqu'au panneau arrière) : dessus peint et verni comme les coins
@@ -1251,6 +1416,7 @@ export class Renderer3D {
   // ------------------------------------------------------------ image
   draw(rules) {
     const sim = this.sim, now = sim.time;
+    if (this.fronton) this.animerFronton();
     // qualité automatique : sous 40 images/s en moyenne pendant une partie, on passe en version légère
     if (this.qualiteAuto && !this.light && rules.mode === 'play') {
       const t = performance.now(), m = this.mesure;
@@ -1325,22 +1491,27 @@ export class Renderer3D {
     const rampHit = now - (sim.flash.rampL ?? -1e9) < 300;
     this.rampMat.color.setHex(rampHit ? 0xfff0aa : 0xffffff);
     this.rampFlank.color.setHex(rampHit ? 0xfff0aa : 0xcde8ff);
-    const kick = now - (sim.flash.plunger ?? -1e9) < 120 ? -14 : 0;
+    const kick = (now - (sim.flash.plunger ?? -1e9) < 60 ? -6 : 0) + sim.tirage * sim.courseLanceur;   // tiré vers le joueur, puis frappe
     this.plunger.position.y = GEO.plunger.top + 4 + kick;
+    for (const m of this.lanceur) m.position.copy(this.lanceurAxe).multiplyScalar(kick);
+    // boutons : capuchons de flipper enfoncés quand la palette est tenue ; START clignote quand une partie peut partir
+    for (const c of ['L', 'R']) {
+      const cap = this.boutons[`flipper_${c === 'L' ? 'G' : 'D'}`]?.userData.capuchon;
+      if (cap) cap.position.y = sim.held[c] ? -4 : 0;
+    }
+    const st = this.boutons.start?.userData.lentille;
+    if (st) st.emissiveIntensity = rules.canStart?.() ? (Math.floor(now / 400) % 2 ? 1.3 : 0.25) : 0.15;
 
     // billes
     const views = [];
     for (const b of sim.balls) {
       const fp = b.plugin.fp;
       if (fp.mode === 'gone') continue;
-      if (fp.mode === 'ramp') {
-        const path = sim.ramps[fp.ramp], p = pointAt(path, fp.s);
-        views.push([p.x, p.y, zRampe(fp.s, path.length) + 2]);
-      } else if (!sousTablier(b.position.x, b.position.y)) {
-        // au-dessus du trou d'évacuation, la bille s'y enfonce
+      if (!sousTablier(b.position.x, b.position.y)) {
+        // hauteur et rotation données par la physique ; au-dessus du trou d'évacuation, la bille s'y enfonce
         const { x, y } = b.position, [tl, th] = GEO.apron.trou, ey = GEO.apron.front - 2 - th;
         const trou = Math.abs(x - CX) < tl / 2 && y > ey ? -Math.min(BALL_R, (y - ey) * 0.5) : 0;
-        views.push([x, y, fp.mode === 'saucer' ? -7 : trou]);
+        views.push([x, y, fp.mode === 'saucer' ? -7 : Math.min(b.hauteur ?? 0, 200) + trou, b.rotation]);
       }
     }
     while (this.balls.length < views.length) {
@@ -1353,6 +1524,7 @@ export class Renderer3D {
       const v = views[i];
       m.visible = !!v;
       if (v) m.position.set(v[0], v[1], -(BALL_R + v[2]));
+      if (v && v[3]) m.quaternion.set(v[3].x, v[3].y, v[3].z, v[3].w);   // la bille roule (reflets qui tournent)
     });
 
     if (this.envDirty) { this.envDirty = false; this.captureEnv(); }

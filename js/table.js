@@ -40,16 +40,24 @@ const guideKnee = { x: SEP_X, y: guideEnd.y - dir.y * kL };
 // Deux couloirs de retour côte à côte (comme les Williams des années 80) : le séparateur DIV_X
 // s'arrête sur la ligne du lance-pierre, les deux couloirs se rejoignent sur le guide du flipper.
 const INLANE = 34;
-const slingOff = GUIDE_T / 2 + INLANE;
+// Lance-pierre écarté du guide de SL_JEU mm en plus du couloir : palette levée, la bille (Ø 27) doit
+// encore passer librement entre la palette et le caoutchouc du poteau bas du lance-pierre.
+const SL_JEU = 5;
+const slingOff = GUIDE_T / 2 + INLANE + SL_JEU;
 const slingP0 = { x: guideKnee.x + nrm.x * slingOff, y: guideKnee.y + nrm.y * slingOff };
-const slingLine = (x) => slingP0.y + ((x - slingP0.x) / dir.x) * dir.y;
+// Remonté de SL_LEVE mm (verticalement : le couloir de retour garde sa largeur) : son poteau bas était à 50 mm
+// au-dessus de l'axe de la palette, trop près d'elle (bille pincée entre palette levée et caoutchouc) ; il reste
+// maintenant ≈ 58 mm entre palette levée et caoutchouc (plus de deux billes)
+const SL_LEVE = 20;
+const slingLine = (x) => slingP0.y + ((x - slingP0.x) / dir.x) * dir.y - SL_LEVE;
 const DIV_X = SEP_X + GUIDE_T / 2 + INLANE + GUIDE_T / 2;   // séparateur retour 1 / retour 2
 const SL_X1 = DIV_X + GUIDE_T / 2 + INLANE; // bord vertical du lance-pierre
 // Face (caoutchouc) entre les deux poteaux : 101 mm, l'entraxe du mécanisme Williams 500-5849
-// (gabarit Pinball Makers). Angle de face conservé (≈ 60,8° sur l'horizontale, comme l'ancienne
-// face de 127 mm), pied posé sur la ligne parallèle au guide.
+// (gabarit Pinball Makers), à 68° sur l'horizontale (60,8° avant : le poteau bas avançait au-dessus de la
+// palette ; les jeux modernes écartent les deux poteaux bas de 7 3/4" à 8 1/2", ici ≈ 7" sur un plateau
+// plus étroit), pied posé sur la ligne parallèle au guide.
 const SL_FACE = 101;
-const SL_ANG = deg(60.83);
+const SL_ANG = deg(68);
 const SL_X2 = SL_X1 + SL_FACE * Math.cos(SL_ANG);
 const SL_Y1 = slingLine(SL_X2) - SL_FACE * Math.sin(SL_ANG);
 const SLING = [[SL_X1, SL_Y1], [SL_X1, slingLine(SL_X1)], [SL_X2, slingLine(SL_X2)]];
@@ -85,7 +93,11 @@ const BOUCHON = (() => {
   return { B, u: { x: ux, y: uy }, v: { x: -uy, y: ux }, len, half, M: { x: B.x - ux * len, y: B.y - uy * len } };
 })();
 
-const RAMPE_E = rampEntry('L', { x: 160, y: 450 }, 85, 26);   // entrée de 52 mm (Black Knight : 50 à 56 mm)
+const RAMPE_E = rampEntry('L', { x: 180, y: 450 }, 85, 26);   // entrée de 52 mm (Black Knight : 50 à 56 mm)
+// la rampe elle-même fait l'entrée : sa bouche de 52 mm se resserre sur « evase » mm jusqu'à sa largeur
+// courante (39 mm intérieur, cao/cotes.py RAMPE.larg_int) ; ses flancs transparents guident la bille dès la bouche
+RAMPE_E.evase = 70;
+RAMPE_E.fond = 19.5;
 
 // POINTER, à gauche de la bouche du couloir du bouchon : encastrée dans le bloc entre le mur et le couloir,
 // face tournée vers les flippers. Face sur l'arête a → b du bloc, à s mm de a (boîtier de 30 × 30 derrière).
@@ -143,7 +155,7 @@ export const GEO = {
   leftTargets: [0, 1, 2].map((i) => ({ id: `boule${i + 1}`, x: 30, y: 540 + 40 * i, r: 13 })),
   standups: [
     { id: 'pointer', label: 'POINTER', ...CIBLE_POINTER, r: 11 },
-    { id: 'tirer', label: 'TIRER', x: CX, y: 450, r: 11 },
+    { id: 'tirer', label: 'TIRER', x: CX + 16, y: 450, r: 11 },   // 45 mm du poteau droit de l'entrée de rampe : pas de recoin
     { id: 'bouchon', label: 'BOUCHON', x: BOUCHON.B.x, y: BOUCHON.B.y, r: 8 },  // cochonnet au fond du couloir
   ],
   // couloir du bouchon (haut gauche), dans l'axe du tir de la palette droite
@@ -163,6 +175,10 @@ export const GEO = {
   // extérieurs vers le trou d'évacuation, au centre ; il cache le bac et l'autolanceur. Lèvre de 20 mm.
   // Dans le couloir de lancement, son bord est sous la bille au repos (lane).
   apron: { side: 846, front: 964, half: 42, lane: 1000, lip: 20, trou: [70, 34] },
+  // plot central caoutchouté entre les pointes des palettes (« center post ») : 13 mm sous les pointes au repos ;
+  // 21 mm restent entre son caoutchouc et chaque pointe, moins qu'une bille : palettes baissées, la bille tombée
+  // au milieu se pose entre pointe et plot et se rejoue ; palette levée, le passage s'ouvre (r : rebond, Ø 15)
+  centerPost: { x: CX, y: FLIP.pivotY + Math.sin(FLIP.rest) * FLIP.len + 13, r: 7.5 },
   cities: ['Marseille', 'Paris', 'Londres', 'New York', 'Tokyo', 'Rio', 'Sydney'],
 };
 
@@ -173,19 +189,24 @@ function buildRamp() {
   const e = GEO.rampEntries[0];
   const xL = 26, xR = PLAY_R - 24, yArc = 160;          // axe de la rampe : 26 mm du mur gauche, 24 mm du mur droit
   const ecx = (xL + xR) / 2, erx = (xR - xL) / 2, ery = yArc - 36;
-  const pts = [[e.T.x - e.u.x * 14, e.T.y - e.u.y * 14], [e.T.x + e.u.x * 30, e.T.y + e.u.y * 30],
+  // la rampe part de la bouche M (comme dans la CAO) ; le capteur, à 14 mm du fond du couloir, y prend la bille
+  const pts = [[e.M.x, e.M.y], [e.T.x - e.u.x * 14, e.T.y - e.u.y * 14], [e.T.x + e.u.x * 30, e.T.y + e.u.y * 30],
     [e.T.x + e.u.x * 30 - 34, e.T.y + e.u.y * 30 - 40], [xL + 8, 232], [xL, yArc + 20]];
   for (let i = 0; i <= 24; i++) {                          // arrondi du haut, de gauche à droite
     const a = Math.PI + (Math.PI * i) / 24;
     pts.push([ecx + erx * Math.cos(a), yArc + ery * Math.sin(a)]);
   }
-  const yEnd = 560;
+  const yEnd = 500;
   for (let y = yArc + 60; y < yEnd; y += 60) pts.push([xR, y]);
-  const exit = { x: mx(GEO.inlaneTop.x), y: GEO.inlaneTop.y };
-  const dx = xR - exit.x, dy = exit.y - yEnd;
-  const R = (dx * dx + dy * dy) / (2 * dx);
-  const a2 = Math.asin(dy / R);
-  for (let i = 0; i <= 8; i++) { const a = (a2 * i) / 8; pts.push([xR - R + R * Math.cos(a), yEnd + R * Math.sin(a)]); }
+  const exit = { x: mx(GEO.inlaneTop.x), y: GEO.inlaneTop.y - 5 };
+  // courbe en S (y 500 → 625) puis 60 mm droits dans l'axe x = 417 du couloir de retour droit :
+  // la bille quitte la rampe (haute de 34 mm) sans vitesse latérale et retombe droit dans le couloir
+  const yAlign = exit.y - 60;
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10, s = t * t * (3 - 2 * t);
+    pts.push([xR + (exit.x - xR) * s, yEnd + (yAlign - yEnd) * t]);
+  }
+  for (let i = 1; i <= 4; i++) pts.push([exit.x, yAlign + ((exit.y - yAlign) * i) / 4]);
   return pts;
 }
 GEO.ramps.L = buildRamp();
@@ -397,6 +418,25 @@ export function buildTable(engine) {
       inset(Q(R.M, -wr), Q(R.T, -wr), P(L.M, w), 6),
     ];
     for (const c of corners) T.walls.push(add(roundBody(...c, 6, { ...STATIC, label: 'wall', plugin: { hidden: true } })));
+    // congé de 20 mm entre le mur gauche et le toit (pente de 14° seulement) : la bille s'arrêtait dans
+    // l'angle (essais de blocage du 21/11) ; cercle tangent aux deux faces, et l'arc dans le contour de la pièce
+    {
+      const c0 = [0, 312 + ((roofR[1] - 312) * 2) / (roofR[0] + 2)];   // toit au ras du mur
+      const rc = 20, o = inset(c0, [0, 200], roofR, rc);
+      const ux = roofR[0] - c0[0], uy = roofR[1] - c0[1], l = Math.hypot(ux, uy);
+      const t = ((o[0] - c0[0]) * ux + (o[1] - c0[1]) * uy) / l;         // pied du centre sur le toit
+      const a1 = Math.atan2(c0[1] + (uy / l) * t - o[1], c0[0] + (ux / l) * t - o[0]);
+      const arc = [[-2, o[1]]];
+      for (let i = 0; i <= 8; i++) { const a = Math.PI + ((a1 - Math.PI) * i) / 8; arc.push([o[0] + rc * Math.cos(a), o[1] + rc * Math.sin(a)]); }
+      GEO.bouchonPiece.splice(0, 1, ...arc);
+      // physique : l'arc seul (un cercle entier dépasserait au-dessus du mur et ferait une nouvelle poche),
+      // en éventail de triangles convexes depuis le coin
+      for (let i = 1; i < arc.length - 1; i++) {
+        const tri = polyBody([c0, arc[i], arc[i + 1]], { ...STATIC, label: 'wall' });
+        tri.plugin = { hidden: true };
+        T.walls.push(add(tri));
+      }
+    }
   }
 
   // --- paroi des cibles rondes (mur gauche) : bloc plein, haut et bas en pente ; les cibles sont
@@ -419,12 +459,19 @@ export function buildTable(engine) {
   for (const r of GEO.rampEntries) {
     const w = r.half + 3; // axe des parois (épaisseur 6)
     const P = (base, k) => [base.x + r.v.x * k, base.y + r.v.y * k];
-    T.walls.push(add(seg(...P(r.M, -w), ...P(r.T, -w), 6)));
-    T.walls.push(add(seg(...P(r.M, w), ...P(r.T, w), 6)));
-    // fond ouvert : la rampe part de la bouche et prolonge le couloir ; derrière T, le bloc du bouchon ferme
-    // le plan (la bille y est déjà sur la rampe). Enseigne en plastique posée sur les deux parois, à la bouche.
-    const E = (k, a) => [r.M.x + r.v.x * k + r.u.x * a, r.M.y + r.v.y * k + r.u.y * a];
-    GEO.enseigneRampe = [E(-w - 3, -4), E(w + 3, -4), E(w + 3, 16), E(-w - 3, 16)];
+    // flancs de la rampe en entonnoir (dessinés par la rampe en 3D, d'où plugin.flanc) ; derrière T, le bloc
+    // du bouchon ferme le plan (la bille y est déjà sur la rampe)
+    const wf = r.fond + 3, Pe = (k, a) => [r.M.x + r.v.x * k + r.u.x * a, r.M.y + r.v.y * k + r.u.y * a];
+    const len = Math.hypot(r.T.x - r.M.x, r.T.y - r.M.y);
+    for (const sg of [-1, 1]) {
+      T.walls.push(add(seg(...Pe(sg * w, 0), ...Pe(sg * wf, r.evase), 6, { plugin: { flanc: true } })));
+      T.walls.push(add(seg(...Pe(sg * wf, r.evase), ...Pe(sg * wf, len), 6, { plugin: { flanc: true } })));
+    }
+    // enseigne « ESCALE » au-dessus du début de la rampe, inclinée de 40° vers le joueur : bord avant à
+    // « a » mm de la bouche, profondeur « prof » ; pts : son empreinte vue de dessus (pour le décor)
+    const en = { a: 30, prof: 20, incl: 40, demi: w + 3 };
+    const pr = en.a + en.prof * Math.cos((en.incl * Math.PI) / 180);
+    GEO.enseigneRampe = { ...en, pts: [Pe(-en.demi, en.a), Pe(en.demi, en.a), Pe(en.demi, pr), Pe(-en.demi, pr)] };
     T.rampSensors.push(add(Bodies.rectangle(r.sensor.x, r.sensor.y, r.half * 2 - 6, 14, {
       isStatic: true, isSensor: true, angle: Math.atan2(r.v.y, r.v.x), label: 'rampEntry',
       plugin: { side: r.side, u: r.u },
@@ -437,6 +484,10 @@ export function buildTable(engine) {
     const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), nx = -dy / l * 3, ny = dx / l * 3;
     T.walls.push(add(seg(a[0] + nx, a[1] + ny, b[0] + nx, b[1] + ny, 6, { restitution: 0.2, label: 'apron', plugin: { hidden: true } })));
   }
+
+  // --- plot central (cylindre caoutchouc dans la physique, comme les poteaux d'entrée des couloirs)
+  const cp = GEO.centerPost;
+  T.walls.push(add(roundBody(cp.x, cp.y, cp.r, { ...STATIC, label: 'wall', plugin: { centre: true } })));
 
   // --- évacuation
   T.drain = add(Bodies.rectangle(CX, GEO.drainY + 10, PLAY_R, 20, { isStatic: true, isSensor: true, label: 'drain' }));

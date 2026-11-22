@@ -1,0 +1,206 @@
+{
+ "L": [
+  {
+   "d": 0,
+   "cible": "-"
+  },
+  {
+   "d": 17,
+   "cible": "-"
+  },
+  {
+   "d": 33,
+   "cible": "boule3"
+  },
+  {
+   "d": 50,
+   "cible": "-"
+  },
+  {
+   "d": 67,
+   "cible": "-"
+  },
+  {
+   "d": 83,
+   "cible": "-"
+  },
+  {
+   "d": 100,
+   "cible": "boule1"
+  },
+  {
+   "d": 117,
+   "cible": "bouchon"
+  },
+  {
+   "d": 133,
+   "cible": "pointer"
+  },
+  {
+   "d": 150,
+   "cible": "pointer"
+  },
+  {
+   "d": 167,
+   "cible": "pointer"
+  },
+  {
+   "d": 183,
+   "cible": "ramp"
+  },
+  {
+   "d": 200,
+   "cible": "ramp"
+  },
+  {
+   "d": 217,
+   "cible": "tirer"
+  },
+  {
+   "d": 233,
+   "cible": "tirer"
+  },
+  {
+   "d": 250,
+   "cible": "tirer"
+  },
+  {
+   "d": 267,
+   "cible": "tirer"
+  },
+  {
+   "d": 283,
+   "cible": "saucer"
+  },
+  {
+   "d": 300,
+   "cible": "saucer"
+  },
+  {
+   "d": 317,
+   "cible": "-"
+  },
+  {
+   "d": 333,
+   "cible": "dropN1"
+  },
+  {
+   "d": 350,
+   "cible": "dropN1"
+  },
+  {
+   "d": 367,
+   "cible": "dropY"
+  },
+  {
+   "d": 383,
+   "cible": "dropY"
+  },
+  {
+   "d": 400,
+   "cible": "dropY"
+  }
+ ],
+ "R": [
+  {
+   "d": 0,
+   "cible": "-"
+  },
+  {
+   "d": 17,
+   "cible": "-"
+  },
+  {
+   "d": 33,
+   "cible": "-"
+  },
+  {
+   "d": 50,
+   "cible": "dropN1"
+  },
+  {
+   "d": 67,
+   "cible": "dropN1"
+  },
+  {
+   "d": 83,
+   "cible": "dropA"
+  },
+  {
+   "d": 100,
+   "cible": "dropA"
+  },
+  {
+   "d": 117,
+   "cible": "dropN1"
+  },
+  {
+   "d": 133,
+   "cible": "saucer"
+  },
+  {
+   "d": 150,
+   "cible": "-"
+  },
+  {
+   "d": 167,
+   "cible": "-"
+  },
+  {
+   "d": 183,
+   "cible": "-"
+  },
+  {
+   "d": 200,
+   "cible": "-"
+  },
+  {
+   "d": 217,
+   "cible": "tirer"
+  },
+  {
+   "d": 233,
+   "cible": "tirer"
+  },
+  {
+   "d": 250,
+   "cible": "-"
+  },
+  {
+   "d": 267,
+   "cible": "dropA"
+  },
+  {
+   "d": 283,
+   "cible": "ramp"
+  },
+  {
+   "d": 300,
+   "cible": "ramp"
+  },
+  {
+   "d": 317,
+   "cible": "-"
+  },
+  {
+   "d": 333,
+   "cible": "-"
+  },
+  {
+   "d": 350,
+   "cible": "-"
+  },
+  {
+   "d": 367,
+   "cible": "pointer"
+  },
+  {
+   "d": 383,
+   "cible": "pointer"
+  },
+  {
+   "d": 400,
+   "cible": "dropY"
+  }
+ ]
+}

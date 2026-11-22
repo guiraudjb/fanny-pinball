@@ -17,6 +17,7 @@ sys.path.insert(0, ICI)
 
 import FreeCAD as App  # noqa: E402
 import Mesh  # noqa: E402
+import MeshPart  # noqa: E402
 import Part  # noqa: E402
 
 import modele as M  # noqa: E402
@@ -66,10 +67,37 @@ def face_poly(pts, r=0.0, marge=0.0, z=0.0):
         if marge:
             f = f.makeOffset2D(marge, join=0)
         if r:
-            f = f.makeOffset2D(-r, join=0).makeOffset2D(r, join=0)
+            fr = f.makeOffset2D(-r, join=0).makeOffset2D(r, join=0)
+            # pointes aiguës (< 60°) : l'arrondi de r les raccourcissait de r / sin(½ angle) − r (27 mm pour 29°
+            # au toit du bouchon), et l'encoche laissée piégeait la bille ; elles gardent un arrondi de 1,5 mm
+            pointes = [Part.makeCylinder(r / math.sin(a / 2) + 2, 1, tv(*q, z - 0.5)) for q, a in coins_aigus(pts, 60)]
+            if pointes:
+                fp = f.makeOffset2D(-1.5, join=0).makeOffset2D(1.5, join=0)
+                for c in pointes:
+                    fr = fr.fuse(fp.common(c)).removeSplitter()
+                fr = Part.Face(fr.Faces[0].OuterWire) if len(fr.Faces) == 1 else fr
+            f = fr
     except Exception:
         pass
     return f
+
+
+def coins_aigus(pts, max_deg):
+    """sommets saillants d'angle intérieur < max_deg : [(point, angle en radians)]"""
+    n = len(pts)
+    aire = sum(pts[i][0] * pts[(i + 1) % n][1] - pts[(i + 1) % n][0] * pts[i][1] for i in range(n))
+    out = []
+    for i in range(n):
+        a, b, c = pts[i - 1], pts[i], pts[(i + 1) % n]
+        u, v = (a[0] - b[0], a[1] - b[1]), (c[0] - b[0], c[1] - b[1])
+        lu, lv = math.hypot(*u), math.hypot(*v)
+        if lu < 1e-6 or lv < 1e-6:
+            continue
+        ang = math.acos(max(-1.0, min(1.0, (u[0] * v[0] + u[1] * v[1]) / (lu * lv))))
+        saillant = (v[0] * u[1] - v[1] * u[0]) * aire > 0
+        if saillant and ang < math.radians(max_deg):
+            out.append((b, ang))
+    return out
 
 
 def bloc(pts, h, r=0.0, marge=0.0, z0=0.0):
@@ -158,8 +186,8 @@ def construire_piece(p):
         rampe = next(q for q in M.PIECES if q["id"] == "rampe")
         if p["id"] == "bloc_fanny":                    # sous la rampe qui redescend : 2 mm de jeu sous son fond
             s = s.cut(gabarit_rampe(rampe, 2.0))
-        if p["id"] == "piece_bouchon":                 # sous la rampe qui monte depuis l'entrée
-            s = s.cut(gabarit_rampe(rampe, 2.0, lambda q: 60 < q[3] < 220))
+        if p["id"] == "piece_bouchon":                 # sous la rampe qui monte depuis l'entrée : ses parois la portent
+            s = s.cut(gabarit_rampe(rampe, 0.0, lambda q: 60 < q[3] < 220))
         if p["id"] == "piece_bouchon":
             for q in M.POCHES_BOUCHON:                     # poche du boîtier de POINTER
                 s = s.cut(bloc(q, p["h"] + 2, 0, 0, -1))
@@ -193,6 +221,45 @@ def construire_piece(p):
             e = Part.makeCylinder(3.5, p["h_entretoise"], tv(x, y, p["z"] - p["h_entretoise"]))
             s = s.fuse(e).cut(Part.makeCylinder(1.6, p["h_entretoise"] + p["ep"] + 2, tv(x, y, p["z"] - p["h_entretoise"] - 1)))
         return s.removeSplitter()
+    if k == "patte":
+        # tôle sous la rampe (dessus = fond de la rampe), du flanc opposé au bord ; retour vertical au bord :
+        # vissé dans la caisse (vers le haut) ou posé sur le guide d'arche / le séparateur (vers le bas)
+        (nx, ny), (dx, dy), x, y, z = p["n"], p["d"], p["x"], p["y"], p["z"]
+        def plaque(a0, a1, z0, h):
+            q = [tv(x + nx * a + dx * b, y + ny * a + dy * b, z0) for a, b in ((a0, -9), (a1, -9), (a1, 9), (a0, 9))]
+            return Part.Face(Part.makePolygon(q + [q[0]])).extrude(Vec(0, 0, h))
+        zb = {"caisse": None, "arche": M.H_PAROI, "separateur": 30.0}[p["bord"]]
+        if zb is not None and z - 3 > zb + 1:          # posée sur le guide / le séparateur
+            s = plaque(-(p["hw"] + 3), p["dist"] + 3, z - 3, 3).fuse(plaque(p["dist"], p["dist"] + 3, zb, z - zb))
+        else:                                          # vissée contre la caisse (ou le flanc du séparateur)
+            s = plaque(-(p["hw"] + 3), p["dist"], z - 3, 3).fuse(plaque(p["dist"] - 3, p["dist"], z - 3, 23 if zb is None else 13))
+        return s.removeSplitter()
+    if k == "enseigne":
+        # plaque inclinée de « incl » vers le joueur (bord avant en bas), à cheval sur la rampe ; deux pattes
+        # verticales collées sur la face extérieure des flancs
+        rp = next(q for q in M.PIECES if q["id"] == "rampe")
+        (mx, my), (ux, uy), (vx, vy) = p["M"], p["u"], p["v"]
+        c, sn = math.cos(math.radians(p["incl"])), math.sin(math.radians(p["incl"]))
+        P3 = lambda k, a, z: tv(mx + vx * k + ux * a, my + vy * k + uy * a, z)  # noqa: E731
+        a0, a1, z0, z1 = p["a"], p["a"] + p["prof"] * c, p["z"], p["z"] + p["prof"] * sn
+        d = p["demi"]
+        q = [P3(-d, a0, z0), P3(d, a0, z0), P3(d, a1, z1), P3(-d, a1, z1)]
+        s = Part.Face(Part.makePolygon(q + [q[0]])).extrude(Vec(0, 0, p["ep"]))
+        haut = lambda a: M.z_rampe(a) + rp["ep"] + rp["h"]  # noqa: E731
+        for sg in (-1, 1):
+            k0 = sg * (demi_rampe(rp, a0) + rp["ep"] + 0.2)          # contre le flanc là où il est le plus large
+            t = [P3(k0, a0, haut(a0) - 4), P3(k0, a1, haut(a1) - 4), P3(k0, a1, z1 + 1), P3(k0, a0, z0 + 1)]
+            s = s.fuse(Part.Face(Part.makePolygon(t + [t[0]])).extrude(Vec(vx * sg * 2.5, -vy * sg * 2.5, 0)))
+        return s.removeSplitter()
+    if k == "languette":
+        # tôle d'entrée : coin de 0 à h sur l mm devant la bouche, pointe enfoncée de « enfonce » mm dans une
+        # feuillure du plateau, prolongé de « ext » mm à plat sur le début du fond de rampe (« recouvre » mm au-dessus) :
+        # la bille ne rencontre jamais une arête de face (plateau → tôle, tôle → fond de rampe)
+        (mx, my), (ux, uy), hw, l, h = p["M"], p["u"], p["hw"], p["l"], p["h"]
+        e, ext, rc = p["enfonce"], p["ext"], p["recouvre"]
+        prof = [(-l, -e), (ext, h + ext * h / l + rc), (ext, -e)]
+        q = [tv(mx + ux * a + uy * hw, my + uy * a - ux * hw, z) for a, z in prof]
+        return Part.Face(Part.makePolygon(q + [q[0]])).extrude(Vec(-uy * 2 * hw, -ux * 2 * hw, 0))   # Vec : y inversé (tv)
     if k == "palette":
         f = p["flip"]
         verts = next(fl["verts"] for fl in M.G["flippers"] if fl["def"]["side"] == f["side"])
@@ -259,10 +326,15 @@ def construire_piece(p):
     raise ValueError(k)
 
 
-def section_rampe(x, y, z, dx, dy, p):
+def demi_rampe(p, s):
+    """demi-largeur intérieure de la rampe à l'abscisse s : bouche évasée qui se resserre sur « evase » mm"""
+    return p["larg"] / 2 + max(0.0, (p["bouche"] - p["larg"]) / 2 * (1 - s / p["evase"]))
+
+
+def section_rampe(x, y, z, dx, dy, p, s=1e9):
     """profil en U (fond + 2 flancs) perpendiculaire à la direction (dx, dy) — repère table"""
     nx, ny = -dy, dx
-    hw, e, h = p["larg"] / 2, p["ep"], p["h"]
+    hw, e, h = demi_rampe(p, s), p["ep"], p["h"]
     prof = [(-hw - e, -e), (hw + e, -e), (hw + e, h), (hw, h), (hw, 0), (-hw, 0), (-hw, h), (-hw - e, h)]
     pts = [tv(x + nx * a, y + ny * a, z + b) for a, b in prof]
     return Part.makePolygon(pts + [pts[0]])
@@ -272,9 +344,9 @@ def gabarit_rampe(p, jeu, garde=lambda q: q[0] > 350 and q[1] > 330):
     """volume réservé à la rampe : de jeu mm sous son fond jusqu'à 200 mm, largeur hors tout + 2 × jeu,
     sur les points retenus par « garde » (par défaut : la descente le long du mur droit)"""
     fils = []
-    hw = p["larg"] / 2 + p["ep"] + jeu
     q3 = [q for q in p["pts3d"] if garde(q)]
     for i, (x, y, z, s) in enumerate(q3):
+        hw = demi_rampe(p, s) + p["ep"] + jeu
         a = q3[max(0, i - 1)]; b = q3[min(len(q3) - 1, i + 1)]
         dx, dy = M.unit((b[0] - a[0], b[1] - a[1])); nx, ny = -dy, dx
         pts = [tv(x + nx * u, y + ny * u, z + w) for u, w in ((-hw, -jeu), (hw, -jeu), (hw, 200), (-hw, 200))]
@@ -292,7 +364,7 @@ def construire_rampe(p, s_min=None, s_max=None):
     for i, (x, y, z, s) in enumerate(pts):
         a = pts[max(0, i - 1)]; b = pts[min(len(pts) - 1, i + 1)]
         d = M.unit((b[0] - a[0], b[1] - a[1]))
-        fils.append(section_rampe(x, y, z + p["ep"], d[0], d[1], p))
+        fils.append(section_rampe(x, y, z + p["ep"], d[0], d[1], p, s))
     solide = None
     for w1, w2 in zip(fils, fils[1:]):
         lo = Part.makeLoft([w1, w2], True, True)
@@ -443,14 +515,224 @@ def pieds():
     return out
 
 
+def barre_verrouillage():
+    """barre WPC : coque d'inox brossé, dessus plat bombé vers l'avant, jupe avant qui coiffe le haut de la façade,
+    jupe arrière courte au-dessus de la vitre, bouts arrondis en plan ; ouverte dessous"""
+    b = M.V(CAISSE["barre"])
+    lb, d, h, ep = b["l"], b["p"], b["h"], b["ep"]
+
+    def profil(t):                         # section dans le plan Y-Z (x = 0), décalée de t vers l'intérieur
+        ra, rr = b["r_av"] - t, b["r_ar"] - t
+        y0, y1, z1 = t, d - t, h - t
+        p = lambda y, z: Vec(0, y, z)
+        c = math.sqrt(0.5)
+        bords = [Part.LineSegment(p(y0, -1), p(y0, z1 - ra)),
+                 Part.Arc(p(y0, z1 - ra), p(y0 + ra * (1 - c), z1 - ra * (1 - c)), p(y0 + ra, z1)),
+                 Part.LineSegment(p(y0 + ra, z1), p(y1 - rr, z1)),
+                 Part.Arc(p(y1 - rr, z1), p(y1 - rr * (1 - c), z1 - rr * (1 - c)), p(y1, z1 - rr)),
+                 Part.LineSegment(p(y1, z1 - rr), p(y1, -1)),
+                 Part.LineSegment(p(y1, -1), p(y0, -1))]
+        return Part.Face(Part.Wire([Part.Edge(e) for e in bords]))
+
+    def plan(t):                           # contour en plan, bouts arrondis
+        f = Part.Face(Part.makePolygon([Vec(t, t, -2), Vec(lb - t, t, -2), Vec(lb - t, d - t, -2), Vec(t, d - t, -2), Vec(t, t, -2)]))
+        return f.makeOffset2D(-(b["r_bout"] - t), join=0).makeOffset2D(b["r_bout"] - t, join=0).extrude(Vec(0, 0, h + 4))
+
+    ext = profil(0).extrude(Vec(lb, 0, 0)).common(plan(0))
+    inte = profil(ep).extrude(Vec(lb + 2, 0, 0)); inte.translate(Vec(-1, 0, 0))
+    s = ext.cut(inte.common(plan(ep)))
+    s = s.cut(Part.makeBox(lb + 2, d, 1.0 + 0.01, Vec(-1, 0, -1)))                          # dessous ouvert
+    s = s.cut(Part.makeBox(lb + 2, ep + 2, h - b["jupe_ar"] + 1, Vec(-1, d - ep - 1, -1)))   # jupe arrière courte
+    s.translate(Vec((M.LARG - lb) / 2, -b["debord_av"], M.HAV - b["sous_dessus"]))
+    return s
+
+
+def baguettes():
+    """baguettes latérales : cornière d'inox sur l'arête haute de chaque flanc, du devant jusqu'au plat du fronton ;
+    aile du dessus (déborde un peu au-dessus de la vitre), aile extérieure effilée vers l'avant (sous la barre)"""
+    g = M.V(CAISSE["baguette"])
+    ep, a = g["ep"], math.atan((M.HAR - M.HAV) / (M.LONG - M.PLAT))
+    ls = (M.LONG - M.PLAT) / math.cos(a)
+    r = g["r_bout"]
+    dessus = Part.Face(Part.makePolygon([Vec(-ep, 0, 0), Vec(g["dessus"] - ep, 0, 0), Vec(g["dessus"] - ep, ls, 0), Vec(-ep, ls, 0), Vec(-ep, 0, 0)]))
+    dessus = dessus.makeOffset2D(-r, join=0).makeOffset2D(r, join=0).extrude(Vec(0, 0, ep))
+    e0, e1 = g["effile"]
+    aile = Part.Face(Part.makePolygon([Vec(-ep, s, z) for s, z in
+                                       [(0, ep), (ls, ep), (ls, -g["retour"]), (e1, -g["retour"]), (e0, -g["pointe"]), (0, -g["pointe"]), (0, ep)]]))
+    aile = aile.makeOffset2D(-3, join=0).makeOffset2D(3, join=0).extrude(Vec(ep, 0, 0))
+    s = dessus.fuse(aile).removeSplitter()
+    s.rotate(Vec(0, 0, 0), Vec(1, 0, 0), math.degrees(a))
+    s.translate(Vec(0, 0, M.HAV))
+    return {"baguette_G": s, "baguette_D": s.mirror(Vec(M.LARG / 2, 0, 0), Vec(1, 0, 0))}
+
+
+def lanceur():
+    """lanceur à ressort (Williams B-12445), construit le long de son axe (w = 0 : embout au repos contre la bille,
+    w croissant vers le joueur) puis posé dans le repère caisse. Pièces mobiles : tige, pommeau, embout."""
+    la = M.LANCEUR
+    ax = Vec(*la["axe"])
+    pose = App.Placement(Vec(*la["bout"]), App.Rotation(Vec(0, 0, 1), ax)).toMatrix()
+    co = math.cos(M.PENTE_PF)
+    w_int, w_ext = la["w_facade"] - M.EPC / 2 / co, la["w_facade"] + M.EPC / 2 / co
+
+    def cyl(r, w0, w1):
+        return Part.makeCylinder(r, w1 - w0, Vec(0, 0, w0))
+
+    def ressort(d, fil, w0, w1):
+        n = max(2, int((w1 - w0) / (fil * 2.6)))
+        return Part.makeCompound([Part.makeTorus(d / 2, fil / 2, Vec(0, 0, w0 + (w1 - w0) * (i + 0.5) / n)) for i in range(n)])
+
+    def place(s):
+        s = s.copy(); s.transformShape(pose); return s
+
+    db, lb = la["boitier"]
+    cl, ch, ce = la["collerette"]
+    dn, ln = la["nez"]
+    dre, fre, lre = la["ressort_ext"]
+    dp, tp = la["pommeau"]
+    w_nez = w_ext + ce
+    w_k = w_nez + ln + lre                  # dos du pommeau
+    out = {}
+    out["lanceur_embout"] = place(cyl(la["embout"][0] / 2, 0, la["embout"][1]))
+    tige = cyl(la["tige"] / 2, la["embout"][1] - 1, w_k + tp)
+    tige = tige.fuse(cyl(8.0, 28.0, 29.5))                                       # rondelle et circlip
+    out["lanceur_tige"] = place(tige)
+    out["lanceur_ressort_int"] = place(ressort(la["ressort_int"][0], la["ressort_int"][1], 29.5, w_int - lb + M.EPC))
+    out["lanceur_ressort_ext"] = place(ressort(dre, fre, w_nez + ln, w_k))
+    cap = Part.makeSphere(dp / 2).cut(Part.makeBox(dp, dp, dp, Vec(-dp / 2, -dp / 2, -dp)))
+    m = App.Matrix(); m.scale(1, 1, 0.55)
+    cap = cap.transformGeometry(m); cap.translate(Vec(0, 0, w_k + tp))
+    out["lanceur_pommeau"] = place(cyl(7.0, w_k, w_k + tp + 0.5).fuse(cap))
+    # boîtier : tube à travers la façade, nez chromé ; collerette et platine de fixation à plat sur les faces de la façade
+    boit = place(cyl(db / 2, w_int - lb + M.EPC, w_nez).fuse(cyl(dn / 2, w_nez, w_nez + ln)))
+    xc, zc = la["trou_facade"]
+    zf = zc + (M.EPC / 2) * math.tan(M.PENTE_PF)         # l'axe sur la face avant de la façade (y = 0)
+    col = rect_arrondi(xc - cl / 2, zf - ch / 2, cl, ch, 6.0, -ce, ce)
+    for dz in (-ch / 2 + 7, ch / 2 - 7):
+        col = col.fuse(Part.makeSphere(3.5, Vec(xc, -ce, zf + dz)).cut(Part.makeBox(10, 10, 10, Vec(xc - 5, -ce, zf + dz - 5))))
+    pl = Part.makeBox(la["platine"] / math.sqrt(2), 2.0, la["platine"] / math.sqrt(2), Vec(-la["platine"] / math.sqrt(8), 0, -la["platine"] / math.sqrt(8)))
+    pl.rotate(Vec(0, 0, 0), Vec(0, 1, 0), 45)
+    pl.translate(Vec(xc, M.EPC, zc - (M.EPC / 2) * math.tan(M.PENTE_PF)))
+    out["lanceur_boitier"] = boit.fuse(col).fuse(pl)
+    return out
+
+
+def charnieres():
+    """charnières du fronton, à l'extérieur des flancs : plaque en goutte (pivot arrondi autour du boulon, haut droit
+    sous le fronton) plaquée contre la face extérieure du flanc, en dehors de l'aile de la baguette ; patte repliée à
+    plat sous le débord du fond du fronton, 3 boulons avec écrous dans le fronton ; boulon de charnière à travers le
+    flanc, écrou dedans. Pièces solidaires du fronton : elles basculent avec lui (le boulon est sur l'axe)."""
+    ch = M.CHARNIERE
+    E, L, ep, rp = M.EPC, M.LARG, ch["ep"], ch["r_pivot"]
+    fr = M.V(CAISSE["fronton"])
+    yp, zp = ch["y"], ch["z"]
+    lp, wp = ch["patte"]
+    ya = M.LONG - fr["p_bas"] + ch["y_patte"]           # début de la patte, sous le fond du fronton
+    zb = M.HAR                                           # dessous du fond du fronton
+    pts = [(yp + rp * math.cos(a), zp + rp * math.sin(a)) for a in [i * math.pi / 16 for i in range(32)]]
+    pts += [(ya, zb), (ya + lp, zb), (ya + lp, zb - 40)]
+    # enveloppe convexe (chaîne monotone)
+    pts = sorted(set((round(y, 3), round(z, 3)) for y, z in pts))
+    def demi(ps):
+        h = []
+        for p in ps:
+            while len(h) >= 2 and (h[-1][0] - h[-2][0]) * (p[1] - h[-2][1]) - (h[-1][1] - h[-2][1]) * (p[0] - h[-2][0]) <= 0:
+                h.pop()
+            h.append(p)
+        return h
+    env = demi(pts)[:-1] + demi(pts[::-1])[:-1]
+    x1 = -M.V(CAISSE["baguette"])["ep"] - ch["jeu_baguette"]   # face intérieure de la plaque (côté gauche)
+    x0 = x1 - ep
+    plaque = Part.Face(Part.makePolygon([Vec(x0, y, z) for y, z in env + [env[0]]])).extrude(Vec(ep, 0, 0))
+    plaque = plaque.cut(Part.makeCylinder(ch["boulon"] / 2 + 0.3, ep + 2, Vec(x0 - 1, yp, zp), Vec(1, 0, 0)))
+    s = plaque.fuse(Part.makeBox(wp, lp, ep, Vec(x0 - wp + ep, ya, zb - ep)))         # patte, vers l'extérieur
+    for k in range(ch["vis"]):
+        yg, xg = ya + lp * (k + 0.5) / ch["vis"], x0 - wp * 0.5 + ep
+        s = s.fuse(Part.makeCylinder(5.5, 4, Vec(xg, yg, zb - ep - 4)))                # tête sous la patte
+        s = s.fuse(Part.makeCylinder(3, E + ep + 6, Vec(xg, yg, zb - ep)))
+        s = s.fuse(Part.Face(Part.makePolygon([Vec(xg + 5.5 * math.cos(a), yg + 5.5 * math.sin(a), zb + E)
+                                               for a in [i * math.pi / 3 for i in range(7)]])).extrude(Vec(0, 0, 5)))
+    # boulon de charnière : tête bombée dehors, tige à travers plaque et flanc, écrou dedans
+    ra, hc = ch["boulon"] * 1.1, 5.5
+    rs = (ra * ra + hc * hc) / (2 * hc)
+    s = s.fuse(Part.makeSphere(rs, Vec(x0 + rs - hc, yp, zp)).common(Part.makeBox(hc, 2 * ra, 2 * ra, Vec(x0 - hc, yp - ra, zp - ra))))
+    s = s.fuse(Part.makeCylinder(ch["boulon"] / 2, E - x0 + 8, Vec(x0, yp, zp), Vec(1, 0, 0)))
+    s = s.fuse(Part.Face(Part.makePolygon([Vec(E, yp + 10 * math.cos(a), zp + 10 * math.sin(a))
+                                           for a in [i * math.pi / 3 + math.pi / 6 for i in range(7)]])).extrude(Vec(8, 0, 0)))
+    return {"charniere_G": s, "charniere_D": s.mirror(Vec(L / 2, 0, 0), Vec(1, 0, 0))}
+
+
+def finitions_caisse():
+    """finitions des perçages de la caisse : grille chromée et ventilateur 80 mm derrière le trou Ø 86 du panneau
+    arrière, grilles à lames noires dans les 2 oblongs d'aération, boulons à tête bombée chromés dans les trous des
+    flancs (supports ; le trou de charnière reçoit le boulon de la charnière)"""
+    P, E, L, LG = M.PANNEAUX, M.EPC, M.LARG, M.LONG
+    out = {}
+    # ventilateur (dans la caisse, plaqué sur la face intérieure) et grille de protection (dehors)
+    ve = P["arriere"]["ventil"]
+    xc, zc, a = E + ve["x"], ve["z"], ve["entraxe"] / 2
+    corps = Part.makeBox(80, 25, 80, Vec(xc - 40, LG - E - 25, zc - 40))
+    corps = corps.cut(Part.makeCylinder(38, 27, Vec(xc, LG - E - 26, zc), Vec(0, 1, 0)))
+    moyeu = Part.makeCylinder(14, 25, Vec(xc, LG - E - 25, zc), Vec(0, 1, 0))
+    pales = []
+    for i in range(7):
+        p = Part.makeBox(22, 1.5, 12, Vec(13, -0.75, -6))
+        p.rotate(Vec(0, 0, 0), Vec(1, 0, 0), 30)
+        p.rotate(Vec(0, 0, 0), Vec(0, 1, 0), i * 360 / 7)
+        p.translate(Vec(xc, LG - E - 12, zc))
+        pales.append(p)
+    out["finition_ventilateur"] = corps.fuse(moyeu).fuse(Part.makeCompound(pales))
+    y = LG + 1.5
+    g = [Part.makeTorus(r, 0.9, Vec(xc, y, zc), Vec(0, 1, 0)) for r in (10, 19, 28, 37, 44)]
+    for ang in (45, 135):
+        b = Part.makeCylinder(0.9, 2 * (a + 7) * math.sqrt(2), Vec(-(a + 7) * math.sqrt(2), 0, 0), Vec(1, 0, 0))
+        b.rotate(Vec(0, 0, 0), Vec(0, 1, 0), ang); b.translate(Vec(xc, y, zc)); g.append(b)
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            g.append(Part.makeCylinder(6, 1.2, Vec(xc + sx * a, LG, zc + sz * a), Vec(0, 1, 0)))       # pattes vissées
+            g.append(Part.makeSphere(4.5, Vec(xc + sx * a, LG + 1.2, zc + sz * a)).common(
+                Part.makeBox(10, 5, 10, Vec(xc + sx * a - 5, LG + 1.2, zc + sz * a - 5))))           # têtes de vis
+    out["finition_grille_ventil"] = Part.makeCompound(g)
+    # grilles d'aération à lames dans les oblongs : cadre plaqué dehors, lames inclinées dans l'épaisseur
+    ob = P["arriere"]["oblongs"]
+    gr = []
+    for x in (ob["x_gauche"], L - 2 * E - ob["x_gauche"] - ob["l"]):
+        x0, z0, l, h = E + x, ob["z"] - ob["h"] / 2, ob["l"], ob["h"]
+        cadre = rect_arrondi(x0 - 7, z0 - 7, l + 14, h + 14, h / 2 + 7 - 0.5, LG, 3).cut(
+            rect_arrondi(x0, z0, l, h, h / 2 - 0.5, LG - 1, 5))
+        trou = rect_arrondi(x0, z0, l, h, h / 2 - 0.5, LG - E, E + 2)
+        for k in range(5):
+            lame = Part.makeBox(l + 2, 1.6, 14, Vec(-1, -0.8, -7))
+            lame.rotate(Vec(0, 0, 0), Vec(1, 0, 0), -40)
+            lame.translate(Vec(x0, LG - 6, z0 + h * (k + 0.75) / 5.5))
+            cadre = cadre.fuse(lame.common(trou))
+        gr.append(cadre)
+    out["finition_ouies"] = Part.makeCompound(gr)
+    # boulons de carrosserie : tête bombée sur la face extérieure des flancs
+    bo = []
+    for t in P["flanc_G"]["trous"]:
+        if not t["fonction"].startswith("fixation") or (t["y"], t["z"]) == (M.CHARNIERE["y"], M.CHARNIERE["z"]):
+            continue                      # le trou de charnière reçoit le boulon de la charnière
+        ra, hc = t["d"] * 1.1, 4.5 + t["d"] * 0.08
+        rs = (ra * ra + hc * hc) / (2 * hc)
+        tete = Part.makeSphere(rs, Vec(rs - hc, t["y"], t["z"])).common(Part.makeBox(hc, 2 * ra, 2 * ra, Vec(-hc, t["y"] - ra, t["z"] - ra)))
+        bo += [tete, tete.mirror(Vec(L / 2, 0, 0), Vec(1, 0, 0))]
+    out["finition_boulons"] = Part.makeCompound(bo)
+    return out
+
+
 def achats_caisse():
-    """pièces achetées de la caisse (encombrements) : pieds, barre de verrouillage, vitre"""
+    """pièces achetées de la caisse (encombrements) : pieds, barre de verrouillage, baguettes, lanceur, vitre"""
     L, LG = M.LARG, M.LONG
     out = {}
     h_sol = M.H_SOL                       # hauteur du bas de caisse au-dessus du sol (barre de verrouillage ≈ 930 mm)
     recouv = M.PIED["recouvrement"]
     out.update(pieds())
-    out["barre_verrouillage"] = Part.makeBox(L, 70, 25, Vec(0, -10, M.HAV))
+    out["barre_verrouillage"] = barre_verrouillage()
+    out.update(baguettes())
+    out.update(lanceur())
+    out.update(finitions_caisse())
+    out.update(charnieres())
     ang = math.atan((M.HAR - M.HAV) / (LG - M.PLAT))
     v = Part.makeBox(L - 2 * M.EPC + 10, 1000, 4, Vec(M.EPC - 5, 0, 0))
     v.rotate(Vec(0, 0, 0), Vec(1, 0, 0), math.degrees(ang))
@@ -503,7 +785,7 @@ def main():
             o.Label = p["nom"][:60]
             Part.export([o], os.path.join(OUT, "pieces", f"{p['id']}.step"))
             imprime = not p["achat"] and p["type"] not in ("zone",) and "alu" not in p["matiere"]
-            if imprime and p["type"] != "rampe":
+            if (imprime and p["type"] != "rampe") or p["type"] == "patte":     # pattes en alu : STL pour la vue 3D
                 Mesh.export([o], os.path.join(OUT, "pieces", f"{p['id']}.stl"))
             z = p.get("z", 0) + 1 if p["type"] == "plaque" else 1.0
             contours[p["id"]] = contour_xy(s, z)
@@ -541,7 +823,10 @@ def main():
     achats, h_sol, recouv = achats_caisse()
     for nom, s in achats.items():
         o = doc.addObject("Part::Feature", nom); o.Shape = s
-        Mesh.export([o], os.path.join(OUT, "caisse", f"{nom}.stl"))
+        # maillage borné : les tores des ressorts donneraient des dizaines de Mo au maillage par défaut
+        fin = "ressort" not in nom
+        MeshPart.meshFromShape(Shape=s, LinearDeflection=0.15 if fin else 0.4, AngularDeflection=0.35 if fin else 0.9).write(
+            os.path.join(OUT, "caisse", f"{nom}.stl"))
         rendu["verre" if nom == "vitre" else "metal"].append(s)
 
     # objets placés dans l'assemblage (plateau et pièces inclinés)

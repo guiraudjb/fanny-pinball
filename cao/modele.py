@@ -160,12 +160,7 @@ for i, d in enumerate(GEO["deflectors"]):
 for i, lp in enumerate(GEO["lanePosts"]):
     ruban(f"guide_tour_{i + 1}", f"Guide de couloir T-O-U-R n° {i + 1}", [(lp["x"], lp["y1"]), (lp["x"], lp["y2"])], 6)
 
-# --- entrée de rampe : deux parois droites, fond ouvert (la rampe part de la bouche et prolonge le couloir)
-for r in GEO["rampEntries"]:
-    w = r["half"] + 3
-    Q = lambda b, k, a=0: (b["x"] + r["v"]["x"] * k + r["u"]["x"] * a, b["y"] + r["v"]["y"] * k + r["u"]["y"] * a)  # noqa: E731
-    for i, k in enumerate((-w, w)):
-        ruban(f"entree_rampe_{'GD'[i]}", f"Paroi {'gauche droite'.split()[i]} de l'entrée de rampe", [Q(r["M"], k), Q(r["T"], k, -3)], 6)
+# --- entrée de rampe : pas de parois, la rampe elle-même s'évase en bouche de 52 mm (voir la pièce « rampe »)
 
 # --- blocs : carcasse du bouchon (creuse, parois de 6 mm, plots de fixation), mur des cibles rondes, banque F-A-N-N-Y
 EP_CARCASSE = 6.0
@@ -223,6 +218,8 @@ for s in GEO["slings"]:
     poteaux += [(x, y, "sling") for x, y in poteaux_sling(s)]
 for s in GEO["separators"] + GEO.get("dividers", []):
     poteaux.append((s[0][0], s[0][1], "poteau"))
+_cpost = GEO["centerPost"]
+poteaux.append((_cpost["x"], _cpost["y"], "centre"))     # plot central entre les palettes
 for i, (x, y, ty) in enumerate(poteaux):
     g = V(CAOUTCHOUCS[ty])
     piece(id=f"poteau_{i + 1}", nom=f"Poteau Ø 10, gorge Ø {g['gorge_d']:g} (anneau caoutchouc acheté)", type="poteau",
@@ -243,6 +240,10 @@ for x, y, ty in poteaux:
     if ty == "poteau":
         ANNEAUX.append({"type": "poteau", "x": x, "y": y, "z": Z_CAOUT, "r": _cp["gorge_d"] / 2, "cord": _cp["cord"],
                         "id_pouces": 0.125})
+    if ty == "centre":
+        _cc = V(CAOUTCHOUCS["centre"])
+        ANNEAUX.append({"type": "poteau", "x": x, "y": y, "z": Z_CAOUT, "r": _cc["gorge_d"] / 2, "cord": _cc["cord"],
+                        "id_pouces": 0.3125})
 for s in GEO["slings"]:
     ps = poteaux_sling(s)
     rc = _cs["gorge_d"] / 2 + _cs["cord"] / 2               # rayon de la ligne moyenne de la corde autour d'un poteau
@@ -443,33 +444,87 @@ for lp in G["lamps"]:
 
 # ------------------------------------------------------------------ rampe : chemin, hauteur, supports, tronçons
 r0 = GEO["rampEntries"][0]
-chemin = [(r0["M"]["x"], r0["M"]["y"])] + [(p[0], p[1]) for p in G["ramp"]]
+chemin = [(p[0], p[1]) for p in G["ramp"]]          # part de la bouche M (js/table.js buildRamp)
 acc = [0.0]
 for i in range(1, len(chemin)):
     acc.append(acc[-1] + dist(chemin[i - 1], chemin[i]))
 L_RAMPE = acc[-1]
 Z_HAUT = V(RAMPE["z_haut"]); PENTE = math.tan(math.radians(V(RAMPE["pente_entree"])))
-L_DESC = 300.0
+Z_FIN = 34.0               # fond au-dessus du plateau en sortie (> Ø 27 mm : aucune bille coincée dessous, retombe dans le couloir)
+L_DESC = 120.0
+
+
+# Profil en long : montée, palier, descente jusqu'à Z_FIN en sortie (au-dessus du couloir de retour droit).
+# Chaque changement de pente est un raccord parabolique (tôle cintrée) : une cassure franche faisait décoller
+# la bille. Raccords : (abscisse, variation de pente, demi-longueur) ; rayon de courbure = 2 × demi-longueur / variation.
+# Le fond part avec la pente de la languette d'entrée (P0) : pas de bosse où la bille décollerait.
+L_LANG = 30.0; P0 = V(RAMPE["ep"]) / L_LANG
+_S1 = 20.0
+_S2 = (Z_HAUT + (PENTE - P0) * _S1) / PENTE
+_S3 = L_RAMPE - L_DESC
+RACCORDS = [(_S1, PENTE - P0, 20.0), (_S2, -PENTE, 50.0), (_S3, -(Z_HAUT - Z_FIN) / L_DESC, 40.0)]
 
 
 def z_rampe(s):
-    montee = min(Z_HAUT, s * PENTE)
-    if s > L_RAMPE - L_DESC:
-        return max(3.0, min(montee, Z_HAUT * (L_RAMPE - s) / L_DESC + 3))
-    return montee
+    z = P0 * max(0.0, s)
+    for sk, dm, h in RACCORDS:
+        x = s - sk
+        z += dm * (0.0 if x < -h else x if x > h else (x + h) ** 2 / (4 * h))
+    return max(0.0, z)
 
 
 RAMPE_3D = [(p[0], p[1], z_rampe(s), s) for p, s in zip(chemin, acc)]
-supports = []
-s_next = 120.0
-for (x, y, z, s) in RAMPE_3D:
-    if s >= s_next and z > 15 and s < L_RAMPE - 60:
-        supports.append((x, y, z, s)); s_next = s + V(RAMPE["pas_supports"])
-for i, (x, y, z, s) in enumerate(supports):
-    piece(id=f"support_rampe_{i + 1}", nom="Poteau de rampe Ø 10", type="poteau", x=x, y=y, d=10, h=z, fix=[(x, y)])
+# Supports : pas de poteaux dans le plateau (la bille y roule) ; des pattes murales en tôle de 3 mm, posées sous
+# la rampe, la relient au bord le plus proche côté extérieur : caisse (vissée), guide d'arche ou séparateur du
+# couloir de lancement (posée dessus). Le bras reste à la hauteur de la rampe : la bille passe dessous. Une patte
+# longue doit être à plus de 40 mm du plateau ; plus bas, elle ne sort pas de l'emprise de la rampe.
+# Au départ (s < 130), la rampe repose sur la carcasse du bouchon.
+_E = GEO["ellipse"]; _ls = GEO["laneSep"]
+
+
+def bord_exterieur(x, y, nx, ny):
+    """distance au premier bord rencontré le long de (nx, ny), et ce bord : 'caisse', 'arche' ou 'separateur'"""
+    for d in range(0, 250):
+        px, py = x + nx * d, y + ny * d
+        if px <= 0 or px >= W:
+            return d, "caisse"
+        if py >= _ls["y1"] and px >= _ls["x"] - _ls["t"] / 2:
+            return d, "separateur"
+        if py < _E["cy"] and ((px - _E["cx"]) / _E["rx"]) ** 2 + ((py - _E["cy"]) / _E["ry"]) ** 2 > 1:
+            return d, "arche"
+    return None, None
+
+
+_hw_rampe = V(RAMPE["larg_int"]) / 2 + V(RAMPE["ep"])
+supports = []          # (x, y, z, s) : point de la rampe porté
+PATTES = []
+s_next = 200.0
+for i, (x, y, z, s) in enumerate(RAMPE_3D):
+    if s < s_next or s > L_RAMPE - 60:
+        continue
+    a, b = RAMPE_3D[max(0, i - 1)], RAMPE_3D[min(len(RAMPE_3D) - 1, i + 1)]
+    dx, dy = unit((b[0] - a[0], b[1] - a[1]))
+    choix = []
+    for sg in (1, -1):
+        d, bord = bord_exterieur(x, y, -dy * sg, dx * sg)
+        if d is not None:
+            choix.append((d, bord, (-dy * sg, dx * sg)))
+    d, bord, n = min(choix)
+    if z < 40 and d > _hw_rampe + 10:
+        continue
+    supports.append((x, y, z, s)); s_next = s + V(RAMPE["pas_supports"])
+    PATTES.append({"x": x, "y": y, "z": z, "d": (dx, dy), "n": n, "dist": d, "bord": bord})
+for i, pt in enumerate(PATTES):
+    piece(id=f"patte_rampe_{i + 1}", nom=f"Patte de rampe ({pt['bord']}), tôle 3 mm", type="patte", **pt,
+          hw=_hw_rampe, matiere="alu 3 mm plié (ou PETG 4 mm)")
 S_IR = L_RAMPE - 120
 piece(id="rampe", nom="Rampe (tronçons PETG, barrière IR en sortie)", type="rampe", pts3d=RAMPE_3D, s_ir=S_IR,
-      larg=V(RAMPE["larg_int"]), ep=V(RAMPE["ep"]), h=V(RAMPE["h_flanc"]))
+      larg=V(RAMPE["larg_int"]), ep=V(RAMPE["ep"]), h=V(RAMPE["h_flanc"]), bouche=2 * r0["half"], evase=r0["evase"])
+# Languette d'entrée : plan incliné collé au plateau devant la bouche, qui rattrape l'épaisseur du fond de rampe
+# (sans elle, la marche de 3 mm fait sauter la bille) ; le fond continue à la même pente.
+piece(id="languette_rampe", nom="Languette d'entrée de rampe", type="languette", M=(r0["M"]["x"], r0["M"]["y"]),
+      u=(r0["u"]["x"], r0["u"]["y"]), hw=r0["half"] + V(RAMPE["ep"]), l=L_LANG, h=V(RAMPE["ep"]),
+      enfonce=0.6, ext=12.0, recouvre=0.3)
 
 
 def sous_rampe(p, jeu):
@@ -480,17 +535,17 @@ def sous_rampe(p, jeu):
 
 # --- plastiques décorés sur entretoises (comme sur un vrai flipper) :
 #  • au-dessus de la carcasse du bouchon, 4 mm de débord sur les couloirs, posé sur ses plots ; échancré sous la rampe
-#  • enseigne « ESCALE » à cheval sur la bouche de l'entrée de rampe, posée sur les deux parois, plus haut
+#  • enseigne « ESCALE » inclinée vers le joueur au-dessus du début de la rampe, sur deux pattes collées aux flancs
 H_ENTRETOISE = 6.0
 _pb = next(p for p in PIECES if p["id"] == "piece_bouchon")
 piece(id="plastique_bouchon", nom="Plastique du bouchon (sur entretoises de 6 mm)", type="plaque", pts=GEO["bouchonPiece"],
       r=9, ep=3, z=H_PAROI + H_ENTRETOISE, marge=4, sous_rampe=True, matiere="PETG 3 mm décoré (ou acrylique 3 mm)",
       entretoises=[f for f in _pb["fix"] if not sous_rampe(f, 8)], h_entretoise=H_ENTRETOISE)
-_r = GEO["rampEntries"][0]; _w = _r["half"] + 3
-_ent = [(_r["M"]["x"] + _r["v"]["x"] * k + _r["u"]["x"] * 6, _r["M"]["y"] + _r["v"]["y"] * k + _r["u"]["y"] * 6) for k in (-_w, _w)]
-piece(id="plastique_rampe", nom="Enseigne d'entrée de rampe « ESCALE » (sur entretoises de 12 mm)", type="plaque",
-      pts=[tuple(q) for q in GEO["enseigneRampe"]], r=5, ep=3, z=H_PAROI + 2 * H_ENTRETOISE, marge=0,
-      matiere="PETG 3 mm décoré (ou acrylique 3 mm)", entretoises=_ent, h_entretoise=2 * H_ENTRETOISE)
+_en = GEO["enseigneRampe"]
+_z_en = z_rampe(_en["a"]) + V(RAMPE["ep"]) + 27 + 20.0         # bord avant : 20 mm au-dessus d'une bille sur la rampe (marge aux rebonds)
+piece(id="plastique_rampe", nom="Enseigne de rampe « ESCALE » (inclinée de 40°, pattes collées sur les flancs)", type="enseigne",
+      M=(r0["M"]["x"], r0["M"]["y"]), u=(r0["u"]["x"], r0["u"]["y"]), v=(r0["v"]["x"], r0["v"]["y"]), a=_en["a"], prof=_en["prof"],
+      incl=_en["incl"], demi=_en["demi"], ep=3, z=_z_en, matiere="PETG 3 mm décoré (ou acrylique 3 mm)")
 
 
 # ------------------------------------------------------------------ caisse (repère caisse : X largeur, Y vers l'arrière depuis la façade, Z vers le haut)
@@ -516,6 +571,18 @@ def plateau_vers_caisse(X, Y, Z=0.0):
     return (X_PF + X, Y_PF_AV + Y * c - Z * s, Z_PF_AV + Y * s + Z * c)
 
 
+# lanceur à ressort : axe parallèle au plateau dans le couloir de lancement, à hauteur du centre de la bille ;
+# l'embout au repos touche la bille posée (butée du couloir), la tige traverse la façade
+_pl = GEO["plunger"]
+LANCEUR = {**V(CAISSE["lanceur"]), "bout": plateau_vers_caisse(_pl["x"], H - _pl["top"], BALL_R),
+           "axe": (0.0, -math.cos(PENTE_PF), -math.sin(PENTE_PF))}        # vers le joueur
+LANCEUR["w_facade"] = (LANCEUR["bout"][1] - EPC / 2) / math.cos(PENTE_PF)   # abscisse du milieu de la façade le long de l'axe
+LANCEUR["trou_facade"] = (LANCEUR["bout"][0], LANCEUR["bout"][2] - LANCEUR["w_facade"] * math.sin(PENTE_PF))
+
+# charnière du fronton : axe de pivot = boulon du trou Ø 13 des flancs (le premier des trous du plan WPC)
+_yr, _zp, _ = V(CAISSE["trous_flanc"])[0]
+CHARNIERE = {**V(CAISSE["charniere"]), "y": LONG - _yr, "z": _zp}
+
 fp = V(CAISSE["flipper_bouton"])
 PANNEAUX = {
     "flanc_G": {"nom": "Flanc gauche", "contour": FLANC, "ep": EPC, "trous": [
@@ -527,8 +594,8 @@ PANNEAUX["flanc_D"] = {**PANNEAUX["flanc_G"], "nom": "Flanc droit (symétrique)"
 fa, po, st = V(CAISSE["facade"]), V(CAISSE["porte"]), V(CAISSE["start"])
 PANNEAUX["facade"] = {"nom": "Façade", "contour": [(0, 0), (LARG - 2 * EPC, 0), (LARG - 2 * EPC, fa["h"]), (0, fa["h"])], "ep": EPC,
                       "porte": po, "trous": [{"x": st["x"] - EPC, "z": fa["h"] - st["z_haut"], "d": st["d"], "fonction": "bouton START"},
-                                             {"x": LARG - 2 * EPC - (st["x"] - EPC), "z": fa["h"] - st["z_haut"], "d": 28.0,
-                                              "fonction": "bouton LANCER (à la place du lanceur à ressort)"}]}
+                                             {"x": LANCEUR["trou_facade"][0] - EPC, "z": LANCEUR["trou_facade"][1],
+                                              "d": LANCEUR["trou"], "fonction": "boîtier du lanceur à ressort"}]}
 ar = V(CAISSE["arriere"])
 PANNEAUX["arriere"] = {"nom": "Panneau arrière", "contour": [(0, 0), (LARG - 2 * EPC, 0), (LARG - 2 * EPC, HAR - EPC), (0, HAR - EPC)],
                        "ep": EPC, "oblongs": V(CAISSE["arriere_oblongs"]), "ventil": V(CAISSE["arriere_ventil"])}

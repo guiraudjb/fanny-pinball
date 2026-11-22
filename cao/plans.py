@@ -307,7 +307,7 @@ def p_detection():
 # ================================================================== 06 pièces imprimées
 def p_pieces():
     fig = page(A3L, "Pièces imprimées — vues de dessus cotées, points de fixation (1:2)", 6)
-    choix = ["piece_bouchon", "mur_cibles", "bloc_fanny", "plastique_bouchon", "guide_retour_G", "entree_rampe_G", "plastique_rampe",
+    choix = ["piece_bouchon", "mur_cibles", "bloc_fanny", "plastique_bouchon", "guide_retour_G", "deflecteur_1", "plastique_rampe",
              "plastique_sling_G", "poteau_1", "tablier"]
     cases = [(15, 150, 130, 130), (150, 150, 60, 130), (215, 150, 100, 130), (320, 150, 85, 130),
              (15, 45, 90, 100), (110, 45, 45, 100), (160, 45, 35, 100), (200, 45, 70, 100), (275, 45, 30, 100), (310, 45, 95, 100)]

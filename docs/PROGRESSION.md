@@ -187,11 +187,39 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   - Un essai avec TIRER entre le couloir et la rampe a été abandonné. Il fallait décaler l'entrée de rampe et la cible masquait cette entrée. TIRER reste au centre, à x 239, y 450, et l'entrée de rampe reste à x 160.
 - Banque F-A-N-N-Y remontée de 60 mm le long de son axe. La rampe redescend le long du mur droit à moins de 33 mm du plateau (24 mm sous la cible Y) et heurtait la lame Y. La lame la plus proche est maintenant à 11 mm de la rampe. Dans la CAO, le bloc arrière de la banque, haut de 32 mm, est découpé sous la rampe avec 2 mm de jeu.
 
-- Entrée de rampe ouverte au fond. La paroi en pointe est supprimée : la rampe passait au travers (sa paroi de 32 mm dépassait de 4 mm le fond de la rampe). La rampe part de la bouche et prolonge le couloir. Les deux parois deviennent deux pièces droites, `entree_rampe_G` et `entree_rampe_D`.
+- La rampe fait elle-même l'entrée. Sa bouche de 52 mm se resserre sur 70 mm jusqu'à sa largeur courante de 39 mm, et ses flancs transparents guident la bille dès la bouche. Les parois grises de l'entrée et la paroi en pointe du fond sont supprimées : la rampe passait au travers de cette paroi.
+  - En physique, les parois de l'entrée suivent l'entonnoir. Elles sont marquées `plugin.flanc` et ne sont pas dessinées en 3D, puisque la rampe les représente.
+  - À vitesse de palette, la bille entre de ±12 mm autour du centre.
+  - Le chemin de la rampe (`GEO.ramps.L`) part maintenant de la bouche, comme dans la CAO. Avant, il partait du capteur, 71 mm plus loin : en 3D, la rampe y démarrait au ras du plateau et traversait le bloc du bouchon. La simulation fait partir la bille à l'abscisse du capteur (`sim.rampDepart`).
+  - Entrée décalée de 20 mm vers la droite (bouche à x 180), ce qui dégage le bloc du bouchon. TIRER suit, de 16 mm (x 255), avec sa lampe CARREAU. À 18 mm du poteau droit de la bouche, il restait un recoin où la bille se posait ; elle est maintenant à 45 mm.
 - Zone du bouchon refaite comme sur un vrai flipper :
   - La pièce du bouchon devient une carcasse creuse : parois de 6 mm, 9 plots Ø 9 avec inserts en haut et en bas. Elle est découpée sous la rampe avec 2 mm de jeu, alors qu'avant elle la traversait jusqu'à s ≈ 128 mm.
   - Par-dessus, un plastique décoré de 3 mm (`plastique_bouchon`) est posé sur des entretoises de 6 mm. Il déborde de 4 mm sur les couloirs et il est échancré là où la rampe passe plus bas que lui.
-  - Une enseigne « ★ ESCALE ★ » (`plastique_rampe`, 64 × 20 mm) est posée à cheval sur la bouche de la rampe, sur deux entretoises de 12 mm vissées dans les parois.
+  - Une enseigne « ★ ESCALE ★ » (`plastique_rampe`, 64 × 20 mm) passe au-dessus du début de la rampe, inclinée de 40° vers le joueur. Son bord avant est à 6,5 mm au-dessus d'une bille sur la rampe, et ses deux pattes sont collées sur les flancs.
+- Plus de poteaux de rampe dans le plateau. Ils n'existaient pas dans la physique, donc la bille les traversait, et sur la vraie machine elle s'y serait coincée.
+  - Neuf pattes murales en alu de 3 mm (`patte_rampe_*`) passent sous la rampe et la relient au bord le plus proche côté extérieur. Selon l'endroit, elles sont vissées dans la caisse, posées sur le guide d'arche ou sur le séparateur du couloir de lancement, ou vissées contre le flanc de ce séparateur.
+  - Un bras long n'est accepté qu'à plus de 40 mm de haut ; plus bas, la patte reste dans l'emprise de la rampe.
+  - Au départ de la rampe, la carcasse du bouchon la porte : ses parois touchent maintenant le dessous de la rampe, sans jeu.
+  - La première patte, vers (87, 276), a un bras de 147 mm à 51 mm de haut : il faudra la rigidifier, avec une tôle en U ou une nervure.
+- Essais de blocage sans rendu (Node, `sim.js`) : environ 2 600 billes lâchées en grille tous les 9 mm et 2 000 tirs aléatoires. Une bille immobile est repérée par les secousses automatiques de la simulation.
+  - Un seul arrêt est apparu, dans l'angle entre le mur gauche et le toit du bloc du bouchon, en pente de 14°. Il est corrigé par un congé de 20 mm, présent dans la physique (éventail de triangles : un cercle entier faisait une nouvelle poche contre le mur) et dans le contour de la pièce.
+  - Les pointes aiguës (< 60°) de la CAO (`face_poly` dans `cao/construire.py`) gardent un arrondi de 1,5 mm au lieu d'être raccourcies par l'arrondi général de 9 mm.
+
+## Physique 3D Rapier, finitions caisse, robot et bas de plateau (21–22/11)
+
+- **Physique 3D Rapier (WebAssembly)** : `js/sim.js` remplace la simulation 2D Matter.js par Rapier 3D (`vendor/rapier.module.js`, pas fixe 480 Hz, résistance au roulement, bille qui roule et tourne réellement). Les surfaces passives proviennent directement des STL de la CAO via `assets/cao/collision.glb` (`outils/cao_web.py`).
+  - Profil de rampe adouci par raccords paraboliques (`z_rampe`) et languette d'entrée métallique (`languette_rampe`) ; pente de montée portée à 25° pour laisser au moins 36 mm au-dessus du toit du bouchon.
+- **Finitions de la caisse CAO et vue 3D** :
+  - **Habillages de caisse** (`js/habillages.js`, touche H, caméras machine et tour) : 8 décors peints aux cotes WPC (robe à pois, Riviera, terre battue, carte postale, néon, transat, Art déco, frise du plateau) en plus du bois brut.
+  - **Charnières extérieures et mode transport** (touche T) : charnières chromées montées à l'extérieur des flancs ; le fronton se rabat sur la caisse en 3D.
+  - **Lanceur à ressort Williams B-12445** : modélisé dans la CAO (boîtier, tige, ressorts, pommeau, embout) et animé à tirage progressif (`↓` maintenu puis relâché).
+  - **Finitions** : baguettes latérales inox, barre de verrouillage profilée, grille et ventilateur arrière, ouïes d'aération à lames, boulons de carrosserie.
+- **Robot joueur expert et banc d'essai** (`js/robot.js`, `outils/robot.mjs`, `outils/robot_tirs.json`) : joue des parties complètes sans rendu sur la physique Rapier + `collision.glb` (berceau, tirs visés étalonnés, frappes de sauvetage) pour mesurer scores, pertes et blocages.
+- **Bas du plateau : lance-pierres et plot central** :
+  - Lance-pierres écartés du guide (`SL_JEU = 5` mm), remontés de 20 mm (`SL_LEVE`) et redressés à 68° (au lieu de 60,83°) pour supprimer le pincement de la bille entre palette levée et caoutchouc.
+  - Ajout d'un **plot central caoutchouté** (`GEO.centerPost` en (239 ; 932,4), Ø 15, `poteau_11` avec anneau noir 5/16" ID dans la CAO), 13 mm sous les pointes des palettes au repos : plus aucune perte directe en étalonnage palettes baissées.
+  - **Sortie de rampe relevée à 34 mm** (`Z_FIN = 34`, descente sur 120 mm, courbe en S `y 500 → 625` suivie de 60 mm droits dans l'axe `x = 417`) : le banc d'essai robot avait révélé un coincement sous la descente de rampe vers `(434, 579)` où le fond passait sous les 27 mm de la bille. À 34 mm en sortie (et `patte_rampe_9` à 50,9 mm), la bille passe librement partout dessous (0 blocage en grille au lieu de 168), le couloir extérieur droit est dégagé et la bille retombe droit dans le couloir de retour droit.
+  - Chaîne CAO, GLB (`pieces.glb`, `collision.glb`, `caisse.glb`), 12 planches PDF et cache PWA (`sw.js`) régénérés.
 
 ## Reste à faire
 

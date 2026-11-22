@@ -32,7 +32,7 @@ export const LAMP_LAYOUT = [
   ['mult5', CX + 45, 845, 9, '#ffb13d', '5'],
   ['extra', CX, 812, 9, '#ff5252', ''],
   ['save', CX, 895, 8, '#62ffda', ''],
-  ['carreau', CX, 420, 9, '#ff4a3d', ''],
+  ['carreau', CX + 16, 420, 9, '#ff4a3d', ''],
   ['bouchon', GEO.bouchonLane.M.x + GEO.bouchonLane.u.x * 34, GEO.bouchonLane.M.y + GEO.bouchonLane.u.y * 34, 8, '#ffd23f', ''],
   ['point', ...devant('pointer', 44), 7, '#7dff6a', ''],
   ...GEO.leftTargets.map((t, i) => [`cible${i}`, t.x + 26, t.y, 6, '#ff3fa4', '']),
@@ -221,7 +221,7 @@ export class Renderer {
     g.strokeStyle = '#2b1a10'; g.lineWidth = 3; g.lineJoin = 'round';
     const label = (t, x, y) => { if (art) g.strokeText(t, x, y); g.fillText(t, x, y); };
     GEO.standups.forEach((s) => { if (s.id !== 'bouchon') label(s.label, ...(s.n ? devant(s.id, 26) : [s.x, s.y + 28])); });
-    label('CARREAU', CX, 404);
+    label('CARREAU', CX + 16, 404);
     {
       const L = GEO.bouchonLane, m = { x: L.M.x + L.u.x * 56, y: L.M.y + L.u.y * 56 };
       g.save(); g.translate(m.x, m.y); g.rotate(Math.atan2(L.u.y, L.u.x) + Math.PI);
@@ -404,7 +404,7 @@ export class Renderer {
 
     // lanceur
     const P = GEO.plunger;
-    const kick = now - (sim.flash.plunger ?? -1e9) < 120 ? -14 : 0;
+    const kick = (now - (sim.flash.plunger ?? -1e9) < 60 ? -6 : 0) + sim.tirage * sim.courseLanceur;
     ctx.fillStyle = '#8c929c';
     ctx.fillRect(P.x - 12, P.top + kick, 24, 8);
     ctx.fillStyle = '#5c616a';
