@@ -29,16 +29,16 @@ function repere(fl, p) {
 // Étalonnage par défaut (issu d'outils/robot_tirs.json), embarqué pour jouer dans la page et hors ligne (PWA).
 export const TIRS_DEFAUT = {
   L: [
-    [0, '-'], [17, '-'], [33, 'boule3'], [50, '-'], [67, '-'], [83, '-'], [100, 'boule1'], [117, 'bouchon'],
-    [133, 'pointer'], [150, 'pointer'], [167, 'pointer'], [183, 'ramp'], [200, 'ramp'], [217, 'tirer'],
-    [233, 'tirer'], [250, 'tirer'], [267, 'tirer'], [283, 'saucer'], [300, 'saucer'], [317, '-'],
-    [333, 'dropN1'], [350, 'dropN1'], [367, 'dropY'], [383, 'dropY'], [400, 'dropY'],
+    [417, '-'], [433, '-'], [450, '-'], [467, '-'], [483, '-'], [500, 'boule3'], [517, '-'], [533, '-'],
+    [550, '-'], [567, '-'], [583, '-'], [600, 'tirer'], [617, 'tirer'], [633, 'dropF'], [650, 'saucer'],
+    [667, 'boule3'], [683, 'tirer'], [700, 'tirer'], [717, 'tirer'], [733, 'tirer'], [750, '-'], [767, '-'],
+    [783, '-'], [800, 'dropF'],
   ].map(([d, cible]) => ({ d, cible })),
   R: [
-    [0, '-'], [17, '-'], [33, '-'], [50, 'dropN1'], [67, 'dropN1'], [83, 'dropA'], [100, 'dropA'],
-    [117, 'dropN1'], [133, 'saucer'], [150, '-'], [167, '-'], [183, '-'], [200, '-'], [217, 'tirer'],
-    [233, 'tirer'], [250, '-'], [267, 'dropA'], [283, 'ramp'], [300, 'ramp'], [317, '-'], [333, '-'],
-    [350, '-'], [367, 'pointer'], [383, 'pointer'], [400, 'dropY'],
+    [417, '-'], [433, '-'], [450, '-'], [467, '-'], [483, '-'], [500, 'dropF'], [517, '-'], [533, 'saucer'],
+    [550, '-'], [567, 'tirer'], [583, 'tirer'], [600, 'tirer'], [617, 'dropN1'], [633, '-'], [650, '-'],
+    [667, '-'], [683, '-'], [700, 'bouchon'], [717, 'dropF'], [733, 'drain'], [750, 'ramp'], [767, 'ramp'],
+    [783, 'boule1'], [800, '-'],
   ].map(([d, cible]) => ({ d, cible })),
 };
 
@@ -161,7 +161,7 @@ export class Robot {
   }
 }
 
-const FLIP_LEN = 63;   // js/table.js FLIP.len
+const FLIP_LEN = GEO.flippers[0].len;   // js/table.js FLIP.len
 
 // Étalonnage des tirs depuis le berceau : pour chaque côté et chaque délai d (ms entre la palette baissée et la
 // frappe), première cible touchée.
@@ -172,13 +172,13 @@ export async function etalonner(creer) {
   for (const side of ['L', 'R']) {
     const fl = sim.T.flippers.find((f) => f.def.side === side);
     // le robot agit une fois par image (60 Hz) : les délais sont des nombres entiers d'images
-    for (let n = 0; n <= 24; n++) {
+    for (let n = 0; n <= 48; n++) {
       const d = Math.round(n * 1000 / 60);
       sim.clear(); contacts.length = 0;
       sim.held = { L: false, R: false }; sim.held[side] = true;
       for (let k = 0; k < 10; k++) sim.step(1000 / 60);
       const b = sim.makeBall(side === 'R' ? 417 : 61, 700);
-      for (let k = 0; k < 150; k++) sim.step(1000 / 60);
+      for (let k = 0; k < 210; k++) sim.step(1000 / 60);
       if (repere(fl, b.position).r > FLIP_LEN + 30 || b.vitesse > 0.05) continue;     // pas en berceau
       contacts.length = 0;
       let cible = null;

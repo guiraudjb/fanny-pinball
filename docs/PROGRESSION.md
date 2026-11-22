@@ -219,7 +219,12 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   - Lance-pierres écartés du guide (`SL_JEU = 5` mm), remontés de 20 mm (`SL_LEVE`) et redressés à 68° (au lieu de 60,83°) pour supprimer le pincement de la bille entre palette levée et caoutchouc.
   - Ajout d'un **plot central caoutchouté** (`GEO.centerPost` en (239 ; 932,4), Ø 15, `poteau_11` avec anneau noir 5/16" ID dans la CAO), 13 mm sous les pointes des palettes au repos : plus aucune perte directe en étalonnage palettes baissées.
   - **Sortie de rampe relevée à 34 mm** (`Z_FIN = 34`, descente sur 120 mm, courbe en S `y 500 → 625` suivie de 60 mm droits dans l'axe `x = 417`) : le banc d'essai robot avait révélé un coincement sous la descente de rampe vers `(434, 579)` où le fond passait sous les 27 mm de la bille. À 34 mm en sortie (et `patte_rampe_9` à 50,9 mm), la bille passe librement partout dessous (0 blocage en grille au lieu de 168), le couloir extérieur droit est dégagé et la bille retombe droit dans le couloir de retour droit.
-  - Chaîne CAO, GLB (`pieces.glb`, `collision.glb`, `caisse.glb`), 12 planches PDF et cache PWA (`sw.js`) régénérés.
+- **Autoplay** (bouton `Autoplay` / touche `A`) : le robot joue et enchaîne les parties tout seul (avec étalonnage `TIRS_DEFAUT` embarqué pour le mode hors ligne PWA et animation du lanceur) ; reprendre les commandes manuelles rend aussitôt la main au joueur.
+- **Géométrie batteurs au standard moderne WPC / Stern (Voie A)** :
+  - Batteurs 3" exacts (`r1 = 12`, `r2 = 6,5`, `len = 57,7` → 76,2 mm hors-tout), entraxe ramené à 168 mm (`pivotDX = 84`) → **espacement au repos de 45,9 mm (1,70 bille)**, plein milieu du standard 44,5–47,6 mm.
+  - Guides d'inlane alignés exactement sur la **face supérieure** du batteur au repos (`24,5°`, sans cassure) ; position haute symétrique (`-22,5°` sur la face supérieure, axe `-28°`), `ROULEMENT = 0,005` et restitution caoutchouc de palette `0,65` : berceau stable à 100 % à toutes les vitesses, *dead bounce* fonctionnel, jeu > 52 mm avec le poteau bas du lance-pierre.
+  - Suppression du plot central (`centerPost` / `poteau_11`) devenu inutile à 45,9 mm d'écart, tablier réaligné (`side = 868`, `front = 960`) et ajout du **bourrage latéral** (`Ctrl gauche` / `Ctrl droit` en plus d'`Espace` / `↑` frontal).
+  - Chaîne CAO (`99 objets ; 0 échecs`), GLB (`pieces.glb`, `collision.glb`, `caisse.glb`), 12 planches PDF, ré-étalonnage robot (`outils/robot_tirs.json` + `TIRS_DEFAUT`) et cache PWA (`sw.js`) régénérés.
 
 ## Reste à faire
 

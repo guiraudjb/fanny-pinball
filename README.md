@@ -66,7 +66,7 @@ puis ouvrir http://localhost:8000 (les modules ES ne se chargent pas en `file://
 | Flipper gauche | Maj gauche, ← | moitié gauche du plateau |
 | Flipper droit | Maj droite, → | moitié droite du plateau |
 | Lancer | ↓, Entrée | couloir de lancement |
-| Bourrage (coup de caisse) | Espace | |
+| Bourrage (coup de caisse frontal / latéral) | Espace, ↑ / Ctrl G, Ctrl D | |
 | Nouvelle partie | Entrée | bouton Jouer |
 | Autoplay (le robot joue seul) | A | bouton Autoplay |
 | Pièce (crédit) | C | |

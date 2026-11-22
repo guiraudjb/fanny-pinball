@@ -218,8 +218,6 @@ for s in GEO["slings"]:
     poteaux += [(x, y, "sling") for x, y in poteaux_sling(s)]
 for s in GEO["separators"] + GEO.get("dividers", []):
     poteaux.append((s[0][0], s[0][1], "poteau"))
-_cpost = GEO["centerPost"]
-poteaux.append((_cpost["x"], _cpost["y"], "centre"))     # plot central entre les palettes
 for i, (x, y, ty) in enumerate(poteaux):
     g = V(CAOUTCHOUCS[ty])
     piece(id=f"poteau_{i + 1}", nom=f"Poteau Ø 10, gorge Ø {g['gorge_d']:g} (anneau caoutchouc acheté)", type="poteau",
@@ -240,10 +238,6 @@ for x, y, ty in poteaux:
     if ty == "poteau":
         ANNEAUX.append({"type": "poteau", "x": x, "y": y, "z": Z_CAOUT, "r": _cp["gorge_d"] / 2, "cord": _cp["cord"],
                         "id_pouces": 0.125})
-    if ty == "centre":
-        _cc = V(CAOUTCHOUCS["centre"])
-        ANNEAUX.append({"type": "poteau", "x": x, "y": y, "z": Z_CAOUT, "r": _cc["gorge_d"] / 2, "cord": _cc["cord"],
-                        "id_pouces": 0.3125})
 for s in GEO["slings"]:
     ps = poteaux_sling(s)
     rc = _cs["gorge_d"] / 2 + _cs["cord"] / 2               # rayon de la ligne moyenne de la corde autour d'un poteau

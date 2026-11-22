@@ -29,10 +29,9 @@ const H_VITRE = 105;                      // mm, dessous de la vitre
 const MASSE = 0.080;                      // kg, bille de 1-1/16"
 const V_MAX = 6.0;                        // m/s
 // Résistance au roulement (Rapier n'en a pas) : la bille roulant au contact du plateau perd ROULEMENT × g
-// (m/s²) tant qu'elle avance. Réglée avec le caoutchouc des palettes : à 0,008 les billes du couloir de retour
-// passaient la pointe de la palette levée, à 0,016 elles s'arrêtaient à mi-palette. Sans elle, une bille descendant le couloir de retour
-// remontait la palette levée et passait par-dessus la pointe.
-const ROULEMENT = 0.012;
+// (m/s²) tant qu'elle avance. Avec la géométrie moderne des batteurs (repos +24,5°, levée −22,5°), 0,005 correspond
+// au roulement acier sur plateau verni : berceau stable à toute vitesse et descente fluide sur la palette.
+const ROULEMENT = 0.005;
 const FLIP_UP = 45;                       // rad/s (course complète ≈ 22 ms, comme une vraie bobine)
 const FLIP_DOWN = 20;
 const LAUNCH_V = 2.35;
@@ -57,7 +56,7 @@ const MATIERES = {
   rampe: [0.35, 0.12],
   metal: [0.45, 0.1],
   caoutchouc: [0.8, 0.7],    // anneaux, lance-pierres
-  palette: [0.5, 0.6],       // caoutchouc de palette
+  palette: [0.65, 0.6],      // caoutchouc rouge de palette (rebond fidèle pour les dead bounces)
   bumper: [0.6, 0.3],
   cible: [0.45, 0.2],
   mou: [0.2, 0.2],           // bras du tablier, lanceur
@@ -511,16 +510,18 @@ export class Sim {
     }
   }
 
-  // Bourrage : le joueur pousse la caisse. Les billes du plateau reçoivent un petit élan vers le haut ;
-  // le pendule de tilt s'écarte et, après plusieurs coups rapprochés, ferme le contact TILT.
-  nudge() {
+  // Bourrage : le joueur pousse la caisse (dx = 0 frontal vers le haut, -1 coup latéral gauche, +1 droit).
+  // Les billes du plateau reçoivent l'élan correspondant ; le pendule de tilt s'écarte et ferme TILT si trop rapprochés.
+  nudge(dx = 0) {
     if (this.time - this.lastNudge < 250) return false;
     this.lastNudge = this.time;
     this.shakeAt = this.time;
     for (const b of this.balls) {
       if (b.plugin.fp.mode !== 'table' || this.dansLanceur(b)) continue;
       const v = b.body.linvel();
-      b.body.setLinvel({ x: v.x + (Math.random() - 0.5) * 0.18, y: v.y - NUDGE_V, z: v.z }, true);
+      const vx = dx ? dx * NUDGE_V * 1.15 : (Math.random() - 0.5) * 0.18;
+      const vy = dx ? -NUDGE_V * 0.35 : -NUDGE_V;
+      b.body.setLinvel({ x: v.x + vx, y: v.y + vy, z: v.z }, true);
     }
     this.bob += 1;
     if (this.bob >= TILT_BOB) { this.bob = 0.8; this.onSwitch(SW.TILT); }

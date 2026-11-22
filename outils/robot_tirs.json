@@ -2,189 +2,285 @@
  "L": [
   {
    "d": 0,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 17,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 33,
-   "cible": "boule3"
+   "cible": "drain"
   },
   {
    "d": 50,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 67,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 83,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 100,
-   "cible": "boule1"
+   "cible": "drain"
   },
   {
    "d": 117,
-   "cible": "bouchon"
+   "cible": "drain"
   },
   {
    "d": 133,
-   "cible": "pointer"
+   "cible": "drain"
   },
   {
    "d": 150,
-   "cible": "pointer"
+   "cible": "drain"
   },
   {
    "d": 167,
-   "cible": "pointer"
+   "cible": "drain"
   },
   {
    "d": 183,
-   "cible": "ramp"
+   "cible": "drain"
   },
   {
    "d": 200,
-   "cible": "ramp"
+   "cible": "drain"
   },
   {
    "d": 217,
-   "cible": "tirer"
+   "cible": "drain"
   },
   {
    "d": 233,
-   "cible": "tirer"
+   "cible": "drain"
   },
   {
    "d": 250,
-   "cible": "tirer"
+   "cible": "drain"
   },
   {
    "d": 267,
-   "cible": "tirer"
+   "cible": "drain"
   },
   {
    "d": 283,
-   "cible": "saucer"
+   "cible": "drain"
   },
   {
    "d": 300,
-   "cible": "saucer"
+   "cible": "drain"
   },
   {
    "d": 317,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 333,
-   "cible": "dropN1"
+   "cible": "drain"
   },
   {
    "d": 350,
-   "cible": "dropN1"
+   "cible": "-"
   },
   {
    "d": 367,
-   "cible": "dropY"
+   "cible": "drain"
   },
   {
    "d": 383,
-   "cible": "dropY"
+   "cible": "drain"
   },
   {
    "d": 400,
-   "cible": "dropY"
+   "cible": "drain"
+  },
+  {
+   "d": 417,
+   "cible": "-"
+  },
+  {
+   "d": 433,
+   "cible": "-"
+  },
+  {
+   "d": 450,
+   "cible": "-"
+  },
+  {
+   "d": 467,
+   "cible": "-"
+  },
+  {
+   "d": 483,
+   "cible": "-"
+  },
+  {
+   "d": 500,
+   "cible": "boule3"
+  },
+  {
+   "d": 517,
+   "cible": "-"
+  },
+  {
+   "d": 533,
+   "cible": "-"
+  },
+  {
+   "d": 550,
+   "cible": "-"
+  },
+  {
+   "d": 567,
+   "cible": "-"
+  },
+  {
+   "d": 583,
+   "cible": "-"
+  },
+  {
+   "d": 600,
+   "cible": "tirer"
+  },
+  {
+   "d": 617,
+   "cible": "tirer"
+  },
+  {
+   "d": 633,
+   "cible": "dropF"
+  },
+  {
+   "d": 650,
+   "cible": "saucer"
+  },
+  {
+   "d": 667,
+   "cible": "boule3"
+  },
+  {
+   "d": 683,
+   "cible": "tirer"
+  },
+  {
+   "d": 700,
+   "cible": "tirer"
+  },
+  {
+   "d": 717,
+   "cible": "tirer"
+  },
+  {
+   "d": 733,
+   "cible": "tirer"
+  },
+  {
+   "d": 750,
+   "cible": "-"
+  },
+  {
+   "d": 767,
+   "cible": "-"
+  },
+  {
+   "d": 783,
+   "cible": "-"
+  },
+  {
+   "d": 800,
+   "cible": "dropF"
   }
  ],
  "R": [
   {
    "d": 0,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 17,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 33,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 50,
-   "cible": "dropN1"
+   "cible": "drain"
   },
   {
    "d": 67,
-   "cible": "dropN1"
+   "cible": "drain"
   },
   {
    "d": 83,
-   "cible": "dropA"
+   "cible": "drain"
   },
   {
    "d": 100,
-   "cible": "dropA"
+   "cible": "drain"
   },
   {
    "d": 117,
-   "cible": "dropN1"
+   "cible": "drain"
   },
   {
    "d": 133,
-   "cible": "saucer"
+   "cible": "drain"
   },
   {
    "d": 150,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 167,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 183,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 200,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 217,
-   "cible": "tirer"
+   "cible": "drain"
   },
   {
    "d": 233,
-   "cible": "tirer"
+   "cible": "drain"
   },
   {
    "d": 250,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 267,
-   "cible": "dropA"
+   "cible": "drain"
   },
   {
    "d": 283,
-   "cible": "ramp"
+   "cible": "drain"
   },
   {
    "d": 300,
-   "cible": "ramp"
+   "cible": "drain"
   },
   {
    "d": 317,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 333,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 350,
@@ -192,15 +288,111 @@
   },
   {
    "d": 367,
-   "cible": "pointer"
+   "cible": "drain"
   },
   {
    "d": 383,
-   "cible": "pointer"
+   "cible": "drain"
   },
   {
    "d": 400,
-   "cible": "dropY"
+   "cible": "drain"
+  },
+  {
+   "d": 417,
+   "cible": "-"
+  },
+  {
+   "d": 433,
+   "cible": "-"
+  },
+  {
+   "d": 450,
+   "cible": "-"
+  },
+  {
+   "d": 467,
+   "cible": "-"
+  },
+  {
+   "d": 483,
+   "cible": "-"
+  },
+  {
+   "d": 500,
+   "cible": "dropF"
+  },
+  {
+   "d": 517,
+   "cible": "-"
+  },
+  {
+   "d": 533,
+   "cible": "saucer"
+  },
+  {
+   "d": 550,
+   "cible": "-"
+  },
+  {
+   "d": 567,
+   "cible": "tirer"
+  },
+  {
+   "d": 583,
+   "cible": "tirer"
+  },
+  {
+   "d": 600,
+   "cible": "tirer"
+  },
+  {
+   "d": 617,
+   "cible": "dropN1"
+  },
+  {
+   "d": 633,
+   "cible": "-"
+  },
+  {
+   "d": 650,
+   "cible": "-"
+  },
+  {
+   "d": 667,
+   "cible": "-"
+  },
+  {
+   "d": 683,
+   "cible": "-"
+  },
+  {
+   "d": 700,
+   "cible": "bouchon"
+  },
+  {
+   "d": 717,
+   "cible": "dropF"
+  },
+  {
+   "d": 733,
+   "cible": "drain"
+  },
+  {
+   "d": 750,
+   "cible": "ramp"
+  },
+  {
+   "d": 767,
+   "cible": "ramp"
+  },
+  {
+   "d": 783,
+   "cible": "boule1"
+  },
+  {
+   "d": 800,
+   "cible": "-"
   }
  ]
 }

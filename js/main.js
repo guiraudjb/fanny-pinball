@@ -102,7 +102,9 @@ const KEYS = {
   left: ['ShiftLeft', 'ArrowLeft', 'KeyZ'],
   right: ['ShiftRight', 'ArrowRight', 'Slash'],
   launch: ['ArrowDown', 'Enter'],
-  nudge: ['Space'],              // bourrage : coup de caisse
+  nudge: ['Space', 'ArrowUp'],   // bourrage frontal : coup de caisse vers l'avant
+  nudgeL: ['ControlLeft'],       // bourrage latéral gauche (Slide Save / Slap Save)
+  nudgeR: ['ControlRight'],      // bourrage latéral droit
   start: ['Enter', 'KeyS'],
   coin: ['KeyC', 'Digit5'],      // pièce (monnayeur de la réplique)
 };
@@ -124,12 +126,13 @@ function pressStart() {
   }
 }
 
-// Bourrage : la table tressaute, coup sourd dans la caisse
-function nudge() {
+// Bourrage : la table tressaute (frontal ou latéral gauche/droite), coup sourd dans la caisse
+function nudge(dx = 0) {
   if (paused || rules.mode !== 'play') return;
-  if (!sim.nudge()) return;
+  if (!sim.nudge(dx)) return;
   play(SND.NUDGE);
-  (mode3d ? view3dEl : canvas).animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-5px)' }, { transform: 'translateY(0)' }],
+  const tr = dx ? `translateX(${-dx * 6}px)` : 'translateY(-5px)';
+  (mode3d ? view3dEl : canvas).animate([{ transform: 'translate(0,0)' }, { transform: tr }, { transform: 'translate(0,0)' }],
     { duration: 140, easing: 'ease-out' });
 }
 
@@ -173,9 +176,11 @@ function relacher(lancer = true) {
 }
 window.addEventListener('keydown', (e) => {
   unlockAudio(); audioReady = true;
-  if (e.repeat) { if ([...KEYS.left, ...KEYS.right, ...KEYS.launch, ...KEYS.nudge].includes(e.code)) e.preventDefault(); return; }
+  if (e.repeat) { if ([...KEYS.left, ...KEYS.right, ...KEYS.launch, ...KEYS.nudge, ...KEYS.nudgeL, ...KEYS.nudgeR].includes(e.code)) e.preventDefault(); return; }
   if (e.code === 'KeyA') { setAutoplay(!autoplay); e.preventDefault(); return; }
-  if (KEYS.nudge.includes(e.code)) { nudge(); e.preventDefault(); return; }
+  if (KEYS.nudge.includes(e.code)) { nudge(0); e.preventDefault(); return; }
+  if (KEYS.nudgeL.includes(e.code)) { nudge(-1); e.preventDefault(); return; }
+  if (KEYS.nudgeR.includes(e.code)) { nudge(1); e.preventDefault(); return; }
   if (KEYS.left.includes(e.code)) { if (autoplay) setAutoplay(false); setFlipper('L', true); e.preventDefault(); }
   if (KEYS.right.includes(e.code)) { if (autoplay) setAutoplay(false); setFlipper('R', true); e.preventDefault(); }
   if (KEYS.start.includes(e.code) && rules.canStart()) { if (autoplay) setAutoplay(false); pressStart(); e.preventDefault(); return; }

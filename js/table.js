@@ -19,17 +19,21 @@ export const CX = PLAY_R / 2; // axe de symétrie de la zone de jeu
 const mx = (x) => PLAY_R - x;
 const deg = (a) => (a * Math.PI) / 180;
 
-// --- flippers
-// Cotes relevées dans Black Knight (Williams 1980, VPX) : axe → pointe 63,5 mm, rayons 11 / 6 mm,
-// axes écartés de 174 mm, à 179 mm du bas ; angles 32° / 18°. (Top Score 1975 : 62 mm, 187 mm, 31° / 20°.)
-const FLIP = { len: 63, r1: 12, r2: 7, rest: deg(31), up: deg(-19), pivotDX: 87, pivotY: H - 180 };
+// --- flippers (géométrie standard moderne WPC / Stern 3")
+// Longueur hors-tout caoutchouc compris = 12 + 57,7 + 6,5 = 76,2 mm (3,00"), entraxe 168 mm :
+//   • espacement entre pointes au repos = 45,9 mm (1,70 bille : dans le standard 44,5–47,6 mm) ;
+//   • angle de la face supérieure au repos = 24,5° (axe 19° + conicité 5,5°), aligné sans cassure sur les guides ;
+//   • position haute symétrique : face supérieure à -22,5° (axe -28°, course 47° : berceau 100 % stable même sur
+//     plateau glissant à ROULEMENT = 0,005, dead bounce et passes fluides, > 52 mm de jeu avec le lance-pierre).
+const FLIP = { len: 57.7, r1: 12, r2: 6.5, rest: deg(19), up: deg(-28), pivotDX: 84, pivotY: H - 180 };
 const LPX = CX - FLIP.pivotDX;
 
-// Guide de couloir de retour : prolonge exactement le dessus du flipper au repos
-// (axe du flipper décalé vers le haut de r1 − ½ épaisseur du guide).
+// Guide de couloir de retour : prolonge exactement la FACE SUPÉRIEURE du flipper au repos
+// (inclinaison = rest + conicité asin((r1 − r2) / len), décalée vers le haut de r1 − ½ épaisseur du guide).
 const GUIDE_T = 8;
-const dir = { x: Math.cos(FLIP.rest), y: Math.sin(FLIP.rest) };
-const nrm = { x: Math.sin(FLIP.rest), y: -Math.cos(FLIP.rest) };
+const TOP_REST = FLIP.rest + Math.asin((FLIP.r1 - FLIP.r2) / FLIP.len);
+const dir = { x: Math.cos(TOP_REST), y: Math.sin(TOP_REST) };
+const nrm = { x: Math.sin(TOP_REST), y: -Math.cos(TOP_REST) };
 const off = FLIP.r1 - GUIDE_T / 2;
 const guideEnd = { x: LPX + nrm.x * off - dir.x * 16, y: FLIP.pivotY + nrm.y * off - dir.y * 16 };
 const SEP_X = 40; // séparateur couloir de sortie / couloir de retour
@@ -45,10 +49,8 @@ const INLANE = 34;
 const SL_JEU = 5;
 const slingOff = GUIDE_T / 2 + INLANE + SL_JEU;
 const slingP0 = { x: guideKnee.x + nrm.x * slingOff, y: guideKnee.y + nrm.y * slingOff };
-// Remonté de SL_LEVE mm (verticalement : le couloir de retour garde sa largeur) : son poteau bas était à 50 mm
-// au-dessus de l'axe de la palette, trop près d'elle (bille pincée entre palette levée et caoutchouc) ; il reste
-// maintenant ≈ 58 mm entre palette levée et caoutchouc (plus de deux billes)
-const SL_LEVE = 20;
+// Remonté de SL_LEVE mm verticalement pour garder > 55 mm libres entre palette levée et caoutchouc
+const SL_LEVE = 16;
 const slingLine = (x) => slingP0.y + ((x - slingP0.x) / dir.x) * dir.y - SL_LEVE;
 const DIV_X = SEP_X + GUIDE_T / 2 + INLANE + GUIDE_T / 2;   // séparateur retour 1 / retour 2
 const SL_X1 = DIV_X + GUIDE_T / 2 + INLANE; // bord vertical du lance-pierre
@@ -174,11 +176,7 @@ export const GEO = {
   // laissent 31 mm (un peu plus qu'une bille) sous l'arrière des flippers et ramènent les billes des couloirs
   // extérieurs vers le trou d'évacuation, au centre ; il cache le bac et l'autolanceur. Lèvre de 20 mm.
   // Dans le couloir de lancement, son bord est sous la bille au repos (lane).
-  apron: { side: 846, front: 964, half: 42, lane: 1000, lip: 20, trou: [70, 34] },
-  // plot central caoutchouté entre les pointes des palettes (« center post ») : 13 mm sous les pointes au repos ;
-  // 21 mm restent entre son caoutchouc et chaque pointe, moins qu'une bille : palettes baissées, la bille tombée
-  // au milieu se pose entre pointe et plot et se rejoue ; palette levée, le passage s'ouvre (r : rebond, Ø 15)
-  centerPost: { x: CX, y: FLIP.pivotY + Math.sin(FLIP.rest) * FLIP.len + 13, r: 7.5 },
+  apron: { side: 868, front: 960, half: 42, lane: 1000, lip: 20, trou: [70, 34] },
   cities: ['Marseille', 'Paris', 'Londres', 'New York', 'Tokyo', 'Rio', 'Sydney'],
 };
 
@@ -484,10 +482,6 @@ export function buildTable(engine) {
     const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy), nx = -dy / l * 3, ny = dx / l * 3;
     T.walls.push(add(seg(a[0] + nx, a[1] + ny, b[0] + nx, b[1] + ny, 6, { restitution: 0.2, label: 'apron', plugin: { hidden: true } })));
   }
-
-  // --- plot central (cylindre caoutchouc dans la physique, comme les poteaux d'entrée des couloirs)
-  const cp = GEO.centerPost;
-  T.walls.push(add(roundBody(cp.x, cp.y, cp.r, { ...STATIC, label: 'wall', plugin: { centre: true } })));
 
   // --- évacuation
   T.drain = add(Bodies.rectangle(CX, GEO.drainY + 10, PLAY_R, 20, { isStatic: true, isSensor: true, label: 'drain' }));

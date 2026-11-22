@@ -93,8 +93,6 @@ CAOUTCHOUCS = {
     "sling": c({"gorge_d": 8.0, "cord": 4.0}, "HYP",
                "anneau blanc du lance-pierre tendu autour des 3 poteaux, dans une gorge de 1 mm ; poteaux reculés pour que "
                "la face extérieure du caoutchouc tombe sur la face de rebond du jeu"),
-    "centre": c({"gorge_d": 8.0, "cord": 3.5}, "choix",
-                "plot central entre les palettes : poteau Ø 10, gorge Ø 8, anneau noir 5/16\" ID (rebond du jeu : rayon 7,5)"),
     "palette": c({"cord": 4.0}, "HYP", "caoutchouc rouge de palette 3\" (section ≈ 5/32\") dans la gorge de la palette"),
     "tailles": c([0.25, 0.3125, 0.375, 0.4375, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0], "PW",
                  "diamètres intérieurs courants des anneaux de flipper (pouces)"),
