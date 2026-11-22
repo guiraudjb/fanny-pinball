@@ -13,7 +13,7 @@ import { HABILLAGES, chargerImages, dessiner, estEmissif } from './habillages.js
 
 const PENTE = (6.5 * Math.PI) / 180;      // pente du plateau (cao/cotes.py)
 const H_PAROI = 32;                        // parois et guides imprimés
-const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), desc: 120, larg: 39, flanc: 25 };
+const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), larg: 39, flanc: 25 };
 const TEX = 2;                             // résolution des textures peintes (px par mm)
 // la bille passe sous le tablier quand son centre dépasse le bord avant (bras en V, GEO.apron)
 function sousTablier(x, y) {
@@ -68,11 +68,12 @@ function enveloppe(posts, rc, bombe = null) {
 }
 // points de vue : élévation de la caméra au-dessus de l'horizontale, champ vertical
 export const CAMERAS = [
-  { nom: 'joueur', elev: 38, fov: 32 },       // à la place du joueur, comme la vue « bureau » de Visual Pinball
+  { nom: 'joueur', elev: 32, fov: 36, joueur: true },     // à la place du joueur : plateau + afficheurs de scores + pommeau du lanceur
   { nom: 'haute', elev: 55, fov: 32 },
   { nom: 'plateau', elev: 80, fov: 28 },      // presque de dessus : écrans verticaux, téléphones
   { nom: 'machine', elev: 16, fov: 30, machine: true },   // tout le flipper ; angle et zoom au choix, puis vue verrouillée pour jouer
   { nom: 'tour', elev: 20, fov: 30, tour: true },         // tour de la machine, angles variés ; glisser / molette pour la piloter
+  { nom: 'lilliputien', elev: 0, fov: 62, lilliputien: true }, // promenade libre à hauteur d'œil sur tout le plateau
 ];
 const TOUR = { tour_s: 48, elev_s: 31, zoom_s: 19, elevMin: 6, elevMax: 55, reprise_ms: 5000 };
 const lire = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
@@ -102,9 +103,10 @@ function uvPanneau(geo, pos, panneau) {
 
 // hauteur du fond de rampe à l'abscisse curviligne s (même profil que cao/modele.py)
 function zRampe(s, L) {
-  const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente, s3 = L - RAMPE.desc;
+  const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente;
+  const desc = L * (2 / 3), s3 = L - desc;
   let z = p0 * Math.max(0, s);   // pente de la languette d'entrée (3 mm sur 30)
-  for (const [sk, dm, h] of [[s1, RAMPE.pente - p0, 20], [s2, -RAMPE.pente, 50], [s3, -(RAMPE.z - RAMPE.zFin) / RAMPE.desc, 40]]) {
+  for (const [sk, dm, h] of [[s1, RAMPE.pente - p0, 20], [s2, -RAMPE.pente, 50], [s3, -(RAMPE.z - RAMPE.zFin) / desc, 60]]) {
     const x = s - sk;
     z += dm * (x < -h ? 0 : x > h ? x : (x + h) ** 2 / (4 * h));
   }
@@ -185,7 +187,7 @@ export class Renderer3D {
 
     // plateau incliné, puis repère de la table
     this.tilt = new THREE.Group();
-    this.tilt.rotation.x = PENTE;
+    this.tilt.rotation.x = this.sim.pente ?? PENTE;
     this.scene.add(this.tilt);
     this.table = new THREE.Group();
     this.table.rotation.x = Math.PI / 2;       // (x, y, z) → (x, −z, y)
@@ -206,14 +208,6 @@ export class Renderer3D {
     this.habillage = lire('fanny-pinball-habillage') || 'bois';
     const cam = CAMERAS.findIndex((c) => c.nom === lire('fanny-pinball-camera'));
     this.camIdx = cam >= 0 ? cam : -1;           // -1 : choisie selon la forme de l'écran
-    // version légère : réglage mémorisé, sinon automatique (téléphone, ou machine trop lente)
-    const q = lire('fanny-pinball-qualite');
-    const mobile = matchMedia('(pointer: coarse)').matches || (navigator.deviceMemory || 8) <= 4;
-    this.qualiteAuto = !q;
-    this.light = q ? q === 'legere' : mobile;
-    this.mesure = { n: 0, total: 0, last: 0 };
-    this.onQualite = null;                       // rappel quand la qualité change d'elle-même
-    this.applyQuality();
     this.loadCAO();
     this.loadCaisse();
     this.lastFloorKey = '';
@@ -605,6 +599,35 @@ export class Renderer3D {
       };
     });
 
+    // fils de détection (rollovers) : couloirs bonus T-O-U-R et couloirs du bas (corde à piano Ø 1,5 mm cintrée en U
+    // articulée dans sa lumière 36 × 4 mm ; s'enfonce à fleur du plateau au passage de la bille)
+    const filCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 5.5, -3.8),
+      new THREE.Vector3(0, 14, -8.4),
+      new THREE.Vector3(0, 18.5, -8.7),
+      new THREE.Vector3(0, 27, -3.8),
+      new THREE.Vector3(0, 32, 0),
+    ]);
+    const filGeo = new THREE.TubeGeometry(filCurve, 28, 0.85, 8, false);
+    const filMat = this.mat.steel.clone();
+    filMat.color.setHex(0xe6ebf2);
+    filMat.roughness = 0.14;
+    filMat.envMapIntensity = 2.2;
+    const allRollovers = [
+      ...GEO.lanes.map((l, i) => ({ x: l.x, y: l.y, key: `lane${i}` })),
+      ...(GEO.lowerLanes || []).map((l) => ({ x: l.x, y: l.y, key: l.id })),
+    ];
+    this.rollovers = allRollovers.map((l) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(l.x, l.y - 16, 2);                       // axe d'articulation dans la lumière, sous la surface
+      const wire = new THREE.Mesh(filGeo, filMat);
+      wire.castShadow = true;
+      pivot.add(wire);
+      this.table.add(pivot);
+      return { x: l.x, y: l.y, key: l.key, pivot, press: 0 };
+    });
+
     // cibles fixes (cochonnets en bois peint)
     this.ciblesProvisoires = {};
     T.standups.forEach((b) => {
@@ -795,7 +818,144 @@ export class Renderer3D {
     lip.receiveShadow = true;
     this.table.add(lip);
     // pas de poteaux dans le plateau : la rampe est portée par des pattes murales (pièces de la CAO)
+    this.buildSpinner();
     this.buildWireformGuides();
+  }
+
+  // Plaque métallique tourniquet (spinner) à l'entrée de la rampe :
+  // portique en U chromé, axe horizontal en corde à piano, manivelle excentrée + tige de contact,
+  // et plaque acier 30 × 31 mm sérigraphiée recto-verso pivotant librement à 360°.
+  buildSpinner() {
+    const sp = GEO.spinner;
+    if (!sp) return;
+    const grp = new THREE.Group();
+    grp.position.set(sp.x, sp.y, 0);
+    grp.rotation.z = Math.atan2(sp.v.y, sp.v.x);                  // +X = travers, −Y = sens de montée, −Z = haut
+
+    const steel = this.mat.steel.clone();
+    steel.color.setHex(0xe4e9f0);
+    steel.roughness = 0.14;
+    steel.envMapIntensity = 2.0;
+    const bracketMat = this.mat.chrome.clone();
+    bracketMat.color.setHex(0xd4dae2);
+    bracketMat.roughness = 0.2;
+
+    // 1. Portique métallique en U (paliers d'axe à z = −33,5 mm : laisse > 4 mm libres au-dessus de la bille Ø 27)
+    const zAxis = -33.5, halfBr = 23.8;
+    const legGeo = new THREE.BoxGeometry(2.8, 6.8, 33);
+    const footGeo = new THREE.BoxGeometry(6.5, 11, 2.2);
+    const earGeo = new THREE.CylinderGeometry(3.4, 3.4, 2.8, 18);
+    earGeo.rotateZ(Math.PI / 2);
+    for (const sx of [-1, 1]) {
+      const leg = new THREE.Mesh(legGeo, bracketMat);
+      leg.position.set(sx * halfBr, 0, -17.5);
+      leg.castShadow = true;
+      const ear = new THREE.Mesh(earGeo, bracketMat);
+      ear.position.set(sx * halfBr, 0, zAxis);
+      ear.castShadow = true;
+      const foot = new THREE.Mesh(footGeo, bracketMat);
+      foot.position.set(sx * (halfBr + 1.4), 0, -1.6);
+      foot.receiveShadow = true;
+      grp.add(leg, ear, foot);
+    }
+
+    // 2. Équipage tournant : axe en corde à piano + manivelle excentrée + plaque métal décorée recto-verso
+    const bladePivot = new THREE.Group();
+    bladePivot.position.set(0, 0, zAxis);
+
+    const axleGeo = new THREE.CylinderGeometry(0.9, 0.9, 54.5, 12);
+    axleGeo.rotateZ(Math.PI / 2);
+    const axle = new THREE.Mesh(axleGeo, steel);
+    axle.position.set(1.8, 0, 0);                                 // déborde côté droit pour la manivelle
+    axle.castShadow = true;
+    bladePivot.add(axle);
+
+    // 2 fourreaux roulés en tôle qui relient la plaque à l'axe
+    const sleeveGeo = new THREE.CylinderGeometry(1.7, 1.7, 7.5, 12);
+    sleeveGeo.rotateZ(Math.PI / 2);
+    for (const sx of [-9, 9]) {
+      const sl = new THREE.Mesh(sleeveGeo, steel);
+      sl.position.set(sx, 0, 0);
+      bladePivot.add(sl);
+    }
+
+    // manivelle excentrée à l'extrémité droite de l'axe (actionne la tige du micro-rupteur à chaque tour)
+    const crankArm = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.8, 4.4), steel);
+    crankArm.position.set(28.5, 0, 2.0);
+    const crankPin = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 3.2, 10).rotateZ(Math.PI / 2), steel);
+    crankPin.position.set(29.8, 0, 3.8);
+    bladePivot.add(crankArm, crankPin);
+
+    // décor recto-verso de la plaque métallique allongée (30 × 44 mm, centrée et symétrique sur l'axe)
+    const paintFace = (flip) => {
+      const cw = 256, ch = 384;
+      const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+      const g = c.getContext('2d');
+      if (flip) { g.translate(cw, ch); g.scale(-1, -1); }
+      // bordure acier brossé
+      g.fillStyle = '#cfd6df'; g.fillRect(0, 0, cw, ch);
+      // fond lavande / indigo dégradé
+      const bg = g.createRadialGradient(cw / 2, ch / 2, 20, cw / 2, ch / 2, 220);
+      bg.addColorStop(0, '#7866c4'); bg.addColorStop(1, '#2b255c');
+      g.fillStyle = bg; g.fillRect(14, 14, cw - 28, ch - 28);
+      // rayons de soleil dorés centrés sur l'axe
+      g.save(); g.beginPath(); g.rect(14, 14, cw - 28, ch - 28); g.clip();
+      g.fillStyle = 'rgba(242,182,50,0.22)';
+      for (let k = 0; k < 16; k += 2) {
+        const a0 = (k * Math.PI * 2) / 16, a1 = ((k + 1) * Math.PI * 2) / 16;
+        g.beginPath(); g.moveTo(cw / 2, ch / 2); g.arc(cw / 2, ch / 2, 260, a0, a1); g.closePath(); g.fill();
+      }
+      g.restore();
+      // filet ocre + noir
+      g.strokeStyle = '#1b120b'; g.lineWidth = 7; g.strokeRect(18, 18, cw - 36, ch - 36);
+      g.strokeStyle = '#ffd23f'; g.lineWidth = 3.5; g.strokeRect(18, 18, cw - 36, ch - 36);
+      // étoile provençale symétrique en haut et en bas + bande centrale d'axe
+      for (const cy of [94, ch - 94]) {
+        g.beginPath();
+        for (let j = 0; j < 10; j++) {
+          const rr = j % 2 ? 18 : 42, a = -Math.PI / 2 + (j * Math.PI) / 5;
+          g.lineTo(cw / 2 + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+        }
+        g.closePath();
+        g.fillStyle = '#ffd23f'; g.fill();
+        g.strokeStyle = '#1b120b'; g.lineWidth = 4; g.stroke();
+      }
+      // valeur « 250 » centrée sur l'axe
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.font = '900 56px system-ui, sans-serif';
+      g.lineWidth = 7; g.strokeStyle = '#1b120b'; g.fillStyle = '#fff6d6';
+      g.strokeText('250', cw / 2, ch / 2); g.fillText('250', cw / 2, ch / 2);
+      const t = canvasTexture(c);
+      t.anisotropy = this.gl.capabilities.getMaxAnisotropy();
+      return t;
+    };
+    const faceFront = new THREE.MeshStandardMaterial({
+      map: paintFace(false), roughness: 0.24, metalness: 0.35, envMapIntensity: 1.3,
+      emissive: 0xffd86b, emissiveIntensity: 0,
+    });
+    const faceBack = new THREE.MeshStandardMaterial({
+      map: paintFace(true), roughness: 0.24, metalness: 0.35, envMapIntensity: 1.3,
+      emissive: 0xffd86b, emissiveIntensity: 0,
+    });
+    const blade = new THREE.Mesh(new THREE.BoxGeometry(30, 1.4, 44), [steel, steel, faceFront, faceBack, steel, steel]);
+    blade.position.set(0, 0, 0);                                  // parfaitement symétrique par rapport à l'axe (z = 11,5..55,5 mm)
+    blade.castShadow = true;
+    bladePivot.add(blade);
+    grp.add(bladePivot);
+
+    // 3. Tige verticale de commande du contact sous le plateau (bielle articulée sur la manivelle, glisse dans le trou)
+    const rodGeoSp = new THREE.CylinderGeometry(0.75, 0.75, 42, 10).rotateX(Math.PI / 2);
+    rodGeoSp.translate(0, 0, 21);                                 // origine sur le maneton, descend de 42 mm vers +z
+    const rodMesh = new THREE.Mesh(rodGeoSp, steel);
+    rodMesh.position.set(29.8, 0, zAxis + 3.8);
+    grp.add(rodMesh);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(2.6, 16).rotateX(Math.PI),
+      new THREE.MeshBasicMaterial({ color: 0x0b0806 }));
+    hole.position.set(29.8, 0, -0.3);
+    grp.add(hole);
+
+    this.table.add(grp);
+    this.spinner3d = { bladePivot, rodMesh, zAxis, faceFront, faceBack };
   }
 
   // Ensemble des guides de bille du plateau en wireform d'acier inox chromé :
@@ -922,6 +1082,8 @@ export class Renderer3D {
       arc.push([x, y]);
     }
     if (arc.length >= 2) guideFil(arc, { r1: 2.0, r2: 1.55, z2: 22, z3: 30.5, coude: false, pasPieds: 115 });
+    // 7. Guide de protection de la bielle du tourniquet (côté droit de la bouche de rampe)
+    if (GEO.spinnerGuard) guideFil(GEO.spinnerGuard, { r1: 1.75, r2: 1.45, z2: 26, coude: false, pasPieds: 22 });
   }
 
   // Reflets : la bille et les chromes reflètent la vraie table (capture faite une fois, et quand
@@ -1360,7 +1522,8 @@ export class Renderer3D {
     this.fronton = { pivot, angle: 0, cible: 0, plie, t: 0 };
     this.machineBox = { x0: -70, x1: cs.largeur + 70, y0: -20, y1: LG, z0: -ex.h_sol, z1: HAR + fr.h };
     this.envDirty = true;
-    if (this.cssW && (CAMERAS[this.camIdx]?.machine || this.enTour)) this.fitCamera();
+    if (this.cssW && (CAMERAS[this.camIdx >= 0 ? this.camIdx : this.camAuto()]?.machine
+      || CAMERAS[this.camIdx >= 0 ? this.camIdx : this.camAuto()]?.joueur || this.enTour)) this.fitCamera();
   }
 
   // ------------------------------------------------------------ fronton : assemblé ou rabattu pour le transport
@@ -1456,18 +1619,9 @@ export class Renderer3D {
 
   popup(x, y, text) { this.popups.push({ x, y, text, t: performance.now() }); }
 
-  // version légère : ni ombres ni vernis, résolution de l'écran
-  setLight(on, auto = false) {
-    this.light = on;
-    if (!auto) { this.qualiteAuto = false; ecrire('fanny-pinball-qualite', on ? 'legere' : 'haute'); }
-    this.applyQuality();
-    if (this.cssW) this.resize(this.cssW, this.cssH);
-  }
-
-  applyQuality() {
-    this.gl.shadowMap.enabled = !this.light;
-    if (this.floorMat) this.floorMat.clearcoat = this.light ? 0 : 0.5;
-    this.scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
+  setPente(rad) {
+    this.tilt.rotation.x = rad;
+    if (this.cssW) this.fitCamera();
   }
 
   get cameraNom() { return CAMERAS[this.camIdx >= 0 ? this.camIdx : this.camAuto()].nom; }
@@ -1481,7 +1635,7 @@ export class Renderer3D {
   }
 
   resize(cssW, cssH) {
-    const dpr = Math.min(window.devicePixelRatio || 1, this.light ? 1 : 1.5);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
     this.cssW = cssW; this.cssH = cssH;
     this.gl.setPixelRatio(dpr);
     this.gl.setSize(cssW, cssH, true);
@@ -1496,9 +1650,84 @@ export class Renderer3D {
 
   get enTour() { return !!CAMERAS[this.camIdx]?.tour; }
   get enMachine() { return !!CAMERAS[this.camIdx]?.machine; }
-  // la souris ou le doigt pilotent la caméra (et non les flippers) : tour, ou vue machine déverrouillée
-  get pilotable() { return this.enTour || (this.enMachine && !this.vueMachine?.verrou); }
+  get enLilliputien() { return !!CAMERAS[this.camIdx]?.lilliputien; }
+  // la souris ou le doigt pilotent la caméra (et non les flippers) : tour, lilliputien, ou vue machine déverrouillée
+  get pilotable() { return this.enTour || this.enLilliputien || (this.enMachine && !this.vueMachine?.verrou); }
   get orbite() { return this.enTour ? this.tour : this.enMachine ? this.vueMachine : null; }
+
+  // mode promenade du lilliputien : entrée / sortie en un clic, position initiale entre les batteurs
+  basculerLilliputien(activer = !this.enLilliputien) {
+    const idxL = CAMERAS.findIndex((c) => c.lilliputien);
+    if (activer) {
+      if (!this.enLilliputien) this.camAvantLilli = this.camIdx >= 0 ? this.camIdx : this.camAuto();
+      this.camIdx = idxL;
+    } else if (this.enLilliputien) {
+      this.camIdx = this.camAvantLilli >= 0 && this.camAvantLilli !== idxL ? this.camAvantLilli : 0;
+    }
+    ecrire('fanny-pinball-camera', CAMERAS[this.camIdx].nom);
+    this.fitCamera();
+    return this.enLilliputien;
+  }
+
+  resetLilliputien() {
+    this.lilli = {
+      x: CX, y: H - 155, z: 22, yaw: 0, pitch: 0.08,
+      drag: null, keys: new Set(), last: performance.now(),
+    };
+    this.placerLilliputien();
+  }
+
+  lilliKey(code, down) {
+    if (!this.lilli) return;
+    if (down) this.lilli.keys.add(code); else this.lilli.keys.delete(code);
+  }
+
+  lilliStop() { if (this.lilli) { this.lilli.keys.clear(); this.lilli.drag = null; } }
+
+  updateLilliputien() {
+    const l = this.lilli, now = performance.now();
+    if (!l) return;
+    const dt = Math.min(0.08, (now - (l.last || now)) / 1000);
+    l.last = now;
+    const k = l.keys;
+    if (k.size) {
+      const vit = (k.has('ShiftLeft') || k.has('ShiftRight') ? 360 : 155) * dt;
+      const fx = Math.sin(l.yaw) * Math.cos(l.pitch), fy = -Math.cos(l.yaw) * Math.cos(l.pitch), fh = Math.sin(l.pitch);
+      const rx = Math.cos(l.yaw), ry = Math.sin(l.yaw);
+      let av = 0, dr = 0, ht = 0;
+      if (k.has('KeyW') || k.has('ArrowUp')) av += 1;
+      if (k.has('KeyS') || k.has('ArrowDown')) av -= 1;
+      if (k.has('KeyD') || k.has('ArrowRight')) dr += 1;
+      if (k.has('KeyA') || k.has('ArrowLeft')) dr -= 1;
+      if (k.has('Space') || k.has('KeyE') || k.has('PageUp')) ht += 1;
+      if (k.has('KeyC') || k.has('ControlLeft') || k.has('PageDown')) ht -= 1;
+      if (av || dr || ht) {
+        const lPlan = Math.hypot(av, dr) || 1;
+        l.x += ((fx * av + rx * dr) / lPlan) * vit;
+        l.y += ((fy * av + ry * dr) / lPlan) * vit;
+        l.z += (fh * av * 0.65 + ht * 0.7) * vit;
+        l.x = Math.max(-18, Math.min(W + 18, l.x));
+        l.y = Math.max(-15, Math.min(H + 35, l.y));
+        l.z = Math.max(4, Math.min(160, l.z));
+      }
+    }
+    this.placerLilliputien();
+  }
+
+  placerLilliputien() {
+    const l = this.lilli, cam = this.camera;
+    if (!l) return;
+    cam.clearViewOffset();
+    const eye = this.table.localToWorld(new THREE.Vector3(l.x, l.y, -l.z));
+    const fx = Math.sin(l.yaw) * Math.cos(l.pitch), fy = -Math.cos(l.yaw) * Math.cos(l.pitch), fh = Math.sin(l.pitch);
+    const tgt = this.table.localToWorld(new THREE.Vector3(l.x + fx * 100, l.y + fy * 100, -(l.z + fh * 100)));
+    const up = this.table.localToWorld(new THREE.Vector3(0, 0, -1))
+      .sub(this.table.localToWorld(new THREE.Vector3(0, 0, 0))).normalize();
+    cam.up.copy(up);
+    cam.position.copy(eye);
+    cam.lookAt(tgt);
+    cam.updateProjectionMatrix();
+  }
 
   // vue machine : angle et zoom choisis à la souris, mémorisés avec le verrou
   chargerVueMachine() {
@@ -1576,26 +1805,52 @@ export class Renderer3D {
     cam.updateProjectionMatrix();
   }
 
-  // pilotage à la souris ou au doigt (tour, vue machine déverrouillée) : glisser tourne, molette ou pincer zoome
+  // pilotage à la souris ou au doigt (tour, lilliputien, vue machine déverrouillée)
   tourDown(x, y) {
+    if (this.enLilliputien && this.lilli) { this.lilli.drag = { x, y }; return; }
     const t = this.pilotable && this.orbite;
     if (t) { t.drag = { x, y }; t.main = performance.now(); }
   }
 
   tourMove(x, y) {
+    const rotDelta = (dx, dy) => (this.rotDeg === 90 ? [dy, -dx] : this.rotDeg === -90 ? [-dy, dx] : [dx, dy]);
+    if (this.enLilliputien && this.lilli?.drag) {
+      const l = this.lilli;
+      const [dx, dy] = rotDelta(x - l.drag.x, y - l.drag.y);
+      l.yaw -= (dx / (this.cssW || 800)) * Math.PI * 1.25;
+      l.pitch = Math.max(-1.35, Math.min(1.38, l.pitch + (dy / (this.cssH || 600)) * Math.PI * 0.85));
+      l.drag = { x, y };
+      this.placerLilliputien();
+      return;
+    }
     const t = this.pilotable && this.orbite;
     if (!t || !t.drag) return;
-    t.az -= ((x - t.drag.x) / (this.cssW || 800)) * 2 * Math.PI * 0.6;
-    t.elev = Math.max(TOUR.elevMin, Math.min(80, t.elev + ((y - t.drag.y) / (this.cssH || 600)) * 90));
+    const [dx, dy] = rotDelta(x - t.drag.x, y - t.drag.y);
+    t.az -= (dx / (this.cssW || 800)) * 2 * Math.PI * 0.6;
+    t.elev = Math.max(TOUR.elevMin, Math.min(80, t.elev + (dy / (this.cssH || 600)) * 90));
     t.drag = { x, y };
     this.bougee(t);
   }
 
-  tourUp() { const t = this.orbite; if (t) t.drag = null; }
+  tourUp() {
+    if (this.lilli) this.lilli.drag = null;
+    const t = this.orbite; if (t) t.drag = null;
+  }
 
-  tourZoom(dy) { this.zoomer(Math.exp(dy * 0.0013)); }
+  tourZoom(dy) {
+    if (this.enLilliputien && this.lilli) {
+      const l = this.lilli, pas = -Math.sign(dy) * Math.min(34, Math.max(12, Math.abs(dy) * 0.25));
+      l.x = Math.max(-18, Math.min(W + 18, l.x + Math.sin(l.yaw) * Math.cos(l.pitch) * pas));
+      l.y = Math.max(-15, Math.min(H + 35, l.y - Math.cos(l.yaw) * Math.cos(l.pitch) * pas));
+      l.z = Math.max(4, Math.min(160, l.z + Math.sin(l.pitch) * pas));
+      this.placerLilliputien();
+      return;
+    }
+    this.zoomer(Math.exp(dy * 0.0013));
+  }
 
   zoomer(facteur) {
+    if (this.enLilliputien && this.lilli) { this.tourZoom((facteur - 1) * 260); return; }
     const t = this.pilotable && this.orbite;
     if (!t) return;
     t.zoom = Math.max(t.plateau ? 0.03 : 0.25, Math.min(1.8, t.zoom * facteur));
@@ -1612,8 +1867,17 @@ export class Renderer3D {
     const vue = CAMERAS[this.camIdx >= 0 ? this.camIdx : this.camAuto()];
     const cam = this.camera, elev = (vue.elev * Math.PI) / 180;
     cam.fov = vue.fov;
+    cam.near = vue.lilliputien ? 1.2 : 10;
+    cam.up.set(0, 1, 0);
     cam.clearViewOffset();
     this.scene.updateMatrixWorld(true);
+    if (vue.lilliputien) {
+      this.tour = null;
+      if (!this.lilli) this.resetLilliputien();
+      else { this.lilli.last = performance.now(); this.placerLilliputien(); }
+      return;
+    }
+    this.lilliStop();
     if (vue.tour) {
       if (!this.tour) this.tour = { az: 0, elev: vue.elev, zoom: 1, ph: 0, main: 0 };
       this.updateTour();
@@ -1625,11 +1889,24 @@ export class Renderer3D {
       this.placerOrbite(this.vueMachine);
       return;
     }
-    const target = new THREE.Vector3(0, 0, 40);
+    const target = vue.joueur ? new THREE.Vector3(0, 75, 40) : new THREE.Vector3(0, 0, 40);
     const dir = new THREE.Vector3(0, Math.sin(elev), Math.cos(elev));
     const corners = [];
-    for (const [x, y, z] of [[-20, -40, 0], [W + 20, -40, 0], [-20, H + 26, 92], [W + 20, H + 26, 92], [-20, -40, 95], [W + 20, -40, 95]]) {
-      corners.push(this.table.localToWorld(new THREE.Vector3(x, y, -z)));
+    if (vue.joueur) {
+      // englobe le panneau des afficheurs du fronton (scores) en haut, tout le plateau, et le pommeau du lanceur tiré à fond en bas
+      for (const [x, y, z] of [[-12, -20, 0], [W + 12, -20, 0], [-12, H + 150, -20], [W + 12, H + 150, -20],
+        [-12, H + 42, 96], [W + 12, H + 42, 96], [-12, 130, 385], [W + 12, 130, 385]]) {
+        corners.push(this.table.localToWorld(new THREE.Vector3(x, y, -z)));
+      }
+      if (this.machine) {
+        for (const [xc, yc, zc] of [[24, 1120, 855], [535, 1120, 855], [20, -120, 315], [540, -120, 315]]) {
+          corners.push(this.machine.localToWorld(new THREE.Vector3(xc, yc, zc)));
+        }
+      }
+    } else {
+      for (const [x, y, z] of [[-20, -40, 0], [W + 20, -40, 0], [-20, H + 26, 92], [W + 20, H + 26, 92], [-20, -40, 95], [W + 20, -40, 95]]) {
+        corners.push(this.table.localToWorld(new THREE.Vector3(x, y, -z)));
+      }
     }
     const fits = (d) => {
       cam.position.copy(target).addScaledVector(dir, d);
@@ -1647,13 +1924,16 @@ export class Renderer3D {
     cam.updateProjectionMatrix();
   }
 
-  // point de l'écran → coordonnées de la table (commandes tactiles)
+  // point de l'écran → coordonnées de la table (commandes tactiles, tient compte de la rotation 90°)
   toTable(clientX, clientY) {
     const r = this.canvas.getBoundingClientRect();
-    const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+    const nx = (clientX - r.left) / r.width, ny = (clientY - r.top) / r.height;
+    const u = this.rotDeg === 90 ? ny : this.rotDeg === -90 ? 1 - ny : nx;
+    const v = this.rotDeg === 90 ? 1 - nx : this.rotDeg === -90 ? nx : ny;
+    const ndc = new THREE.Vector2(u * 2 - 1, -(v * 2 - 1));
     this.raycaster.setFromCamera(ndc, this.camera);
     const hit = this.raycaster.intersectObject(this.floor, false)[0];
-    if (!hit) return { x: clientX - r.left < r.width / 2 ? 0 : W, y: H };
+    if (!hit) return { x: u < 0.5 ? 0 : W, y: H };
     const p = this.table.worldToLocal(hit.point.clone());
     return { x: p.x, y: p.y };
   }
@@ -1668,16 +1948,6 @@ export class Renderer3D {
   draw(rules) {
     const sim = this.sim, now = sim.time;
     if (this.fronton) this.animerFronton();
-    // qualité automatique : sous 40 images/s en moyenne pendant une partie, on passe en version légère
-    if (this.qualiteAuto && !this.light && rules.mode === 'play') {
-      const t = performance.now(), m = this.mesure;
-      if (m.last && t - m.last < 250) { m.n++; m.total += t - m.last; }
-      m.last = t;
-      if (m.n >= 150) {
-        if (m.total / m.n > 25) { this.setLight(true, true); if (this.onQualite) this.onQualite(); }
-        else this.qualiteAuto = false;           // la machine suit : on n'y touche plus
-      }
-    }
     if (this.afficheurs) {
       const d = rules.display();
       if (d.score + d.info !== this.lastDisp) { this.lastDisp = d.score + d.info; this.drawAfficheurs(d); }
@@ -1721,6 +1991,24 @@ export class Renderer3D {
         const age = now - (sim.flash[f.flash] ?? -1e9);
         const a = age < 160 ? 0.32 * Math.sin((Math.PI * age) / 160) : 0;
         f.pivot.quaternion.setFromAxisAngle(f.axe, f.signe * a);
+      }
+    }
+    // fils de détection (rollovers) des couloirs bonus T-O-U-R et des couloirs du bas : s'enfoncent sous la bille
+    if (this.rollovers) {
+      for (const rw of this.rollovers) {
+        let cible = 0;
+        for (const b of sim.balls) {
+          if (b.plugin.fp.mode !== 'table' || b.retiree) continue;
+          const dx = b.position.x - rw.x, dy = b.position.y - rw.y;
+          if (Math.abs(dx) < 15 && Math.abs(dy) < 23) {
+            const d = Math.hypot(dx / 15, dy / 23);
+            cible = Math.max(cible, Math.min(1, 1.35 * (1 - d)));
+          }
+        }
+        const age = now - (sim.flash[rw.key] ?? -1e9);
+        if (age < 120) cible = Math.max(cible, Math.sin((Math.PI * age) / 120) * 0.85);
+        rw.press += (cible - rw.press) * (cible > rw.press ? 0.65 : Math.min(1, dtA * 24));
+        rw.pivot.rotation.x = rw.press * 0.46;
       }
     }
     this.bumpers.forEach((b, i) => {
@@ -1768,6 +2056,17 @@ export class Renderer3D {
     const rampHit = now - (sim.flash.rampL ?? -1e9) < 300;
     this.rampMat.color.setHex(rampHit ? 0xfff0aa : 0xffffff);
     this.rampFlank.color.setHex(rampHit ? 0xfff0aa : 0xcde8ff);
+    if (this.spinner3d && sim.spinner) {
+      const a = sim.spinner.angle, sp3 = this.spinner3d;
+      sp3.bladePivot.rotation.x = a;
+      const yPin = -3.8 * Math.sin(a), zPin = sp3.zAxis + 3.8 * Math.cos(a);
+      sp3.rodMesh.position.set(29.8, yPin, zPin);
+      sp3.rodMesh.rotation.x = -Math.atan2(-yPin, -zPin);
+      const spAge = now - (sim.flash.spinner ?? -1e9);
+      const spGlow = spAge < 90 ? (1 - spAge / 90) * 0.45 : 0;
+      sp3.faceFront.emissiveIntensity = spGlow;
+      sp3.faceBack.emissiveIntensity = spGlow;
+    }
     const kick = (now - (sim.flash.plunger ?? -1e9) < 60 ? -6 : 0) + sim.tirage * sim.courseLanceur;   // tiré vers le joueur, puis frappe
     this.plunger.position.y = GEO.plunger.top + 4 + kick;
     for (const m of this.lanceur) m.position.copy(this.lanceurAxe).multiplyScalar(kick);
@@ -1806,6 +2105,7 @@ export class Renderer3D {
 
     if (this.envDirty) { this.envDirty = false; this.captureEnv(); }
     if (this.tour) this.updateTour();
+    else if (this.enLilliputien) this.updateLilliputien();
     this.gl.render(this.scene, this.camera);
     this.drawOverlay();
   }
@@ -1828,6 +2128,23 @@ export class Renderer3D {
       g.fillText(p.text, x, y - t * 40 * k);
     }
     g.globalAlpha = 1;
+    // bandeau discret de pilotage en mode promenade du lilliputien
+    if (this.enLilliputien && this.lilli) {
+      const l = this.lilli;
+      const txt = `Lilliputien (${Math.round(l.x)}, ${Math.round(l.y)}, z=${Math.round(l.z)} mm) · Glisser : regarder · ZQSD / ↑↓←→ / Molette : marcher · Espace / C : hauteur · R : départ · Échap : quitter`;
+      const fs = Math.max(10, Math.min(12.5, (cw / k) / 62)) * k;
+      g.save();
+      g.font = `600 ${fs}px system-ui, sans-serif`;
+      const padX = 12 * k, padY = 6 * k, tw = Math.min(cw - 16 * k, g.measureText(txt).width + padX * 2), bh = fs + padY * 2;
+      const bx = (cw - tw) / 2, by = ch - bh - 10 * k;
+      g.fillStyle = 'rgba(20, 12, 7, 0.78)';
+      g.strokeStyle = 'rgba(224, 161, 52, 0.65)';
+      g.lineWidth = 1.2 * k;
+      g.beginPath(); g.roundRect(bx, by, tw, bh, 6 * k); g.fill(); g.stroke();
+      g.fillStyle = '#f6e9d2'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.fillText(txt, cw / 2, by + bh / 2, tw - padX);
+      g.restore();
+    }
     const f = this.fannyShow, img = f && this.art[f.kind];
     if (!img) return;
     const t = (tnow - f.t) / f.ms;

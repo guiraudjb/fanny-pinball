@@ -31,12 +31,20 @@
       <button id="start" type="button">Jouer</button>
       <button id="autoplay" type="button" title="Touche A : le robot joue des parties tout seul">Autoplay</button>
       <button id="mute" type="button">Son : oui</button>
-      <button id="view" type="button" title="Touche V : 2D, 3D, 3D légère">Vue : 2D</button>
+      <button id="view" type="button" title="Touche V : basculer entre la vue 2D et la vue 3D">Vue : 2D</button>
+      <button id="fullscreen" type="button" title="Touche F : afficher le plateau en plein écran (idéal sur écran vertical)">Plein écran</button>
+      <button id="rotate" type="button" title="Touche O : pivoter le plateau de 90° (0°, +90°, -90°)">Pivoter : 0°</button>
+      <button id="lilliputien" type="button" title="Touche G : promenade libre du lilliputien sur le plateau 3D">Promenade</button>
       <button id="aide" type="button" title="Touche ? ou F1 : commandes et touches du jeu">Aide</button>
       <button id="camera" type="button" title="Touche K" hidden>Caméra</button>
       <button id="verrou" type="button" title="Touche L : fige l'angle et le zoom pour jouer" hidden>Verrouiller la vue</button>
       <button id="habillage" type="button" title="Touche H : décor de la caisse" hidden>Habillage : bois</button>
       <button id="transport" type="button" title="Touche T : fronton assemblé ou rabattu pour le transport" hidden>Fronton : assemblé</button>
+    </div>
+    <div class="pente-ctrl" title="Inclinaison du plateau (réglage des pieds) : plus la pente est forte, plus la bille est rapide">
+      <label for="pente"><span>Difficulté · Inclinaison</span><strong id="pente-val">6,5° · Standard</strong></label>
+      <input id="pente" type="range" min="5" max="8" step="0.5" value="6.5" aria-label="Inclinaison du plateau">
+      <div class="pente-rep" aria-hidden="true"><span>5° Facile</span><span>6,5° Standard</span><span>8° Extrême</span></div>
     </div>
   </section>
   <section id="playfield" class="playfield">
@@ -44,6 +52,13 @@
     <div id="view3d" class="view3d" hidden>
       <canvas id="table3d" aria-label="Plateau du flipper en 3D"></canvas>
       <canvas id="overlay3d" aria-hidden="true"></canvas>
+    </div>
+    <div id="fs-bar" class="fs-bar" hidden>
+      <span id="fs-score" class="fs-score">0</span>
+      <button id="fs-cam" type="button" title="Touche K : changer de caméra">Caméra</button>
+      <button id="fs-view" type="button" title="Touche V : 2D / 3D">3D</button>
+      <button id="fs-rot" type="button" title="Touche O : pivoter 90°">0°</button>
+      <button id="fs-exit" type="button" title="Touche F ou Échap : quitter le plein écran">✕</button>
     </div>
   </section>
 </main>
@@ -87,8 +102,11 @@
           <div><dt>Nouvelle partie</dt><dd><kbd>Entrée</kbd> ou <kbd>S</kbd></dd></div>
           <div><dt>Autoplay (robot)</dt><dd><kbd>A</kbd></dd></div>
           <div><dt>Pause / Son / Pièce</dt><dd><kbd>P</kbd> · <kbd>M</kbd> · <kbd>C</kbd></dd></div>
-          <div><dt>Vue 2D / 3D / 3D légère</dt><dd><kbd>V</kbd></dd></div>
+          <div><dt>Vue 2D / 3D</dt><dd><kbd>V</kbd></dd></div>
+          <div><dt>Plein écran (écran vertical)</dt><dd><kbd>F</kbd></dd></div>
+          <div><dt>Pivoter l'écran de 90°</dt><dd><kbd>O</kbd></dd></div>
           <div><dt>Caméra 3D / Verrouiller vue</dt><dd><kbd>K</kbd> · <kbd>L</kbd></dd></div>
+          <div><dt>Promenade lilliputien (3D)</dt><dd><kbd>G</kbd> puis <kbd>ZQSD</kbd>/<kbd>↑↓←→</kbd>, glisser, molette, <kbd>Espace</kbd>/<kbd>C</kbd></dd></div>
           <div><dt>Habillage / Fronton</dt><dd><kbd>H</kbd> · <kbd>T</kbd></dd></div>
           <div><dt>Ouvrir / fermer l'aide</dt><dd><kbd>?</kbd> ou <kbd>F1</kbd></dd></div>
           <div><dt>Tactile</dt><dd>Moitié gauche / droite : flips · couloir droit : lancer</dd></div>

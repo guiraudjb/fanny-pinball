@@ -180,8 +180,11 @@ export class Robot {
         // choisir une lettre T-O-U-R éteinte (priorité aux couloirs centraux U-O : au milieu de la fenêtre tolérante ±2 %)
         const ordre = [2, 1, 3, 0];
         const lane = ordre.find((i) => !r.letters[i]) ?? 2;
-        const base = FORCE_TOUR[lane];
-        const force = Math.min(0.96, base + this.echecLanceur * 0.032);
+        // compensation de l'inclinaison réelle de la table (étalonné à 6,5° : plus pentu = tirer plus fort)
+        const sinRef = Math.sin((6.5 * Math.PI) / 180);
+        const kPente = Math.sqrt(Math.max(0.65, 1 + 0.62 * (Math.sin(sim.pente ?? ((6.5 * Math.PI) / 180)) / sinRef - 1)));
+        const base = FORCE_TOUR[lane] * kPente;
+        const force = Math.min(1.08, base + this.echecLanceur * 0.032);
         const tirage = Math.min(1, Math.max(0.45, (force - 0.35) / 0.72));
         this.lancerPlan = { force, tirage, lane };
       }

@@ -366,6 +366,15 @@ export class Renderer {
       drawLampInsert(ctx, x, y, r, col, label, lit);
     }
     ctx.textBaseline = 'alphabetic';
+    // lumières des fils de rollover : couloirs bonus T-O-U-R et couloirs du bas (cotes CAO : 36 × 4 mm)
+    for (const l of [...GEO.lanes, ...(GEO.lowerLanes || [])]) {
+      ctx.beginPath();
+      ctx.roundRect(l.x - 2, l.y - 18, 4, 36, 2);
+      const gr = ctx.createLinearGradient(l.x - 2, 0, l.x + 2, 0);
+      gr.addColorStop(0, '#070504'); gr.addColorStop(0.5, '#17110c'); gr.addColorStop(1, '#261b12');
+      ctx.fillStyle = gr; ctx.fill();
+      ctx.strokeStyle = 'rgba(215,195,160,0.45)'; ctx.lineWidth = 0.7; ctx.stroke();
+    }
     // le Cercle (trou)
     ctx.fillStyle = '#120a05';
     ctx.beginPath(); ctx.arc(GEO.saucer.x, GEO.saucer.y, GEO.saucer.ring, 0, Math.PI * 2); ctx.fill();
@@ -490,6 +499,37 @@ export class Renderer {
     ctx.fillStyle = '#5c616a';
     ctx.fillRect(P.x - 3, P.top + 8 + kick, 6, 30);
 
+    // fils de détection (rollovers) : couloirs bonus T-O-U-R et couloirs du bas (s'enfoncent au passage de la bille)
+    const rollovers = [
+      ...GEO.lanes.map((l, i) => ({ x: l.x, y: l.y, key: `lane${i}` })),
+      ...(GEO.lowerLanes || []).map((l) => ({ x: l.x, y: l.y, key: l.id })),
+    ];
+    for (const l of rollovers) {
+      let press = 0;
+      for (const b of sim.balls) {
+        if (b.plugin.fp.mode !== 'table' || b.retiree) continue;
+        const dx = b.position.x - l.x, dy = b.position.y - l.y;
+        if (Math.abs(dx) < 15 && Math.abs(dy) < 22) {
+          const d = Math.hypot(dx / 15, dy / 22);
+          press = Math.max(press, Math.max(0, 1 - d * d));
+        }
+      }
+      const age = now - (sim.flash[l.key] ?? -1e9);
+      if (age < 130) press = Math.max(press, Math.sin((Math.PI * age) / 130) * 0.85);
+      const lift = 1 - press;
+      ctx.save();
+      ctx.lineCap = 'round';
+      if (lift > 0.05) {
+        ctx.strokeStyle = `rgba(0,0,0,${0.42 * lift})`; ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(l.x + 1.8 * lift, l.y - 15); ctx.lineTo(l.x + 1.8 * lift, l.y + 15); ctx.stroke();
+      }
+      ctx.strokeStyle = '#4c535e'; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(l.x, l.y - 15.5); ctx.lineTo(l.x, l.y + 15.5); ctx.stroke();
+      ctx.strokeStyle = lift > 0.3 ? '#f0f4f8' : '#a8b0bc'; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.moveTo(l.x, l.y - 15); ctx.lineTo(l.x, l.y + 15); ctx.stroke();
+      ctx.restore();
+    }
+
     const views = sim.ballViews();
     for (const v of views) if (!v.onRamp) this.ball(v.x, v.y, v.inSaucer ? 0.85 : 1);
 
@@ -497,6 +537,44 @@ export class Renderer {
 
     // rampes (au-dessus du plateau)
     for (const side of Object.keys(sim.ramps)) this.ramp(sim.ramps[side], now - (sim.flash[`ramp${side}`] ?? -1e9) < 300);
+    // tourniquet métallique (spinner) à l'entrée de la rampe
+    if (GEO.spinner) {
+      const sp = GEO.spinner, ang = sim.spinner?.angle ?? 0;
+      const c = Math.cos(ang), s = Math.sin(ang);
+      const flash = now - (sim.flash.spinner ?? -1e9) < 70;
+      ctx.save();
+      ctx.translate(sp.x, sp.y);
+      ctx.rotate(Math.atan2(sp.v.y, sp.v.x));
+      // portique chromé (2 paliers latéraux) + axe horizontal en corde à piano
+      ctx.strokeStyle = '#3d434d'; ctx.lineWidth = 3.2;
+      ctx.beginPath(); ctx.moveTo(-24, 0); ctx.lineTo(24, 0); ctx.stroke();
+      ctx.strokeStyle = '#eef2f7'; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(-24, 0); ctx.lineTo(24, 0); ctx.stroke();
+      for (const sx of [-24, 24]) {
+        ctx.fillStyle = '#d6d9df'; ctx.strokeStyle = '#3d434d'; ctx.lineWidth = 1.1;
+        ctx.beginPath(); ctx.roundRect(sx - 2.2, -3.5, 4.4, 7, 1.5); ctx.fill(); ctx.stroke();
+      }
+      // plaque métallique symétrique vue de dessus : profondeur raccourcie par sin(angle) lors de la rotation 360°
+      const depth = Math.max(2.4, Math.abs(s) * 40);
+      ctx.fillStyle = flash ? '#fff4b8' : c >= 0 ? '#5c4fa6' : '#342c66';
+      ctx.strokeStyle = '#e6eaf0'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.roundRect(-15, -depth / 2, 30, depth, 1.5); ctx.fill(); ctx.stroke();
+      if (depth > 8) {
+        ctx.fillStyle = '#ffd23f';
+        ctx.fillRect(-11, -1, 22, 2);
+      }
+      ctx.restore();
+    }
+    // guide de protection autour de la bielle du tourniquet
+    if (GEO.spinnerGuard) {
+      ctx.save();
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      GEO.spinnerGuard.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)));
+      ctx.strokeStyle = '#3d434d'; ctx.lineWidth = 4; ctx.stroke();
+      ctx.strokeStyle = '#eef2f7'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+    }
     for (const v of views) if (v.onRamp) this.ball(v.x, v.y, 1.12, true);
 
     // points flottants

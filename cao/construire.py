@@ -67,16 +67,7 @@ def face_poly(pts, r=0.0, marge=0.0, z=0.0):
         if marge:
             f = f.makeOffset2D(marge, join=0)
         if r:
-            fr = f.makeOffset2D(-r, join=0).makeOffset2D(r, join=0)
-            # pointes aiguës (< 60°) : l'arrondi de r les raccourcissait de r / sin(½ angle) − r (27 mm pour 29°
-            # au toit du bouchon), et l'encoche laissée piégeait la bille ; elles gardent un arrondi de 1,5 mm
-            pointes = [Part.makeCylinder(r / math.sin(a / 2) + 2, 1, tv(*q, z - 0.5)) for q, a in coins_aigus(pts, 60)]
-            if pointes:
-                fp = f.makeOffset2D(-1.5, join=0).makeOffset2D(1.5, join=0)
-                for c in pointes:
-                    fr = fr.fuse(fp.common(c)).removeSplitter()
-                fr = Part.Face(fr.Faces[0].OuterWire) if len(fr.Faces) == 1 else fr
-            f = fr
+            f = f.makeOffset2D(-r, join=0).makeOffset2D(r, join=0)
     except Exception:
         pass
     return f
@@ -101,7 +92,21 @@ def coins_aigus(pts, max_deg):
 
 
 def bloc(pts, h, r=0.0, marge=0.0, z0=0.0):
-    return face_poly(pts, r, marge, z0).extrude(Vec(0, 0, h))
+    s = face_poly(pts, r, marge, z0).extrude(Vec(0, 0, h))
+    # pointes aiguës (< 60°) : l'arrondi de r les raccourcissait fortement ; fusion 3D avec un arrondi fin (1,5 mm)
+    # pour conserver l'angle complet en un seul solide continu (sans scinder la pièce)
+    if r > 1.5:
+        aigus = coins_aigus(pts, 60)
+        if aigus:
+            try:
+                sp = face_poly(pts, 1.5, marge, z0).extrude(Vec(0, 0, h))
+                for q, a in aigus:
+                    rad = (r + max(0.0, marge)) / math.sin(a / 2) + 4.0
+                    cyl = Part.makeCylinder(rad, h + 4.0, tv(*q, z0 - 2.0))
+                    s = s.fuse(sp.common(cyl)).removeSplitter()
+            except Exception:
+                pass
+    return s
 
 
 def inserts(shape, fix, z0=0.0):
@@ -221,17 +226,61 @@ def construire_piece(p):
             s = s.fuse(e).cut(Part.makeCylinder(1.6, p["h_entretoise"] + p["ep"] + 2, tv(x, y, p["z"] - p["h_entretoise"] - 1)))
         return s.removeSplitter()
     if k == "patte":
-        # tôle sous la rampe (dessus = fond de la rampe), du flanc opposé au bord ; retour vertical au bord :
-        # vissé dans la caisse (vers le haut) ou posé sur le guide d'arche / le séparateur (vers le bas)
+        # tôle pliée sous la rampe (dessus 0,5 mm sous le fond de rampe, suivant la pente dz/ds, arrêtée au ras
+        # du flanc opposé pour ne jamais dépasser ni traverser la rampe PVC) ; retour plié dans l'axe exact du support.
         (nx, ny), (dx, dy), x, y, z = p["n"], p["d"], p["x"], p["y"], p["z"]
-        def plaque(a0, a1, z0, h):
-            q = [tv(x + nx * a + dx * b, y + ny * a + dy * b, z0) for a, b in ((a0, -9), (a1, -9), (a1, 9), (a0, 9))]
+        dz = p.get("dz", 0.0)
+        hw_int = M.V(M.RAMPE["larg_int"]) / 2.0        # 19,5 mm : affleure le flanc PVC opposé sans le dépasser
+        z_top = z - 0.5                                # 0,5 mm sous la peau PVC (zéro traversée / z-fighting)
+        def plaque(a0, a1, z0, h, pente=False):
+            zb_fn = (lambda b: z0 + b * dz) if pente else (lambda _b: z0)
+            q = [tv(x + nx * a + dx * b, y + ny * a + dy * b, zb_fn(b)) for a, b in ((a0, -9), (a1, -9), (a1, 9), (a0, 9))]
             return Part.Face(Part.makePolygon(q + [q[0]])).extrude(Vec(0, 0, h))
-        zb = {"caisse": None, "arche": M.H_PAROI, "separateur": 30.0}[p["bord"]]
-        if zb is not None and z - 3 > zb + 1:          # posée sur le guide / le séparateur
-            s = plaque(-(p["hw"] + 3), p["dist"] + 3, z - 3, 3).fuse(plaque(p["dist"], p["dist"] + 3, zb, z - zb))
-        else:                                          # vissée contre la caisse (ou le flanc du séparateur)
-            s = plaque(-(p["hw"] + 3), p["dist"], z - 3, 3).fuse(plaque(p["dist"] - 3, p["dist"], z - 3, 23 if zb is None else 13))
+        bord = p["bord"]
+        if bord == "caisse":                           # vissée à plat sur le flanc bois de la caisse
+            jeu_c = (M.LARG - 2 * M.EPC - M.W) / 2.0   # 3,4 mm entre le bord du plateau et la face intérieure du bois
+            x_mur = -jeu_c if nx < 0 else M.W + jeu_c
+            d_mur = (x_mur - x) / nx if abs(nx) > 0.1 else p["dist"] + jeu_c
+            y_mur = y + ny * d_mur
+            bras = plaque(-hw_int, d_mur + 22, z_top - 3, 3, pente=True)
+            bras = bras.common(Part.makeBox(M.W + 2 * jeu_c, M.H + 200, 120, Vec(-jeu_c, -100, z - 20)))
+            demi_y = 9.0 / max(0.35, abs(nx)) + 3.0
+            x0 = -jeu_c if nx < 0 else M.W + jeu_c - 3.0
+            retour = Part.makeBox(3.0, 2 * demi_y, 24.0, Vec(x0, M.H - (y_mur + demi_y), z_top - 3))
+            s = bras.fuse(retour)
+        elif bord == "separateur":                     # berceau sous rampe + col plié descendant vers sep_lanceur (x = 480)
+            ls_x = M.GEO["laneSep"]["x"]               # 480,0 mm (ne déborde jamais dans le couloir de lancement)
+            y_sep = y + ny * ((ls_x - x) / nx if abs(nx) > 0.1 else p["dist"] + 2.0)
+            demi_y = 9.0 / max(0.35, abs(nx)) + 1.5
+            # berceau strictement sous la rampe (suivant la pente dz/ds)
+            berceau = plaque(-hw_int, hw_int, z_top - 3, 3, pente=True)
+            if abs(dz) > 0.02 or p["dist"] > hw_int + 15:
+                # patte longue / rampe en descente (patte_rampe_10) : tôle pliée en Z depuis le flanc droit de la rampe
+                # jusqu'au sommet du séparateur (x = 480, z = 29,5), en restant > 6 mm au-dessus de la bille (Ø 27)
+                p1x = x + nx * (hw_int - 1.5)
+                p1y = y + ny * (hw_int - 1.5)
+                p2x = ls_x
+                p2y = y_sep
+                zb1 = z_top - 3.0 - abs(9.0 * dz)
+                zb2 = 29.5
+                # col incliné entre le bord droit du berceau et la selle sur sep_lanceur (épaisseur 3 mm)
+                pts_col = [
+                    tv(p1x, p1y - 9, zb1), tv(p2x - 1.5, p2y - 9, zb2),
+                    tv(p2x - 1.5, p2y + 9, zb2), tv(p1x, p1y + 9, zb1),
+                ]
+                col = Part.Face(Part.makePolygon(pts_col + [pts_col[0]])).extrude(Vec(0, 0, 3.0))
+                selle = Part.makeBox(3.5, 2 * demi_y, 3.0, Vec(ls_x - 1.75, M.H - (y_sep + demi_y), zb2))
+                s = berceau.fuse(col).fuse(selle)
+            else:
+                d_sep = (ls_x + 1.5 - x) / nx if abs(nx) > 0.1 else p["dist"] + 3.5
+                bras = plaque(-hw_int, d_sep + 18, z_top - 3, 3, pente=True)
+                bras = bras.common(Part.makeBox(ls_x + 1.5, M.H + 200, 120, Vec(0, -100, z - 20)))
+                pied_sep = Part.makeBox(3.0, 2 * demi_y, max(4.0, z_top - 29.5), Vec(ls_x - 1.5, M.H - (y_sep + demi_y), 29.5))
+                s = bras.fuse(pied_sep)
+        else:                                          # arche : centrée sur le fil supérieur (ellipse + 3 mm, z = 32)
+            d_arc = p["dist"] + 3.0
+            s = plaque(-hw_int, d_arc + 1.5, z_top - 3, 3, pente=True).fuse(
+                plaque(d_arc - 1.5, d_arc + 1.5, 31.5, z_top - 31.5))
         return s.removeSplitter()
     if k == "enseigne":
         # plaque inclinée de « incl » vers le joueur (bord avant en bas), à cheval sur la rampe ; deux pattes

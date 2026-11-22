@@ -9,6 +9,15 @@ import { Robot } from './robot.js';
 const canvas = document.getElementById('table');
 const view3dEl = document.getElementById('view3d');
 const viewBtn = document.getElementById('view');
+const fsBtn = document.getElementById('fullscreen');
+const fsBar = document.getElementById('fs-bar');
+const fsScore = document.getElementById('fs-score');
+const fsCamBtn = document.getElementById('fs-cam');
+const fsViewBtn = document.getElementById('fs-view');
+const fsRotBtn = document.getElementById('fs-rot');
+const fsExitBtn = document.getElementById('fs-exit');
+const rotBtn = document.getElementById('rotate');
+const lilliBtn = document.getElementById('lilliputien');
 const camBtn = document.getElementById('camera');
 const lockBtn = document.getElementById('verrou');
 const skinBtn = document.getElementById('habillage');
@@ -23,6 +32,8 @@ const muteBtn = document.getElementById('mute');
 const aideBtn = document.getElementById('aide');
 const aideDialog = document.getElementById('aide-dialog');
 const aideFermerBtn = document.getElementById('aide-fermer');
+const penteInput = document.getElementById('pente');
+const penteVal = document.getElementById('pente-val');
 
 // Le « matériel » vu par les règles : la simulation + les sons.
 let sim;
@@ -58,7 +69,21 @@ let view = renderer;
 const has3d = (() => { try { return !!document.createElement('canvas').getContext('webgl2'); } catch { return false; } })();
 let mode3d = false;
 function viewLabel() {
-  viewBtn.textContent = !mode3d ? 'Vue : 2D' : renderer3d.light ? 'Vue : 3D légère' : 'Vue : 3D';
+  viewBtn.textContent = mode3d ? 'Vue : 3D' : 'Vue : 2D';
+  const enLilli = !!(mode3d && renderer3d?.enLilliputien);
+  if (lilliBtn) {
+    lilliBtn.hidden = !has3d;
+    lilliBtn.classList.toggle('actif', enLilli);
+    lilliBtn.textContent = enLilli ? 'Promenade : oui' : 'Promenade';
+  }
+  if (fsCamBtn) {
+    fsCamBtn.hidden = !mode3d;
+    if (mode3d) fsCamBtn.textContent = renderer3d.cameraNom;
+  }
+  if (fsViewBtn) {
+    fsViewBtn.hidden = !has3d;
+    fsViewBtn.textContent = mode3d ? '3D' : '2D';
+  }
   camBtn.hidden = !mode3d;
   if (mode3d) camBtn.textContent = `Caméra : ${renderer3d.cameraNom}`;
   // vue machine : on choisit l'angle et le zoom, puis on verrouille pour jouer
@@ -74,12 +99,76 @@ function viewLabel() {
     lockBtn.classList.toggle('actif', !!v);
   }
 }
-// bouton Vue / touche V : 2D → 3D → 3D légère → 2D
-function nextView() {
-  if (!mode3d) setView(true);
-  else if (!renderer3d.light) { renderer3d.setLight(true); viewLabel(); }
-  else { renderer3d.setLight(false); setView(false); }
+async function basculerPromenade() {
+  if (!has3d) return;
+  if (!mode3d) {
+    await setView(true);
+    if (mode3d && !renderer3d.enLilliputien) renderer3d.basculerLilliputien(true);
+  } else {
+    renderer3d.basculerLilliputien();
+  }
+  viewLabel();
 }
+
+// mode plein écran (écran vertical / pincab) : masque le panneau latéral et donne 100 % de l'écran au plateau
+let enPleinEcran = false;
+function majPleinEcran(on) {
+  enPleinEcran = !!on;
+  document.body.classList.toggle('plein-ecran', enPleinEcran);
+  if (fsBar) fsBar.hidden = !enPleinEcran;
+  if (fsBtn) {
+    fsBtn.classList.toggle('actif', enPleinEcran);
+    fsBtn.textContent = enPleinEcran ? 'Quitter plein écran' : 'Plein écran';
+  }
+  requestAnimationFrame(layout);
+}
+function basculerPleinEcran(voulu = !enPleinEcran) {
+  if (voulu) {
+    majPleinEcran(true);
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  } else {
+    majPleinEcran(false);
+    if (document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+  }
+}
+document.addEventListener('fullscreenchange', () => {
+  if (!document.fullscreenElement && enPleinEcran) majPleinEcran(false);
+  else requestAnimationFrame(layout);
+});
+
+// rotation du plateau par pas de 90° (0° → +90° → -90° → 0°) pour écran tourné à la verticale
+const ROTS = [0, 90, -90];
+let rotDeg = 0;
+try {
+  const s = Number(localStorage.getItem('fanny-pinball-rot'));
+  if (ROTS.includes(s)) rotDeg = s;
+} catch {}
+function appliquerRotation(deg, sauver = true) {
+  rotDeg = ROTS.includes(deg) ? deg : 0;
+  const lib = rotDeg === 90 ? '+90°' : rotDeg === -90 ? '-90°' : '0°';
+  if (rotBtn) { rotBtn.textContent = `Pivoter : ${lib}`; rotBtn.classList.toggle('actif', rotDeg !== 0); }
+  if (fsRotBtn) fsRotBtn.textContent = lib;
+  playfieldEl.classList.toggle('pivote', rotDeg !== 0);
+  const tr = rotDeg ? `rotate(${rotDeg}deg)` : '';
+  canvas.style.transform = tr;
+  view3dEl.style.transform = tr;
+  if (fsBar) {
+    fsBar.classList.toggle('rot-90', rotDeg === 90);
+    fsBar.classList.toggle('rot-m90', rotDeg === -90);
+  }
+  if (renderer3d) renderer3d.rotDeg = rotDeg;
+  if (sauver) try { localStorage.setItem('fanny-pinball-rot', String(rotDeg)); } catch {}
+  layout();
+}
+function cycleRotation() {
+  appliquerRotation(ROTS[(ROTS.indexOf(rotDeg) + 1) % ROTS.length]);
+}
+// bouton Vue / touche V : 2D ↔ 3D
+function nextView() { setView(!mode3d); }
 async function setView(want3d) {
   if (want3d && !has3d) want3d = false;
   if (want3d && !renderer3d) {
@@ -87,7 +176,7 @@ async function setView(want3d) {
       const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
       const { Renderer3D } = await import(local ? `./render3d.js?t=${Date.now()}` : './render3d.js');
       renderer3d = new Renderer3D(document.getElementById('table3d'), document.getElementById('overlay3d'), sim);
-      renderer3d.onQualite = viewLabel;
+      renderer3d.rotDeg = rotDeg;
     } catch (e) { console.error('vue 3D indisponible', e); want3d = false; }
   }
   mode3d = want3d;
@@ -98,6 +187,28 @@ async function setView(want3d) {
   try { localStorage.setItem('fanny-pinball-vue', mode3d ? '3d' : '2d'); } catch {}
   layout();
   viewLabel();
+}
+
+// ------------------------------------------------------------ difficulté par inclinaison du plateau
+const PENTE_NOMS = {
+  '5.0': 'Facile', '5.5': 'Détente', '6.0': 'Classique',
+  '6.5': 'Standard', '7.0': 'Difficile', '7.5': 'Tournoi', '8.0': 'Extrême',
+};
+function appliquerPente(deg, sauver = true) {
+  const d = sim.setPente(deg);
+  const k = d.toFixed(1);
+  if (penteInput) penteInput.value = String(d);
+  if (penteVal) penteVal.textContent = `${k.replace('.', ',')}° · ${PENTE_NOMS[k] || 'Perso'}`;
+  renderer3d?.setPente(sim.pente);
+  if (sauver) try { localStorage.setItem('fanny-pinball-pente', String(d)); } catch {}
+}
+if (penteInput) {
+  let penteInit = 6.5;
+  try { const s = Number(localStorage.getItem('fanny-pinball-pente')); if (s >= 5 && s <= 8) penteInit = s; } catch {}
+  appliquerPente(penteInit, false);
+  penteInput.addEventListener('input', () => appliquerPente(Number(penteInput.value)));
+  penteInput.addEventListener('change', () => penteInput.blur());
+  penteInput.addEventListener('pointerup', () => penteInput.blur());
 }
 
 // ------------------------------------------------------------ commandes
@@ -135,8 +246,9 @@ function nudge(dx = 0) {
   if (paused || rules.mode !== 'play') return;
   if (!sim.nudge(dx)) return;
   play(SND.NUDGE);
+  const base = rotDeg ? `rotate(${rotDeg}deg) ` : '';
   const tr = dx ? `translateX(${-dx * 6}px)` : 'translateY(-5px)';
-  (mode3d ? view3dEl : canvas).animate([{ transform: 'translate(0,0)' }, { transform: tr }, { transform: 'translate(0,0)' }],
+  (mode3d ? view3dEl : canvas).animate([{ transform: `${base}translate(0,0)` }, { transform: `${base}${tr}` }, { transform: `${base}translate(0,0)` }],
     { duration: 140, easing: 'ease-out' });
 }
 
@@ -199,14 +311,28 @@ function relacher(lancer = true) {
   sim.force = 0.3 + 0.8 * p;
   rules.onSwitch(SW.LAUNCH);
 }
+const LILLI_KEYS = new Set([
+  'KeyW', 'KeyS', 'KeyA', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+  'Space', 'KeyE', 'KeyC', 'ControlLeft', 'PageUp', 'PageDown', 'ShiftLeft', 'ShiftRight',
+]);
 window.addEventListener('keydown', (e) => {
   unlockAudio(); audioReady = true;
+  const enLilli = !!(mode3d && renderer3d?.enLilliputien);
+  if (enLilli && !aideDialog.open) {
+    if (LILLI_KEYS.has(e.code)) { renderer3d.lilliKey(e.code, true); e.preventDefault(); return; }
+    if (e.code === 'KeyR') { renderer3d.resetLilliputien(); e.preventDefault(); return; }
+    if (e.code === 'Escape') { renderer3d.basculerLilliputien(false); viewLabel(); e.preventDefault(); return; }
+  }
   if (e.repeat) { if ([...KEYS.left, ...KEYS.right, ...KEYS.launch, ...KEYS.nudge, ...KEYS.nudgeL, ...KEYS.nudgeR].includes(e.code)) e.preventDefault(); return; }
   if (e.key === '?' || e.code === 'F1') { basculerAide(); e.preventDefault(); return; }
   if (aideDialog.open) {
     if (e.code === 'Escape') { e.preventDefault(); aideDialog.close(); }
     return;
   }
+  if (e.code === 'KeyG') { basculerPromenade(); e.preventDefault(); return; }
+  if (e.code === 'KeyF') { basculerPleinEcran(); e.preventDefault(); return; }
+  if (e.code === 'KeyO') { cycleRotation(); e.preventDefault(); return; }
+  if (e.code === 'Escape' && enPleinEcran) { basculerPleinEcran(false); e.preventDefault(); return; }
   if (e.code === 'KeyA') { setAutoplay(!autoplay); e.preventDefault(); return; }
   if (KEYS.nudge.includes(e.code)) { nudge(0); e.preventDefault(); return; }
   if (KEYS.nudgeL.includes(e.code)) { nudge(-1); e.preventDefault(); return; }
@@ -225,18 +351,22 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'KeyT' && !transportBtn.hidden) { renderer3d.basculerFronton(); viewLabel(); }
 });
 window.addEventListener('keyup', (e) => {
+  if (LILLI_KEYS.has(e.code)) renderer3d?.lilliKey(e.code, false);
   if (KEYS.left.includes(e.code)) setFlipper('L', false);
   if (KEYS.right.includes(e.code)) setFlipper('R', false);
   if (KEYS.launch.includes(e.code)) relacher();
 });
-window.addEventListener('blur', () => { setFlipper('L', false); setFlipper('R', false); relacher(false); });
+window.addEventListener('blur', () => { renderer3d?.lilliStop(); setFlipper('L', false); setFlipper('R', false); relacher(false); });
 
 // tactile : moitié gauche / moitié droite = flippers, couloir de lancement = lanceur
 const touches = new Map();
 function toTable(e) {
   if (mode3d) return renderer3d.toTable(e.clientX, e.clientY);
   const r = canvas.getBoundingClientRect();
-  return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
+  const nx = (e.clientX - r.left) / r.width, ny = (e.clientY - r.top) / r.height;
+  const u = rotDeg === 90 ? ny : rotDeg === -90 ? 1 - ny : nx;
+  const v = rotDeg === 90 ? 1 - nx : rotDeg === -90 ? nx : ny;
+  return { x: u * W, y: v * H };
 }
 for (const el of [canvas, view3dEl]) el.addEventListener('pointerdown', (e) => {
   unlockAudio(); audioReady = true;
@@ -295,6 +425,14 @@ view3dEl.addEventListener('wheel', (e) => {
 startBtn.addEventListener('click', () => { if (autoplay) setAutoplay(false); pressStart(); startBtn.blur(); });
 autoBtn.addEventListener('click', () => { setAutoplay(!autoplay); autoBtn.blur(); });
 viewBtn.addEventListener('click', () => { nextView(); viewBtn.blur(); });
+fsBtn?.addEventListener('click', () => { basculerPleinEcran(); fsBtn.blur(); });
+fsBar?.addEventListener('pointerdown', (e) => e.stopPropagation());
+fsCamBtn?.addEventListener('click', () => { if (mode3d) { renderer3d.cycleCamera(); viewLabel(); } fsCamBtn.blur(); });
+fsViewBtn?.addEventListener('click', () => { nextView(); fsViewBtn.blur(); });
+fsRotBtn?.addEventListener('click', () => { cycleRotation(); fsRotBtn.blur(); });
+fsExitBtn?.addEventListener('click', () => { basculerPleinEcran(false); fsExitBtn.blur(); });
+rotBtn?.addEventListener('click', () => { cycleRotation(); rotBtn.blur(); });
+lilliBtn?.addEventListener('click', () => { basculerPromenade(); lilliBtn.blur(); });
 aideBtn.addEventListener('click', () => { basculerAide(); aideBtn.blur(); });
 camBtn.addEventListener('click', () => { renderer3d.cycleCamera(); viewLabel(); camBtn.blur(); });
 skinBtn.addEventListener('click', () => { renderer3d.cycleHabillage(); viewLabel(); skinBtn.blur(); });
@@ -304,9 +442,11 @@ muteBtn.addEventListener('click', () => { unlockAudio(); audioReady = true; mute
 
 // ------------------------------------------------------------ mise en page
 function layout() {
-  const availH = playfieldEl.clientHeight, availW = playfieldEl.clientWidth;
+  const rawW = playfieldEl.clientWidth, rawH = playfieldEl.clientHeight;
+  const availW = rotDeg ? rawH : rawW, availH = rotDeg ? rawW : rawH;
   if (mode3d) {
-    const w = Math.floor(Math.min(availW, availH * 0.8)), h = Math.floor(availH);
+    const portrait = enPleinEcran || rotDeg !== 0 || availW < availH;
+    const w = Math.floor(portrait ? availW : Math.min(availW, availH * 0.8)), h = Math.floor(availH);
     view3dEl.style.width = `${w}px`; view3dEl.style.height = `${h}px`;
     renderer3d.resize(w, h);
     return;
@@ -317,7 +457,7 @@ function layout() {
   renderer.resize();
 }
 window.addEventListener('resize', layout);
-layout();
+appliquerRotation(rotDeg, false);
 {
   let pref = null;
   try { pref = localStorage.getItem('fanny-pinball-vue'); } catch {}
@@ -367,6 +507,12 @@ function frame(t) {
     lastDisp = key;
     drawSegDisplay(dispScore, paused ? '  PAUSE ' : d.score);
     drawSegDisplay(dispInfo, d.info, { on: '#ffb020', off: 'rgba(255,176,32,0.08)' });
+    if (fsScore) {
+      fsScore.textContent = paused ? 'PAUSE'
+        : rules.mode === 'play' || rules.mode === 'bonus'
+          ? `${rules.score.toLocaleString('fr-FR')} · B${rules.ball} · ×${rules.mult}`
+          : `Record ${rules.highScore.toLocaleString('fr-FR')}`;
+    }
   }
   const geste = autoplay ? robot.gesteActif() : null;
   cityEl.textContent = rules.mode === 'play' || rules.mode === 'bonus'

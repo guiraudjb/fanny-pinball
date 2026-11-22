@@ -32,10 +32,11 @@
 export const SW = {
   FLIP_L: 'flipL', FLIP_R: 'flipR', LAUNCH: 'launch', START: 'start',
   LANES: ['laneT', 'laneO', 'laneU', 'laneR'],
+  LOWER_LANES: ['outL', 'inExtL', 'inIntL', 'inIntR', 'inExtR', 'outR'],
   DROPS: ['dropF', 'dropA', 'dropN1', 'dropN2', 'dropY'],
   STANDUPS: ['pointer', 'tirer', 'bouchon'],
   TARGETS: ['boule1', 'boule2', 'boule3'],   // cibles rondes du mur gauche
-  SAUCER: 'saucer', RAMP: 'ramp',
+  SAUCER: 'saucer', RAMP: 'ramp', SPINNER: 'spinner',
   SLINGS: ['slingL', 'slingR'], BUMPERS: ['bumper1', 'bumper2', 'bumper3'],
   SHOOTER: 'shooter', DRAIN: 'drain', COIN: 'coin', TILT: 'tilt',
 };
@@ -57,6 +58,7 @@ export const SND = {
   V_PARTIE_GRATUITE: 47, V_MATCH: 48, V_EXTRA_LIT: 49, V_SUPER_JACKPOT: 50,
   NUDGE: 51, TILT: 52,                            // coup de caisse (jeu web), tilt
   V_ATTENTION: 53, V_TILT: 54,
+  SPINNER: 55,                                    // clic mécanique du tourniquet (synthétisé par audio.js)
 };
 export const SND_MAX = 54;
 // Voix de Fanny : un seul canal (une réplique coupe la précédente).
@@ -317,6 +319,12 @@ export class Rules {
 
     let i;
     if ((i = SW.LANES.indexOf(id)) >= 0) return this.hitLane(i);
+    if (SW.LOWER_LANES.includes(id)) {
+      const out = id.startsWith('out');
+      this.add(out ? 1000 : 500, out ? 200 : 100);
+      this.hw.sound(SND.LANE);
+      return;
+    }
     if ((i = SW.DROPS.indexOf(id)) >= 0) return this.hitDrop(i);
     if (SW.BUMPERS.includes(id)) return this.hitBumper();
     if ((i = SW.TARGETS.indexOf(id)) >= 0) return this.hitTarget(i);
@@ -326,6 +334,11 @@ export class Rules {
     if (SW.SLINGS.includes(id)) { this.add(10, 10); this.hw.sound(SND.SLING); return; }
     if (id === SW.SAUCER) return this.hitSaucer();
     if (id === SW.RAMP) return this.hitRamp();
+    if (id === SW.SPINNER) {
+      this.add(this.multiball ? 1000 : 250, 25);
+      this.hw.sound(SND.SPINNER);
+      return;
+    }
   }
 
   // --- tilt : le pendule a touché son anneau

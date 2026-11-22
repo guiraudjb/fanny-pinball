@@ -379,11 +379,15 @@ _ids = {f"mur_cibles.F{i + 1}" for i, f in enumerate(_mur["fix"]) if _dans(f)}
 TROUS[:] = [t for t in TROUS if t["id"] not in _ids]
 _mur["fix"] = [f for f in _mur["fix"] if not _dans(f)]
 
-# --- couloirs T-O-U-R : rollovers à fil
+# --- couloirs T-O-U-R et couloirs du bas : rollovers à fil
 l, w = V(DETECTION["rollover_lumiere"])
 for ln in GEO["lanes"]:
     trou(f"rollover_{ln['letter']}", f"lumière du rollover {ln['letter']}", ln["x"], ln["y"], forme="oblong", l=l, w=w, angle=90)
     piece(id=f"rollover_{ln['letter']}", nom=f"Rollover {ln['letter']} : support imprimé + KW11 + fil", type="rollover",
+          x=ln["x"], y=ln["y"])
+for ln in GEO.get("lowerLanes", []):
+    trou(f"rollover_{ln['id']}", f"lumière du rollover bas {ln['id']}", ln["x"], ln["y"], forme="oblong", l=l, w=w, angle=90)
+    piece(id=f"rollover_{ln['id']}", nom=f"Rollover bas {ln['id']} : support imprimé + KW11 + fil", type="rollover",
           x=ln["x"], y=ln["y"])
 
 # --- le Cercle (cuvette + éjecteur sous le plateau)
@@ -451,10 +455,10 @@ for i in range(1, len(chemin)):
 L_RAMPE = acc[-1]
 Z_HAUT = V(RAMPE["z_haut"]); PENTE = math.tan(math.radians(V(RAMPE["pente_entree"])))
 Z_FIN = 34.0               # fond au-dessus du plateau en sortie (> Ø 27 mm : aucune bille coincée dessous, retombe dans le couloir)
-L_DESC = 120.0
+L_DESC = L_RAMPE * (2.0 / 3.0)   # pente descendante douce dès le premier tiers de la rampe (s = L / 3)
 
 
-# Profil en long : montée, palier, descente jusqu'à Z_FIN en sortie (au-dessus du couloir de retour droit).
+# Profil en long : montée, palier, puis légère pente descendante dès le premier tiers jusqu'à Z_FIN en sortie.
 # Chaque changement de pente est un raccord parabolique (tôle cintrée) : une cassure franche faisait décoller
 # la bille. Raccords : (abscisse, variation de pente, demi-longueur) ; rayon de courbure = 2 × demi-longueur / variation.
 # Le fond part avec la pente de la languette d'entrée (P0) : pas de bosse où la bille décollerait.
@@ -462,7 +466,7 @@ L_LANG = 30.0; P0 = V(RAMPE["ep"]) / L_LANG
 _S1 = 20.0
 _S2 = (Z_HAUT + (PENTE - P0) * _S1) / PENTE
 _S3 = L_RAMPE - L_DESC
-RACCORDS = [(_S1, PENTE - P0, 20.0), (_S2, -PENTE, 50.0), (_S3, -(Z_HAUT - Z_FIN) / L_DESC, 40.0)]
+RACCORDS = [(_S1, PENTE - P0, 20.0), (_S2, -PENTE, 50.0), (_S3, -(Z_HAUT - Z_FIN) / L_DESC, 60.0)]
 
 
 def z_rampe(s):
@@ -513,7 +517,8 @@ for i, (x, y, z, s) in enumerate(RAMPE_3D):
     if z < 40 and d > _hw_rampe + 10:
         continue
     supports.append((x, y, z, s)); s_next = s + V(RAMPE["pas_supports"])
-    PATTES.append({"x": x, "y": y, "z": z, "d": (dx, dy), "n": n, "dist": d, "bord": bord})
+    dz = (b[2] - a[2]) / max(1e-3, b[3] - a[3])
+    PATTES.append({"x": x, "y": y, "z": z, "dz": dz, "d": (dx, dy), "n": n, "dist": d, "bord": bord})
 for i, pt in enumerate(PATTES):
     piece(id=f"patte_rampe_{i + 1}", nom=f"Patte de rampe ({pt['bord']}), tôle 3 mm", type="patte", **pt,
           hw=_hw_rampe, matiere="alu 3 mm plié (ou PETG 4 mm)")
@@ -539,7 +544,7 @@ def sous_rampe(p, jeu):
 H_ENTRETOISE = 6.0
 _pb = next(p for p in PIECES if p["id"] == "piece_bouchon")
 piece(id="plastique_bouchon", nom="Plastique du bouchon (sur entretoises de 6 mm)", type="plaque", pts=GEO["bouchonPiece"],
-      r=9, ep=3, z=H_PAROI + H_ENTRETOISE, marge=4, sous_rampe=True, matiere="PETG 3 mm décoré (ou acrylique 3 mm)",
+      r=9, ep=3, z=H_PAROI + H_ENTRETOISE, marge=4, decoupe_plateau=True, sous_rampe=True, matiere="PETG 3 mm décoré (ou acrylique 3 mm)",
       entretoises=[f for f in _pb["fix"] if not sous_rampe(f, 8)], h_entretoise=H_ENTRETOISE)
 piece(id="plastique_mur_cibles", nom="Plastique du mur des cibles rondes (sur entretoises de 6 mm)", type="plaque",
       pts=_mur["pts"], r=6, ep=3, z=H_PAROI + H_ENTRETOISE, marge=4, decoupe_plateau=True,

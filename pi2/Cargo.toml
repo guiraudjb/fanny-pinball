@@ -1,0 +1,14 @@
+[package]
+name = "fanny-pinball-pi2"
+version = "0.1.0"
+edition = "2021"
+description = "Version native 2D ultra-légère de Fanny Pinball en Rust pour Raspberry Pi 2 Model B (SDL2 / OpenGL ES / KMSDRM)"
+
+[dependencies]
+sdl2 = { version = "0.37", features = ["image", "mixer"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

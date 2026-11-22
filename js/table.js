@@ -184,6 +184,15 @@ export const GEO = {
   ],
   lanePosts: [-84, -42, 0, 42, 84].map((dx) => ({ x: CX + dx, y1: 95 + YT, y2: 145 + YT })),
   lanes: ['T', 'O', 'U', 'R'].map((letter, i) => ({ letter, x: CX - 63 + 42 * i, y: 122 + YT })),
+  // couloirs du bas (sorties extérieures et retours vers les batteurs) : fils de détection (rollovers)
+  lowerLanes: [
+    { id: 'outL', kind: 'out', x: (SEP_X - GUIDE_T / 2) / 2, y: 746 + DY },
+    { id: 'inExtL', kind: 'in', x: (SEP_X + DIV_X) / 2, y: 746 + DY },
+    { id: 'inIntL', kind: 'in', x: (DIV_X + GUIDE_T / 2 + SL_X1) / 2, y: 746 + DY },
+    { id: 'inIntR', kind: 'in', x: mx((DIV_X + GUIDE_T / 2 + SL_X1) / 2), y: 746 + DY },
+    { id: 'inExtR', kind: 'in', x: mx((SEP_X + DIV_X) / 2), y: 746 + DY },
+    { id: 'outR', kind: 'out', x: mx((SEP_X - GUIDE_T / 2) / 2), y: 746 + DY },
+  ],
   // banque F-A-N-N-Y en diagonale sur le côté droit, tournée vers le flipper gauche,
   // adossée à un bloc plein (aucune bille ne peut passer derrière)
   dropBank: DROP_BANK,
@@ -207,6 +216,20 @@ export const GEO = {
   // entrées de rampe : couloir court fermé en haut, capteur près du fond
   // entrée de rampe : couloir incliné dont l'axe vise le milieu de la palette droite levée
   rampEntries: [RAMPE_E],
+  // plaque métallique tourniquet (spinner) à l'entrée de la rampe (entre la lèvre d'entrée et l'enseigne ESCALE)
+  spinner: {
+    s: 14,
+    x: RAMPE_E.M.x + RAMPE_E.u.x * 14,
+    y: RAMPE_E.M.y + RAMPE_E.u.y * 14,
+    u: RAMPE_E.u,
+    v: RAMPE_E.v,
+    half: 24.5,
+  },
+  // arceau de protection autour de la bielle du tourniquet (côté droit de la bouche de rampe)
+  spinnerGuard: [[25, -13], [35.5, -8.5], [37, 0], [35.5, 8.5], [25, 13]].map(([lx, ly]) => [
+    RAMPE_E.M.x + RAMPE_E.u.x * 14 + RAMPE_E.v.x * lx - RAMPE_E.u.x * ly,
+    RAMPE_E.M.y + RAMPE_E.u.y * 14 + RAMPE_E.v.y * lx - RAMPE_E.u.y * ly,
+  ]),
   // une seule rampe, qui exploite l'arrondi supérieur du plateau
   ramps: { L: null },
   inlaneTop: { x: (SEP_X + DIV_X) / 2, y: 690 + DY },  // haut du couloir de retour extérieur (sortie de rampe)
@@ -301,7 +324,7 @@ export function buildTable(engine) {
   const world = engine.world;
   const add = (b) => { Composite.add(world, b); return b; };
   const T = {
-    walls: [], flippers: [], bumpers: [], slings: [], drops: [], standups: [], lanes: [],
+    walls: [], flippers: [], bumpers: [], slings: [], drops: [], standups: [], lanes: [], lowerLanes: [],
     rampSensors: [], saucer: null, drain: null, gate: null,
   };
 
@@ -393,6 +416,11 @@ export function buildTable(engine) {
   }
   GEO.lanes.forEach((l, i) => {
     T.lanes.push(add(Bodies.rectangle(l.x, l.y, 30, 10, { isStatic: true, isSensor: true, label: 'lane', plugin: { idx: i } })));
+  });
+  GEO.lowerLanes.forEach((l, i) => {
+    T.lowerLanes.push(add(Bodies.rectangle(l.x, l.y, 26, 10, {
+      isStatic: true, isSensor: true, label: 'lowerLane', plugin: { idx: i, id: l.id, kind: l.kind },
+    })));
   });
 
   // --- cibles tombantes F A N N Y (retirées / remises par sim.js)
@@ -523,6 +551,17 @@ export function buildTable(engine) {
       isStatic: true, isSensor: true, angle: Math.atan2(r.v.y, r.v.x), label: 'rampEntry',
       plugin: { side: r.side, u: r.u },
     })));
+  }
+
+  // --- guide de protection de la bielle du tourniquet (empêche la bille de frapper la tige de contact)
+  if (GEO.spinnerGuard) {
+    const sg = GEO.spinnerGuard;
+    for (let i = 0; i < sg.length - 1; i++) {
+      T.walls.push(add(seg(...sg[i], ...sg[i + 1], 4, { plugin: { hidden: true, keep: true } })));
+    }
+    for (const [gx, gy] of sg) {
+      T.walls.push(add(roundBody(gx, gy, 2.2, { ...STATIC, label: 'wall', plugin: { hidden: true, keep: true } })));
+    }
   }
 
   // --- bras du tablier : leur face suit le bord avant du tablier

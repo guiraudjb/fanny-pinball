@@ -53,7 +53,7 @@ const MATIERES = {
   verre: [0.3, 0.05],
   plastique: [0.55, 0.15],   // guides et carcasses imprimés
   acrylique: [0.5, 0.12],
-  rampe: [0.35, 0.12],
+  rampe: [0.22, 0.04],       // PVC lisse : peu de frottement et de rebond pour monter et parcourir la rampe sans freiner
   metal: [0.45, 0.1],
   caoutchouc: [0.8, 0.7],    // anneaux, lance-pierres
   palette: [0.65, 0.6],      // caoutchouc rouge de palette (rebond fidèle pour les dead bounces)
@@ -67,11 +67,12 @@ const GR = { WALL: 0x0001, GATE: 0x0002, BALL: 0x0004 };
 const groupes = (membre, filtre) => (membre << 16) | filtre;
 
 // hauteur du fond de rampe à l'abscisse s (même profil que cao/modele.py et render3d.js)
-const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), desc: 120 };
+const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180) };
 function zRampe(s, L) {
-  const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente, s3 = L - RAMPE.desc;
+  const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente;
+  const desc = L * (2 / 3), s3 = L - desc;
   let z = p0 * Math.max(0, s);   // pente de la languette d'entrée (3 mm sur 30)
-  for (const [sk, dm, h] of [[s1, RAMPE.pente - p0, 20], [s2, -RAMPE.pente, 50], [s3, -(RAMPE.z - RAMPE.zFin) / RAMPE.desc, 40]]) {
+  for (const [sk, dm, h] of [[s1, RAMPE.pente - p0, 20], [s2, -RAMPE.pente, 50], [s3, -(RAMPE.z - RAMPE.zFin) / desc, 60]]) {
     const x = s - sk;
     z += dm * (x < -h ? 0 : x > h ? x : (x + h) ** 2 / (4 * h));
   }
@@ -158,12 +159,15 @@ export class Sim {
     this.slingTune = { ...SLING_TUNE };
     this.shooterClosed = false;
     this.dropsUp = GEO.drops.map(() => true);
+    this.spinner = { angle: 0, omega: 0, tickAngle: 0 };   // tourniquet métallique à l'entrée de la rampe
     this.flash = {};            // nom → instant du dernier choc (pour le rendu)
     this.flashDir = {};         // nom → vecteur unitaire (x, y) du choc (bascule de jupe de bumper)
     this.cool = {};             // anti-rebond des contacts
     this.info = new Map();      // poignée de collider → rôle (bumper, sling, cible…)
 
-    this.world = new R.World({ x: 0, y: G * Math.sin(PENTE), z: G * Math.cos(PENTE) });
+    this.penteDeg = 6.5;
+    this.pente = PENTE;
+    this.world = new R.World({ x: 0, y: G * Math.sin(this.pente), z: G * Math.cos(this.pente) });
     this.world.timestep = DT_MS / 1000;
     this.world.integrationParameters.numSolverIterations = 8;
     // échelle des objets : sans elle Rapier tolère 5 mm d'interpénétration (réglé pour des objets d'un mètre),
@@ -171,6 +175,16 @@ export class Sim {
     this.world.integrationParameters.lengthUnit = 0.01;
     this.events = new R.EventQueue(true);
     this.construire(surfaces);
+  }
+
+  // Réglage de la difficulté par l'inclinaison du plateau (vérins de pieds : 5° facile → 8° extrême)
+  setPente(deg) {
+    const d = Math.round(Math.max(4.5, Math.min(8.5, Number(deg) || 6.5)) * 10) / 10;
+    this.penteDeg = d;
+    this.pente = (d * Math.PI) / 180;
+    this.world.gravity = { x: 0, y: G * Math.sin(this.pente), z: G * Math.cos(this.pente) };
+    for (const b of this.balls) if (!b.retiree && b.body.isEnabled()) b.body.wakeUp();
+    return d;
   }
 
   // ---------------------------------------------------------------- monde
@@ -250,6 +264,7 @@ export class Sim {
     T.standups.forEach((b) => this.ajouter(b, 0, 30, 'cible', { type: 'standup', ...b.plugin }));
     (T.leftTargets || []).forEach((b) => this.ajouter(b, 0, 30, 'cible', { type: 'target', ...b.plugin }));
     T.lanes.forEach((b) => this.ajouter(b, 0, 10, 'bois', { type: 'lane', ...b.plugin }));
+    (T.lowerLanes || []).forEach((b) => this.ajouter(b, 0, 10, 'bois', { type: 'lowerLane', ...b.plugin }));
     this.ajouter(T.saucer, 0, 8, 'bois', { type: 'saucer' });
     // portillon à sens unique en haut du couloir de lancement : pavé analytique épais de 20 mm (face supérieure sur
     // la ligne de T.gate, épaisseur vers le bas du couloir) pour qu'une bille ne puisse jamais s'y encastrer
@@ -317,6 +332,7 @@ export class Sim {
     for (const b of this.balls) this.removeBall(b, false);
     this.balls = [];
     this.shooterClosed = false;
+    this.spinner = { angle: 0, omega: 0, tickAngle: 0 };
     this.resetDrops();
   }
 
@@ -428,7 +444,13 @@ export class Sim {
         break;
       case 'lane':
         if (!this.debounce(`lane${r.idx}`, 300)) break;
+        this.flash[`lane${r.idx}`] = this.time;
         this.onSwitch(SW.LANES[r.idx]);
+        break;
+      case 'lowerLane':
+        if (!this.debounce(r.id, 300)) break;
+        this.flash[r.id] = this.time;
+        this.onSwitch(r.id);
         break;
       case 'saucer':
         if (this.time < fp.saucerIgnoreUntil || b.vitesse > SAUCER_MAX_V) break; // trop rapide : elle saute le trou
@@ -516,6 +538,46 @@ export class Sim {
         fp.mode = 'gone';
         this.post.push(() => this.removeBall(b, true));
         this.onSwitch(SW.DRAIN);
+      }
+    }
+    this.stepSpinner(dt);
+  }
+
+  // Tourniquet métallique (spinner) à l'entrée de la rampe : la bille lance la plaque en rotation 360°
+  // proportionnellement à sa vitesse ; chaque tour complet ferme le contact SW.SPINNER (clic + points).
+  stepSpinner(dt) {
+    const sp = GEO.spinner;
+    if (!sp) return;
+    const s = this.spinner;
+    for (const b of this.balls) {
+      const fp = b.plugin.fp;
+      if (fp.mode !== 'table' || b.retiree || b.hauteur > 18) continue;
+      const dx = b.position.x - sp.x, dy = b.position.y - sp.y;
+      const along = dx * sp.u.x + dy * sp.u.y;
+      const across = dx * sp.v.x + dy * sp.v.y;
+      if (Math.abs(along) < 12 && Math.abs(across) < sp.half - 2 && this.time - (fp.spinnerAt ?? -1e9) > 150) {
+        const v = b.body.linvel();
+        const vu = v.x * sp.u.x + v.y * sp.u.y;
+        if (Math.abs(vu) > 0.12) {
+          fp.spinnerAt = this.time;
+          const wHit = Math.max(-75, Math.min(75, vu * 30));
+          s.omega = Math.abs(wHit) > Math.abs(s.omega) ? wHit : Math.max(-85, Math.min(85, s.omega + wHit * 0.45));
+          this.flash.spinner = this.time;
+        }
+      }
+    }
+    if (Math.abs(s.omega) > 0.01 || Math.abs(Math.sin(s.angle)) > 0.002) {
+      const dtS = dt / 1000;
+      const drag = -0.82 * s.omega - (Math.abs(s.omega) > 0.2 ? Math.sign(s.omega) * 0.45 : 0);
+      s.omega += (-26 * Math.sin(s.angle) + drag) * dtS;
+      s.angle += s.omega * dtS;
+      while (Math.abs(s.angle - s.tickAngle) >= Math.PI * 2) {
+        s.tickAngle += Math.sign(s.angle - s.tickAngle) * Math.PI * 2;
+        this.flash.spinner = this.time;
+        this.onSwitch(SW.SPINNER);
+      }
+      if (Math.abs(s.omega) < 0.06 && Math.abs(Math.sin(s.angle)) < 0.025 && Math.cos(s.angle) > 0.9) {
+        s.angle = 0; s.omega = 0; s.tickAngle = 0;
       }
     }
   }

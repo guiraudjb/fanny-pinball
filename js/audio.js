@@ -110,6 +110,7 @@ export function play(id) {
     case SND.DROPS_DONE: arp([523, 659, 784, 1046]); break;
     case SND.RAMP: tone(300, 0.5, { type: 'sawtooth', vol: 0.12, slide: 3 }); break;
     case SND.LANE: tone(880, 0.1, { type: 'triangle', vol: 0.25 }); break;
+    case SND.SPINNER: tone(1340 + Math.random() * 140, 0.025, { type: 'triangle', vol: 0.18 }); noise(0.014, { vol: 0.16, freq: 3200 }); break;
     case SND.LANES_DONE: arp([660, 880, 1100, 1320], 0.07, 'triangle', 0.25); break;
     case SND.STANDUP: clac(1.4); break;
     case SND.SAUCER: tone(180, 0.3, { type: 'triangle', vol: 0.3, slide: 0.5 }); break;
