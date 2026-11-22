@@ -144,7 +144,7 @@ const AUTOPLAY_DELAI_MS = 2500;   // courte pause après la fin de partie / lote
 const robot = new Robot(sim, rules, {
   flip: (side, down) => setFlipper(side, down),
   launch: (force) => { sim.force = force; rules.onSwitch(SW.LAUNCH); },
-  nudge: () => nudge(),
+  nudge: (dx = 0) => nudge(dx),
 });
 function setAutoplay(on) {
   autoplay = !!on;
@@ -337,9 +337,10 @@ function frame(t) {
     drawSegDisplay(dispScore, paused ? '  PAUSE ' : d.score);
     drawSegDisplay(dispInfo, d.info, { on: '#ffb020', off: 'rgba(255,176,32,0.08)' });
   }
+  const geste = autoplay ? robot.gesteActif() : null;
   cityEl.textContent = rules.mode === 'play' || rules.mode === 'bonus'
-    ? `Escale : ${CITIES[rules.city].charAt(0) + CITIES[rules.city].slice(1).toLowerCase()} · bille ${rules.ball} · bonus ×${rules.mult}${rules.multiball ? ' · MULTIBALL' : ''}`
-    : `Record : ${rules.highScore.toLocaleString('fr-FR')}${rules.credits ? ` · parties gratuites : ${rules.credits}` : ''}`;
+    ? `${autoplay ? `Autoplay${geste ? ` · ${geste}` : ''} — ` : ''}Escale : ${CITIES[rules.city].charAt(0) + CITIES[rules.city].slice(1).toLowerCase()} · bille ${rules.ball} · bonus ×${rules.mult}${rules.multiball ? ' · MULTIBALL' : ''}`
+    : `${autoplay ? 'Autoplay · ' : ''}Record : ${rules.highScore.toLocaleString('fr-FR')}${rules.credits ? ` · parties gratuites : ${rules.credits}` : ''}`;
   startBtn.hidden = !rules.canStart();
 
   // musique : générique hors partie (une fois le son déverrouillé), thème en partie

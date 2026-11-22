@@ -467,9 +467,9 @@ export class Sim {
     for (const b of this.balls) {
       const fp = b.plugin.fp;
       if (fp.mode !== 'table') continue;
-      // portillon : franchi vers le haut, il ferme ensuite le couloir de lancement
+      // portillon : franchi vers le haut et entré sur le plateau, il ferme ensuite le couloir de lancement
       const { x, y } = b.position;
-      if (y < GEO.gate.y - GEO.gate.drop / 2 - BALL_R - 6) fp.gate = true;
+      if (y < GEO.gate.y - GEO.gate.drop / 2 - BALL_R - 6 && x < GEO.playRight - 4) fp.gate = true;
       else if (x > GEO.playRight && y > GEO.gate.y + GEO.gate.drop / 2 + BALL_R + 4) fp.gate = false;
       b.collider.setCollisionGroups(groupes(GR.BALL, GR.WALL | GR.BALL | (fp.gate ? GR.GATE : 0)));
     }
@@ -544,7 +544,7 @@ export class Sim {
       const { x, y } = b.position;
       // bille tenue volontairement sur une palette levée : on ne la secoue pas
       const cradled = y > GEO.flippers[0].py - 90 && ((this.held.L && x < CX_TABLE) || (this.held.R && x >= CX_TABLE));
-      if (b.vitesse < 0.15 * 60 * MM && !cradled) fp.still += dtMs; else fp.still = 0;
+      if (b.vitesse < 0.03 && !cradled) fp.still += dtMs; else fp.still = 0;
       if (fp.still > 1500) {
         // secousses de plus en plus fortes, dirigées vers le centre de la table (comme un joueur qui
         // secoue la caisse) ; le compteur repart quand la bille a quitté l'endroit

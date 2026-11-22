@@ -62,7 +62,7 @@ async function partie(n, maxMin) {
       if (down) rules.onSwitch(side === 'L' ? SW.FLIP_L : SW.FLIP_R, true);
     },
     launch: (force) => { sim.force = force; rules.onSwitch(SW.LAUNCH); },
-    nudge: () => sim.nudge(),
+    nudge: (dx = 0) => sim.nudge(dx),
   };
   const robot = new Robot(sim, rules, act, tirs);
   robot.trace = !!arg('trace');
@@ -121,7 +121,7 @@ async function partie(n, maxMin) {
     partie: n, terminee: rules.mode === 'over', duree_min: +(sim.time / 60000).toFixed(1), score: rules.score,
     billes, extra_balls: rules.extrasGiven, multiballs: rules.mbCount, escales: rules.city, carreaux: rules.carreaux,
     rampes: comptes.ramp || 0, contacts: comptes, pertes, blocages: lieux.sort((a, c) => c.fois - a.fois),
-    robot: { ...robot.stats, tirs_vises: robot.journal.filter((l) => l.includes(' tir ')).length },
+    robot: { ...robot.stats, tirs_vises: Object.values(robot.stats.tirs).reduce((a, v) => a + v, 0) },
     tilts: comptes.tilt || 0,
   };
 }
@@ -133,7 +133,8 @@ for (let n = 1; n <= Number(arg('parties', 1)); n++) {
   console.log(`\n=== partie ${r.partie} : ${r.terminee ? 'terminée' : 'INACHEVÉE'} en ${r.duree_min} min de jeu — ${r.score.toLocaleString('fr-FR')} points`);
   for (const bl of r.billes) console.log(`  bille ${bl.bille} : ${bl.duree_s} s, ${bl.points.toLocaleString('fr-FR')} pts${bl.inachevee ? ' (en cours)' : ''}`);
   console.log(`  rampes ${r.rampes}, escales ${r.escales}, multiballs ${r.multiballs}, extra balls ${r.extra_balls}, carreaux ${r.carreaux}, tilts ${r.tilts}`);
-  console.log(`  robot : ${r.robot.berceaux} berceaux, ${r.robot.tirs_vises} tirs visés, ${r.robot.sauvetages} frappes de sauvetage`);
+  console.log(`  robot : ${r.robot.berceaux} berceaux, ${r.robot.tirs_vises} tirs visés, ${r.robot.sauvetages} frappes de sauvetage, ${r.robot.coups} bourrages`);
+  console.log(`  gestes : ${Object.entries(r.robot.gestes || {}).sort().map(([k, v]) => `${k} ${v}`).join(', ') || 'aucun'}`);
   console.log(`  pertes : ${r.pertes.map((p) => `${p.ou}${p.sauvee ? ' (sauvée)' : ''}`).join(', ') || 'aucune'}`);
   console.log(`  blocages (bille immobile 1,5 s, secouée) : ${r.blocages.map((l) => `(${l.x},${l.y}) ×${l.fois}${l.secousses > 1 ? ` jusqu'à ${l.secousses} secousses` : ''}`).join(' ; ') || 'aucun'}`);
   console.log(`  contacts : ${Object.entries(r.contacts).sort().map(([k, v]) => `${k} ${v}`).join(', ')}`);
