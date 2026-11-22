@@ -3,7 +3,7 @@
 // fichiers) : à chaque nouvelle version, l'ancien cache est remplacé au chargement suivant.
 
 // <version>
-const VERSION = 'a0e0c4aa20b4';
+const VERSION = 'a4459722f306';
 // </version>
 const CACHE = `fanny-pinball-${VERSION}`;
 const PRECACHE = [

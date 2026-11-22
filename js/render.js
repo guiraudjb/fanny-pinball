@@ -322,19 +322,8 @@ export class Renderer {
     T.slings.forEach((b, i) => {
       const hit = now - (sim.flash[`sling${i}`] ?? -1e9) < 90;
       const pts = b.vertices.map((v) => [v.x, v.y]);
-      this.plastic(pts, 5);
-      // boule de pétanque gravée au centre de gravité (stries + reflet)
-      const gx = pts.reduce((t, p) => t + p[0], 0) / pts.length, gy = pts.reduce((t, p) => t + p[1], 0) / pts.length;
-      const br = 6.5;
-      const gb = ctx.createRadialGradient(gx - 2, gy - 2, 1, gx, gy, br);
-      gb.addColorStop(0, '#ffffff'); gb.addColorStop(0.45, '#b9bec6'); gb.addColorStop(1, '#4c535e');
-      ctx.beginPath(); ctx.arc(gx, gy, br, 0, Math.PI * 2); ctx.fillStyle = gb; ctx.fill();
-      ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 1; ctx.stroke();
-      ctx.save(); ctx.beginPath(); ctx.arc(gx, gy, br, 0, Math.PI * 2); ctx.clip();
-      ctx.strokeStyle = 'rgba(40,40,50,0.6)'; ctx.lineWidth = 0.8;
-      for (const d of [-2.5, 2.5]) { ctx.beginPath(); ctx.ellipse(gx + d, gy, 1.6, br, 0.5, 0, Math.PI * 2); ctx.stroke(); }
-      ctx.restore();
-      if (hit) { this.roundedPath(pts, 5); ctx.fillStyle = 'rgba(255,246,190,0.55)'; ctx.fill(); }
+      this.slingPlastic(pts, 4.5);
+      if (hit) { this.offsetPath(pts, 4.5); ctx.fillStyle = 'rgba(255,246,190,0.55)'; ctx.fill(); }
       // élastique blanc et butoir rouge au milieu (la face qui frappe)
       const { A, C: Cc } = b.plugin;
       ctx.lineCap = 'round';
@@ -569,6 +558,113 @@ export class Renderer {
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 8.5; ctx.stroke();
     ctx.strokeStyle = '#e9b44c'; ctx.lineWidth = 6.5; ctx.stroke();
+    ctx.restore();
+  }
+
+  // Contour extérieur d'un polygone convexe décalé de m mm (somme de Minkowski avec un disque de rayon m,
+  // identique au makeOffset2D(m, join=0) de FreeCAD : suit les pointes aiguës sans les tronquer).
+  offsetPath(pts, m) {
+    const ctx = this.ctx, n = pts.length;
+    const cx = pts.reduce((t, p) => t + p[0], 0) / n, cy = pts.reduce((t, p) => t + p[1], 0) / n;
+    const nrm = [], ang = [];
+    for (let i = 0; i < n; i++) {
+      const a = pts[i], b = pts[(i + 1) % n];
+      const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+      let nx = -dy / l, ny = dx / l;
+      if (nx * (cx - a[0]) + ny * (cy - a[1]) > 0) { nx = -nx; ny = -ny; }
+      nrm.push([nx, ny]);
+      ang.push(Math.atan2(ny, nx));
+    }
+    ctx.beginPath();
+    for (let i = 0; i < n; i++) {
+      const p = pts[i], prev = (i - 1 + n) % n;
+      const acw = nrm[prev][0] * nrm[i][1] - nrm[prev][1] * nrm[i][0] < 0;
+      ctx.arc(p[0], p[1], m, ang[prev], ang[i], acw);
+    }
+    ctx.closePath();
+  }
+
+  // Plastron supérieur sérigraphié d'un lance-pierre, ajusté au débord réel (marge = 7 mm en CAO 3D, 4,5 mm en 2D) :
+  // bordure ocre cernée de brun qui épouse tout le pourtour (y compris les pointes aiguës à 22° et 43,5°),
+  // rayons de soleil et boule de pétanque gravée au centre inscrit, étoile provençale dans la pointe haute.
+  slingPlastic(pts, marge = 4.5, bleed = 0) {
+    const ctx = this.ctx;
+    const [p0, p1, p2] = pts;
+    const l0 = Math.hypot(p1[0] - p2[0], p1[1] - p2[1]);
+    const l1 = Math.hypot(p2[0] - p0[0], p2[1] - p0[1]);
+    const l2 = Math.hypot(p0[0] - p1[0], p0[1] - p1[1]);
+    const perim = l0 + l1 + l2 || 1;
+    const ix = (l0 * p0[0] + l1 * p1[0] + l2 * p2[0]) / perim;
+    const iy = (l0 * p0[1] + l1 * p1[1] + l2 * p2[1]) / perim;
+    const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
+    const x0 = Math.min(...xs) - marge, x1 = Math.max(...xs) + marge;
+    const y0 = Math.min(...ys) - marge, y1 = Math.max(...ys) + marge;
+    const R = Math.hypot(x1 - x0, y1 - y0);
+    ctx.save();
+    // bordure en couches concentriques : brun extérieur (+ fond perdu en 3D), liseré ocre, filet brun intérieur
+    this.offsetPath(pts, marge + bleed);
+    ctx.fillStyle = '#2b1a10'; ctx.fill();
+    this.offsetPath(pts, marge * 0.82);
+    ctx.fillStyle = '#e9b44c'; ctx.fill();
+    this.offsetPath(pts, marge * 0.34);
+    ctx.fillStyle = '#2b1a10'; ctx.fill();
+    // champ intérieur : dégradé lavande → indigo, rayons de soleil depuis le centre inscrit, pois crème
+    this.offsetPath(pts, marge * 0.17);
+    ctx.save();
+    ctx.clip();
+    const g = ctx.createLinearGradient(ix, y0, ix, y1);
+    g.addColorStop(0, '#7d6bb8'); g.addColorStop(1, '#3f3a7c');
+    ctx.fillStyle = g; ctx.fillRect(x0 - 2, y0 - 2, x1 - x0 + 4, y1 - y0 + 4);
+    ctx.fillStyle = 'rgba(242,182,50,0.22)';
+    for (let k = 0; k < 16; k += 2) {
+      const a0 = (k * Math.PI) / 8, a1 = ((k + 1) * Math.PI) / 8;
+      ctx.beginPath(); ctx.moveTo(ix, iy);
+      ctx.lineTo(ix + Math.cos(a0) * R, iy + Math.sin(a0) * R);
+      ctx.lineTo(ix + Math.cos(a1) * R, iy + Math.sin(a1) * R);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,244,214,0.40)';
+    for (let y = Math.floor(y0 / 10) * 10, row = 0; y < y1 + 10; y += 10, row++) {
+      for (let x = Math.floor(x0 / 10) * 10 + (row % 2) * 5; x < x1 + 10; x += 10) {
+        ctx.beginPath(); ctx.arc(x, y, 1.8, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
+    // étoile provençale dans la pointe haute, sur la bissectrice du sommet supérieur
+    let topI = 0;
+    if (pts[1][1] < pts[topI][1]) topI = 1;
+    if (pts[2][1] < pts[topI][1]) topI = 2;
+    const tp = pts[topI], qa = pts[(topI + 1) % 3], qb = pts[(topI + 2) % 3];
+    const la = Math.hypot(qa[0] - tp[0], qa[1] - tp[1]) || 1;
+    const lb = Math.hypot(qb[0] - tp[0], qb[1] - tp[1]) || 1;
+    let bx = (qa[0] - tp[0]) / la + (qb[0] - tp[0]) / lb;
+    let by = (qa[1] - tp[1]) / la + (qb[1] - tp[1]) / lb;
+    const bl = Math.hypot(bx, by) || 1; bx /= bl; by /= bl;
+    const dTop = Math.hypot(ix - tp[0], iy - tp[1]);
+    if (dTop > 45) {
+      const sx = tp[0] + bx * dTop * 0.52, sy = tp[1] + by * dTop * 0.52;
+      const sr = marge >= 6 ? 4.8 : 4.0;
+      ctx.beginPath();
+      for (let j = 0; j < 10; j++) {
+        const rr = j % 2 ? sr * 0.44 : sr, a = -Math.PI / 2 + (j * Math.PI) / 5;
+        ctx.lineTo(sx + Math.cos(a) * rr, sy + Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fillStyle = '#ffd23f'; ctx.fill();
+      ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 0.9; ctx.stroke();
+    }
+    // boule de pétanque gravée au centre inscrit (stries + reflet)
+    const br = marge >= 6 ? 7.5 : 6.5;
+    const gb = ctx.createRadialGradient(ix - br * 0.3, iy - br * 0.3, br * 0.15, ix, iy, br);
+    gb.addColorStop(0, '#ffffff'); gb.addColorStop(0.45, '#b9bec6'); gb.addColorStop(1, '#4c535e');
+    ctx.beginPath(); ctx.arc(ix, iy, br, 0, Math.PI * 2); ctx.fillStyle = gb; ctx.fill();
+    ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 1.1; ctx.stroke();
+    ctx.save(); ctx.beginPath(); ctx.arc(ix, iy, br, 0, Math.PI * 2); ctx.clip();
+    ctx.strokeStyle = 'rgba(40,40,50,0.6)'; ctx.lineWidth = 0.85;
+    for (const d of [-br * 0.38, br * 0.38]) {
+      ctx.beginPath(); ctx.ellipse(ix + d, iy, br * 0.25, br, 0.5, 0, Math.PI * 2); ctx.stroke();
+    }
+    ctx.restore();
     ctx.restore();
   }
 
