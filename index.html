@@ -32,27 +32,12 @@
       <button id="autoplay" type="button" title="Touche A : le robot joue des parties tout seul">Autoplay</button>
       <button id="mute" type="button">Son : oui</button>
       <button id="view" type="button" title="Touche V : 2D, 3D, 3D légère">Vue : 2D</button>
+      <button id="aide" type="button" title="Touche ? ou F1 : commandes et touches du jeu">Aide</button>
       <button id="camera" type="button" title="Touche K" hidden>Caméra</button>
       <button id="verrou" type="button" title="Touche L : fige l'angle et le zoom pour jouer" hidden>Verrouiller la vue</button>
       <button id="habillage" type="button" title="Touche H : décor de la caisse" hidden>Habillage : bois</button>
       <button id="transport" type="button" title="Touche T : fronton assemblé ou rabattu pour le transport" hidden>Fronton : assemblé</button>
     </div>
-    <details class="help">
-      <summary>Commandes</summary>
-      <ul>
-        <li><kbd>Maj gauche</kbd> / <kbd>←</kbd> : flipper gauche</li>
-        <li><kbd>Maj droite</kbd> / <kbd>→</kbd> : flipper droit</li>
-        <li><kbd>↓</kbd> : lanceur (maintenir pour tirer, relâcher pour lancer : plus on tire, plus il frappe fort)</li>
-        <li><kbd>Espace</kbd> / <kbd>↑</kbd> : bourrage frontal · <kbd>Ctrl gauche</kbd> / <kbd>Ctrl droit</kbd> : bourrage latéral</li>
-        <li><kbd>Entrée</kbd> : nouvelle partie · <kbd>A</kbd> : autoplay (le robot joue seul) · <kbd>P</kbd> : pause · <kbd>M</kbd> : son · <kbd>V</kbd> : vue 2D / 3D / 3D légère · <kbd>K</kbd> : caméra (en « tour » : glisser pour tourner, molette pour zoomer)</li>
-        <li>Caméra « machine » : glisser pour choisir l'angle, molette ou pincer pour zoomer, puis <kbd>L</kbd> ou « Verrouiller la vue » pour jouer avec la souris ou au doigt</li>
-        <li><kbd>H</kbd> ou « Habillage » (caméras machine et tour) : change le décor de la caisse</li>
-        <li><kbd>T</kbd> ou « Fronton » (caméras machine et tour) : rabat le fronton sur la caisse pour le transport, ou le relève</li>
-        <li>Tactile : moitié gauche / droite du plateau, couloir de droite pour lancer</li>
-      </ul>
-      <p>Avant le lancement, les flippers déplacent le couloir allumé (tir parfait).</p>
-      <p>F‑A‑N‑N‑Y ouvre le Cercle · 2 boules placées = multiball Triplette · 2 rampes = escale suivante · couloirs T‑O‑U‑R = bonus ×.</p>
-    </details>
   </section>
   <section id="playfield" class="playfield">
     <canvas id="table" aria-label="Plateau du flipper"></canvas>
@@ -62,6 +47,58 @@
     </div>
   </section>
 </main>
+<dialog id="aide-dialog" class="aide-dialog" aria-labelledby="aide-titre">
+  <div class="aide-contenu">
+    <div class="aide-entete">
+      <h2 id="aide-titre">Aide — Touches du jeu</h2>
+      <button id="aide-fermer" class="aide-fermer" type="button" aria-label="Fermer l'aide">×</button>
+    </div>
+    <div class="aide-corps">
+      <section class="aide-bloc">
+        <h3>Flips (batteurs)</h3>
+        <dl class="aide-touches">
+          <div><dt>Flipper gauche</dt><dd><kbd>Maj gauche</kbd> ou <kbd>←</kbd></dd></div>
+          <div><dt>Flipper droit</dt><dd><kbd>Maj droite</kbd> ou <kbd>→</kbd></dd></div>
+        </dl>
+        <p class="aide-note">Avant le lancement et en haut du plateau, les flips décalent les couloirs <strong>T-O-U-R</strong> allumés.</p>
+      </section>
+
+      <section class="aide-bloc">
+        <h3>Lancer de boule</h3>
+        <dl class="aide-touches">
+          <div><dt>Lanceur à ressort</dt><dd><kbd>↓</kbd> ou <kbd>Entrée</kbd></dd></div>
+        </dl>
+        <p class="aide-note">Maintenir pour tirer le ressort, relâcher pour lancer : plus on tire, plus le coup est fort.</p>
+      </section>
+
+      <section class="aide-bloc">
+        <h3>Bourrage (coups de caisse)</h3>
+        <dl class="aide-touches">
+          <div><dt>Frontal (vers le haut)</dt><dd><kbd>Espace</kbd> ou <kbd>↑</kbd></dd></div>
+          <div><dt>Latéral gauche</dt><dd><kbd>Ctrl gauche</kbd></dd></div>
+          <div><dt>Latéral droit</dt><dd><kbd>Ctrl droit</kbd></dd></div>
+        </dl>
+        <p class="aide-note">Des coups trop rapprochés font osciller le pendule : deux <strong>ATTENTION</strong>, puis <strong>TILT</strong>.</p>
+      </section>
+
+      <section class="aide-bloc">
+        <h3>Autres commandes &amp; tactile</h3>
+        <dl class="aide-touches">
+          <div><dt>Nouvelle partie</dt><dd><kbd>Entrée</kbd> ou <kbd>S</kbd></dd></div>
+          <div><dt>Autoplay (robot)</dt><dd><kbd>A</kbd></dd></div>
+          <div><dt>Pause / Son / Pièce</dt><dd><kbd>P</kbd> · <kbd>M</kbd> · <kbd>C</kbd></dd></div>
+          <div><dt>Vue 2D / 3D / 3D légère</dt><dd><kbd>V</kbd></dd></div>
+          <div><dt>Caméra 3D / Verrouiller vue</dt><dd><kbd>K</kbd> · <kbd>L</kbd></dd></div>
+          <div><dt>Habillage / Fronton</dt><dd><kbd>H</kbd> · <kbd>T</kbd></dd></div>
+          <div><dt>Ouvrir / fermer l'aide</dt><dd><kbd>?</kbd> ou <kbd>F1</kbd></dd></div>
+          <div><dt>Tactile</dt><dd>Moitié gauche / droite : flips · couloir droit : lancer</dd></div>
+        </dl>
+      </section>
+
+      <p class="aide-regles">F‑A‑N‑N‑Y ouvre le Cercle · Cercle allumé = multiball Triplette · Rampe = escale suivante · Couloirs T‑O‑U‑R = bonus ×.</p>
+    </div>
+  </div>
+</dialog>
 <script src="vendor/matter.min.js"></script>
 <script type="module" src="js/main.js"></script>
 <script>

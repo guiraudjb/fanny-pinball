@@ -30,7 +30,7 @@ H = M.H
 
 # catégorie → matière dans la vue 3D
 CATEGORIES = [
-    ("guide", ["arche", "guide_retour_*", "separateur_retour_*", "deflecteur_*", "guide_tour_*"]),
+    ("guide", ["arche", "guide_retour_*", "separateur_retour_*", "deflecteur_*", "guide_tour_*", "guide_bonus_*", "sep_lanceur"]),
     ("plastique", ["piece_bouchon", "bloc_fanny", "mur_cibles", "plastique_*"]),
     ("poteau", ["poteau_*"]),
     ("support", ["patte_rampe_*", "languette_rampe"]),
@@ -42,7 +42,7 @@ CATEGORIES = [
 # actives (palettes, bumpers, cibles, poteaux caoutchoutés) restent décrites par js/table.js ; le tablier est
 # exclu (la bille passe dessous vers le trou d'évacuation).
 CATEGORIES_COLLISION = [
-    ("plastique", ["arche", "guide_retour_*", "separateur_retour_*", "deflecteur_*", "guide_tour_*",
+    ("plastique", ["arche", "guide_retour_*", "separateur_retour_*", "deflecteur_*", "guide_tour_*", "guide_bonus_*",
                    "piece_bouchon", "bloc_fanny", "mur_cibles", "cible_pointer", "cible_tirer", "cible_bouchon"]),
     ("acrylique", ["plastique_*"]),
     ("rampe", ["rampe_troncon_*"]),
@@ -51,7 +51,6 @@ CATEGORIES_COLLISION = [
 CATEGORIES_CAISSE = [
     ("bois", ["flanc_*", "facade", "arriere", "fond", "dessus_arriere", "fronton_cote_*", "fronton_dessus", "fronton_dessous"]),
     ("fronton_fond", ["fronton_fond"]),
-    ("rallonge", ["rallonge"]),
     ("pied", ["pied_*"]),
     ("quincaillerie", ["quincaillerie_*"]),
     ("barre", ["barre_verrouillage"]),
@@ -155,7 +154,6 @@ def main():
         "h_sol": sortie["h_sol"],
         "lanceur": {"axe": list(M.LANCEUR["axe"])},
         "charniere": {"y": M.CHARNIERE["y"], "z": M.CHARNIERE["z"]},
-        "rallonge": {"h": M.RALLONGE["h"]},
         "porte": {k: M.V(M.CAISSE["porte"])[k] + (M.EPC if k == "x_gauche" else 0) for k in ("x_gauche", "z_bas", "l", "h", "r")},
         # boutons : centre (repère caisse), diamètre, axe sortant
         "boutons": [{"nom": "start", "p": [M.EPC + t["x"], 0, t["z"]], "d": t["d"], "axe": [0, -1, 0]}

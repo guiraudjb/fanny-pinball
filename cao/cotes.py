@@ -36,6 +36,7 @@ PLATEAU = {
     "pente_deg": c(6.5, "choix", "pente classique des flippers (6 à 7°)"),
     "h_paroi": c(32.0, "choix", "hauteur des parois et guides imprimés au-dessus du plateau (bille 27 mm)"),
     "ep_paroi": c(8.0, "choix", "épaisseur mini d'une paroi imprimée"),
+    "encoche_cables": c((160.0, 40.0), "choix", "encoche au centre du bord arrière du plateau pour les câbles du fronton"),
 }
 
 # ------------------------------------------------------------------ visserie et fixations
@@ -113,7 +114,7 @@ CIBLES = {
 
 # ------------------------------------------------------------------ lampes
 LAMPES = {
-    "insert_jeu": c(8.0, "choix", "Ø insert = 2 × rayon de lampe du jeu + 8 mm ; acrylique coulé collé à fleur"),
+    "insert_jeu": c(0.0, "choix", "Ø insert = 2 × rayon de lampe du jeu (standards flipper 16/19/22/25 mm) ; acrylique coulé collé à fleur"),
     "led": c("WS2812B sur support imprimé sous l'insert", "choix"),
 }
 
@@ -122,7 +123,7 @@ RAMPE = {
     "larg_int": c(39.0, "choix", "largeur intérieure = bille 27 + 2 × 6"),
     "ep": c(3.0, "choix", "fond et flancs imprimés (PETG)"),
     "h_flanc": c(25.0, "choix", "hauteur des flancs au-dessus du fond"),
-    "z_haut": c(62.0, "choix", "fond de rampe au-dessus du plateau sur l'arrondi (passe au-dessus des parois de 32 mm)"),
+    "z_haut": c(48.0, "choix", "fond de rampe au-dessus du plateau sur l'arrondi (passe au-dessus des parois de 32 mm)"),
     "pente_entree": c(25.0, "choix", "pente de la montée (°) : 36 mm au moins au-dessus du toit du bouchon, que la bille passe dessous"),
     "pas_supports": c(140.0, "choix", "écart des poteaux de rampe"),
     "troncon_max": c(200.0, "choix", "longueur maxi d'un tronçon imprimé"),
@@ -183,7 +184,4 @@ CAISSE = {
                   "platine": 38.0, "sortie": 62.0}, "PW",
                   "lanceur à ressort Williams B-12445 : tige 3/8\", boîtier chromé, ressorts extérieur et intérieur, "
                   "pommeau champignon noir, embout caoutchouc ; platine de fixation intérieure (Ø en mm, longueurs le long de l'axe)"),
-    "rallonge": c({"jeu_arriere": 3.0, "encoche": (160.0, 40.0)}, "choix",
-                  "rallonge fixe du plateau (contreplaqué 12) : le plateau du jeu (42\") est plus court que celui d'une caisse WPC "
-                  "(46\") ; elle comble le vide jusqu'au panneau arrière, encoche au centre pour les câbles du fronton"),
 }

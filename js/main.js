@@ -20,6 +20,9 @@ const cityEl = document.getElementById('city');
 const startBtn = document.getElementById('start');
 const autoBtn = document.getElementById('autoplay');
 const muteBtn = document.getElementById('mute');
+const aideBtn = document.getElementById('aide');
+const aideDialog = document.getElementById('aide-dialog');
+const aideFermerBtn = document.getElementById('aide-fermer');
 
 // Le « matériel » vu par les règles : la simulation + les sons.
 let sim;
@@ -81,7 +84,8 @@ async function setView(want3d) {
   if (want3d && !has3d) want3d = false;
   if (want3d && !renderer3d) {
     try {
-      const { Renderer3D } = await import('./render3d.js');
+      const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+      const { Renderer3D } = await import(local ? `./render3d.js?t=${Date.now()}` : './render3d.js');
       renderer3d = new Renderer3D(document.getElementById('table3d'), document.getElementById('overlay3d'), sim);
       renderer3d.onQualite = viewLabel;
     } catch (e) { console.error('vue 3D indisponible', e); want3d = false; }
@@ -137,6 +141,27 @@ function nudge(dx = 0) {
 }
 
 let paused = false;
+let pauseAvantAide = false;
+function basculerAide(ouvrir = !aideDialog.open) {
+  if (ouvrir && !aideDialog.open) {
+    pauseAvantAide = paused;
+    if (rules.mode === 'play') paused = true;
+    setFlipper('L', false); setFlipper('R', false); relacher(false);
+    aideDialog.showModal();
+    aideBtn.classList.add('actif');
+  } else if (!ouvrir && aideDialog.open) {
+    aideDialog.close();
+  }
+}
+aideDialog.addEventListener('close', () => {
+  paused = pauseAvantAide;
+  aideBtn.classList.remove('actif');
+  aideBtn.blur();
+});
+aideDialog.addEventListener('click', (e) => {
+  if (e.target === aideDialog) aideDialog.close();
+});
+aideFermerBtn.addEventListener('click', () => aideDialog.close());
 // Autoplay : le robot (js/robot.js) lance et enchaîne les parties tout seul jusqu'à l'arrêt du mode.
 let autoplay = false;
 let autoplayAttente = 0;
@@ -177,6 +202,11 @@ function relacher(lancer = true) {
 window.addEventListener('keydown', (e) => {
   unlockAudio(); audioReady = true;
   if (e.repeat) { if ([...KEYS.left, ...KEYS.right, ...KEYS.launch, ...KEYS.nudge, ...KEYS.nudgeL, ...KEYS.nudgeR].includes(e.code)) e.preventDefault(); return; }
+  if (e.key === '?' || e.code === 'F1') { basculerAide(); e.preventDefault(); return; }
+  if (aideDialog.open) {
+    if (e.code === 'Escape') { e.preventDefault(); aideDialog.close(); }
+    return;
+  }
   if (e.code === 'KeyA') { setAutoplay(!autoplay); e.preventDefault(); return; }
   if (KEYS.nudge.includes(e.code)) { nudge(0); e.preventDefault(); return; }
   if (KEYS.nudgeL.includes(e.code)) { nudge(-1); e.preventDefault(); return; }
@@ -221,7 +251,7 @@ for (const el of [canvas, view3dEl]) el.addEventListener('pointerdown', (e) => {
   if (autoplay) setAutoplay(false);
   if (rules.mode === 'attract' || rules.mode === 'over') { pressStart(); return; }
   let what;
-  if (x > GEO.playRight - 10 && y > 700) { what = 'launch'; tirer(); }
+  if (x > GEO.playRight - 10 && y > GEO.separators[0][0][1]) { what = 'launch'; tirer(); }
   else { what = x < W / 2 ? 'L' : 'R'; setFlipper(what, true); }
   touches.set(e.pointerId, what);
   e.preventDefault();
@@ -265,6 +295,7 @@ view3dEl.addEventListener('wheel', (e) => {
 startBtn.addEventListener('click', () => { if (autoplay) setAutoplay(false); pressStart(); startBtn.blur(); });
 autoBtn.addEventListener('click', () => { setAutoplay(!autoplay); autoBtn.blur(); });
 viewBtn.addEventListener('click', () => { nextView(); viewBtn.blur(); });
+aideBtn.addEventListener('click', () => { basculerAide(); aideBtn.blur(); });
 camBtn.addEventListener('click', () => { renderer3d.cycleCamera(); viewLabel(); camBtn.blur(); });
 skinBtn.addEventListener('click', () => { renderer3d.cycleHabillage(); viewLabel(); skinBtn.blur(); });
 transportBtn.addEventListener('click', () => { renderer3d.basculerFronton(); viewLabel(); transportBtn.blur(); });

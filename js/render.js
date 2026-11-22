@@ -7,8 +7,72 @@ import { CITIES } from './rules.js';
 const C = {
   wood: '#2b1a10', gravel: '#d8b679', gravelDark: '#b8935a', line: '#fff4dc',
   chrome: '#d6d9df', chromeDark: '#7c818c', red: '#c8372d', blue: '#1f4e8c', sea: '#174a7c',
-  lavender: '#8b6fc0', ochre: '#e0a134', lampOff: 'rgba(40,20,10,0.35)',
+  lavender: '#8b6fc0', ochre: '#e0a134',
 };
+
+function tintHex(hex, k, lift = 0) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = (v) => Math.min(255, Math.max(0, Math.round(v * k + lift)));
+  return `rgb(${c((n >> 16) & 255)},${c((n >> 8) & 255)},${c(n & 255)})`;
+}
+
+// Pastille en plastique coloré opaque encastrée dans le plateau (insert de flipper) :
+// masque totalement le graphisme sous-jacent, cerclage noir, léger anneau moulé et reflet brillant.
+export function drawLampInsert(ctx, x, y, r, col, label, lit) {
+  ctx.fillStyle = '#18110c';
+  ctx.beginPath(); ctx.arc(x, y, r + 1.1, 0, Math.PI * 2); ctx.fill();
+  const gr = lit
+    ? ctx.createRadialGradient(x, y, 0, x, y, r)
+    : ctx.createRadialGradient(x - r * 0.22, y - r * 0.22, r * 0.08, x, y, r);
+  if (lit) {
+    gr.addColorStop(0, tintHex(col, 0.35, 166));
+    gr.addColorStop(0.58, col);
+    gr.addColorStop(1, tintHex(col, 0.72, 0));
+  } else {
+    gr.addColorStop(0, tintHex(col, 0.66, 18));
+    gr.addColorStop(0.68, tintHex(col, 0.48, 6));
+    gr.addColorStop(1, tintHex(col, 0.26, 0));
+  }
+  ctx.fillStyle = gr;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = lit ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.16)';
+  ctx.lineWidth = Math.max(0.6, r * 0.075);
+  ctx.beginPath(); ctx.arc(x, y, r * 0.74, 0, Math.PI * 2); ctx.stroke();
+  ctx.save();
+  ctx.translate(x - r * 0.24, y - r * 0.28);
+  ctx.rotate(-0.6);
+  ctx.fillStyle = lit ? 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.24)';
+  ctx.beginPath(); ctx.ellipse(0, 0, r * 0.38, r * 0.18, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = Math.max(0.75, r * 0.085);
+  ctx.beginPath(); ctx.arc(x, y, r - 0.25, 0, Math.PI * 2); ctx.stroke();
+  if (label) {
+    ctx.fillStyle = '#160f0a';
+    ctx.font = `bold ${r * (label.length > 1 ? 0.92 : 1.18)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y + r * 0.06);
+  }
+}
+
+// Masque émissif correspondant (vue 3D) : le plastique brille de l'intérieur, le cerclage et les lettres restent noirs.
+export function drawLampInsertEmissive(ctx, x, y, r, col, label) {
+  const gr = ctx.createRadialGradient(x, y, 0, x, y, r);
+  gr.addColorStop(0, tintHex(col, 0.35, 166));
+  gr.addColorStop(0.6, col);
+  gr.addColorStop(1, tintHex(col, 0.58, 0));
+  ctx.fillStyle = gr;
+  ctx.beginPath(); ctx.arc(x, y, r - 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.26)';
+  ctx.lineWidth = Math.max(0.6, r * 0.075);
+  ctx.beginPath(); ctx.arc(x, y, r * 0.74, 0, Math.PI * 2); ctx.stroke();
+  if (label) {
+    ctx.fillStyle = '#000000';
+    ctx.font = `bold ${r * (label.length > 1 ? 0.92 : 1.18)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x, y + r * 0.06);
+  }
+}
 
 const PR = GEO.playRight;
 const mx = (x) => PR - x;
@@ -16,27 +80,31 @@ const RE = GEO.rampEntries[0];
 const rampLamp = (k) => [RE.M.x - RE.u.x * k, RE.M.y - RE.u.y * k];
 // point devant la face d'une cible fixe encastrée (POINTER : lampe, étiquette)
 const devant = (id, k) => { const s = GEO.standups.find((c) => c.id === id); return [s.x + s.n.x * k, s.y + s.n.y * k]; };
-const cityPos = (i) => { const t = (i - 3) / 3; return [CX + t * 88, 655 + t * t * 24]; };
+const TIRER = GEO.standups.find((c) => c.id === 'tirer');
+const cityPos = (i) => { const t = (i - 3) / 3; return [CX + t * 88, H - 557 + t * t * 24]; };
 
-// [nom de lampe, x, y, rayon, couleur, étiquette] — l'ordre = index des LED WS2812B
+// [nom de lampe, x, y, rayon, couleur, étiquette interne, texte enroulé autour]
+// L'ordre = index des LED WS2812B. Rayons calés sur les inserts standards de flipper :
+// 5/8" (Ø 16, r=8), 3/4" (Ø 19, r=9.5), 7/8" (Ø 22, r=11), 1" (Ø 25, r=12.5).
+// Les lettres composant un mot (T-O-U-R, F-A-N-N-Y) restent dans la pastille.
 export const LAMP_LAYOUT = [
-  ...GEO.lanes.map((l, i) => [`lane${i}`, l.x, 168, 10, '#ffd23f', l.letter]),
-  ...GEO.drops.map((d, i) => [`drop${i}`, d.x + GEO.dropBank.n.x * 24, d.y + GEO.dropBank.n.y * 24, 9, '#4fc3ff', d.letter]),
-  ['multiball', GEO.saucer.x, GEO.saucer.y + 42, 10, '#ff3fa4', ''],
-  ['ramp', ...rampLamp(24), 10, '#7dff6a', ''],
-  ['jackpot', ...rampLamp(50), 8, '#ffe14d', ''],
-  ...CITIES.map((_, i) => [`city${i}`, ...cityPos(i), 8, '#ffffff', '']),
-  ['mult2', CX - 45, 845, 9, '#ffb13d', '2'],
-  ['mult3', CX - 15, 845, 9, '#ffb13d', '3'],
-  ['mult4', CX + 15, 845, 9, '#ffb13d', '4'],
-  ['mult5', CX + 45, 845, 9, '#ffb13d', '5'],
-  ['extra', CX, 812, 9, '#ff5252', ''],
-  ['save', CX, 895, 8, '#62ffda', ''],
-  ['carreau', CX + 16, 420, 9, '#ff4a3d', ''],
-  ['bouchon', GEO.bouchonLane.M.x + GEO.bouchonLane.u.x * 34, GEO.bouchonLane.M.y + GEO.bouchonLane.u.y * 34, 8, '#ffd23f', ''],
-  ['point', ...devant('pointer', 44), 7, '#7dff6a', ''],
-  ...GEO.leftTargets.map((t, i) => [`cible${i}`, t.x + 26, t.y, 6, '#ff3fa4', '']),
-  ['extraLit', GEO.saucer.x - 34, GEO.saucer.y + 30, 8, '#ff5252', 'EB'],
+  ...GEO.lanes.map((l, i) => [`lane${i}`, l.x, l.y + 46, 12.5, '#ffd23f', l.letter]),
+  ...GEO.drops.map((d, i) => [`drop${i}`, d.x + GEO.dropBank.n.x * 24, d.y + GEO.dropBank.n.y * 24, 11, '#4fc3ff', d.letter]),
+  ['multiball', GEO.saucer.x - 52, GEO.saucer.y, 12.5, '#ff3fa4', '', { text: 'MULTIBALL', side: 'top', size: 7.5 }],
+  ['ramp', ...rampLamp(54), 12.5, '#7dff6a', '', { text: 'ESCALE', side: 'top', size: 7.5 }],
+  ['jackpot', ...rampLamp(88), 9.5, '#ffe14d', '', { text: 'JACKPOT', side: 'bottom', size: 7.2 }],
+  ...CITIES.map((name, i) => [`city${i}`, ...cityPos(i), 9.5, '#ffffff', '', { text: name, side: 'bottom', size: 6.0 }]),
+  ['mult2', CX - 48, H - 222, 11, '#ffb13d', '×2', { text: 'BONUS', side: 'bottom', size: 6.6 }],
+  ['mult3', CX - 16, H - 222, 11, '#ffb13d', '×3', { text: 'BONUS', side: 'bottom', size: 6.6 }],
+  ['mult4', CX + 16, H - 222, 11, '#ffb13d', '×4', { text: 'BONUS', side: 'bottom', size: 6.6 }],
+  ['mult5', CX + 48, H - 222, 11, '#ffb13d', '×5', { text: 'BONUS', side: 'bottom', size: 6.6 }],
+  ['extra', CX, H - 259, 12.5, '#ff5252', '', { text: 'REJOUE', side: 'top', size: 7.5 }],
+  ['save', CX, H - 172, 11, '#62ffda', '', { text: 'SAUVE', side: 'top', size: 7.2 }],
+  ['carreau', TIRER.x + 22, TIRER.y + 40, 11, '#ff4a3d', '', { text: 'CARREAU', side: 'bottom', size: 7.5 }],
+  ['bouchon', GEO.bouchonLane.M.x + GEO.bouchonLane.u.x * 34, GEO.bouchonLane.M.y + GEO.bouchonLane.u.y * 34, 9.5, '#ffd23f', '', { text: 'BOUCHON', side: 'bottom', size: 6.8 }],
+  ['point', ...devant('pointer', 46), 9.5, '#7dff6a', '', { text: 'POINTER', side: 'bottom', size: 7.0 }],
+  ...GEO.leftTargets.map((t, i) => [`cible${i}`, t.x + 28, t.y, 8, '#ff3fa4', '', { text: `BOULE ${i + 1}`, side: 'bottom', size: 6.4 }]),
+  ['extraLit', GEO.saucer.x - 34, GEO.saucer.y + 30, 9.5, '#ff5252', '', { text: 'EXTRA BALL', side: 'bottom', size: 6.2 }],
 ];
 
 export { C as COLORS };
@@ -182,16 +250,16 @@ export class Renderer {
     g.fillRect(PR + 4, GEO.laneSep.y1, W - PR - 4, H);
 
     // la Méditerranée en bas
-    const grad = g.createLinearGradient(0, 880, 0, H);
+    const grad = g.createLinearGradient(0, H - 187, 0, H);
     grad.addColorStop(0, 'rgba(23,74,124,0)');
     grad.addColorStop(1, 'rgba(23,74,124,0.85)');
     g.fillStyle = grad;
-    g.fillRect(0, 880, PR, H - 880);
+    g.fillRect(0, H - 187, PR, 187);
 
     // bandes provençales sur les côtés
     g.fillStyle = 'rgba(139,111,192,0.18)';
-    g.fillRect(0, 210, 36, 650);
-    g.fillRect(PR - 36, 210, 36, 650);
+    g.fillRect(0, GEO.laneSep.y1, 36, H - GEO.laneSep.y1 - 207);
+    g.fillRect(PR - 36, GEO.laneSep.y1, 36, H - GEO.laneSep.y1 - 207);
     }
 
     // cercle de lancer peint autour du Cercle (verrou)
@@ -205,7 +273,7 @@ export class Renderer {
     // logo central (seulement sans illustration)
     if (!art) {
     g.save();
-    g.translate(CX, 768);
+    g.translate(CX, H - 299);
     g.rotate(-0.06);
     g.font = 'italic 900 46px Georgia, serif';
     g.lineWidth = 6; g.strokeStyle = C.blue; g.strokeText('Fanny', 0, 0);
@@ -215,30 +283,45 @@ export class Renderer {
     g.restore();
     }
 
-    // étiquettes peintes
+    // étiquettes peintes (cibles fixes sans lampe dédiée + textes enroulés autour de chaque pastille lumineuse)
     g.font = 'bold 10px system-ui, sans-serif';
     g.fillStyle = art ? '#fff6d0' : '#5a3a1a';
     g.strokeStyle = '#2b1a10'; g.lineWidth = 3; g.lineJoin = 'round';
     const label = (t, x, y) => { if (art) g.strokeText(t, x, y); g.fillText(t, x, y); };
-    GEO.standups.forEach((s) => { if (s.id !== 'bouchon') label(s.label, ...(s.n ? devant(s.id, 26) : [s.x, s.y + 28])); });
-    label('CARREAU', CX + 16, 404);
-    {
-      const L = GEO.bouchonLane, m = { x: L.M.x + L.u.x * 56, y: L.M.y + L.u.y * 56 };
-      g.save(); g.translate(m.x, m.y); g.rotate(Math.atan2(L.u.y, L.u.x) + Math.PI);
-      g.font = 'bold 8px system-ui, sans-serif'; label('BOUCHON', 0, 3); g.restore();
-    }
-    label('JACKPOT', ...rampLamp(72));
-    label('MULTIBALL', GEO.saucer.x, GEO.saucer.y + 62);
-    label('BONUS ×', CX, 868);
-    label('REJOUE', CX, 830);
-    CITIES.forEach((name, i) => {
-      const [x, y] = cityPos(i);
-      g.save();
-      g.translate(x, y + 18);
-      g.font = 'bold 7px system-ui, sans-serif';
-      label(name.split(' ')[0].slice(0, 6), 0, 0);
-      g.restore();
+    GEO.standups.forEach((s) => {
+      if (s.id === 'tirer') label(s.label, s.x + 38, s.y + 4);
+      else if (s.id !== 'bouchon' && s.id !== 'pointer') label(s.label, ...(s.n ? devant(s.id, 26) : [s.x, s.y + 28]));
     });
+    // repère d'entrée du couloir bonus (côté droit, au-dessus de F-A-N-N-Y)
+    label('▲', 454, 448);
+    g.save(); g.font = 'bold 8px system-ui, sans-serif'; label('BONUS', 454, 462); g.restore();
+    const arcText = (text, x, y, R, side, size) => {
+      g.save();
+      g.font = `bold ${size}px system-ui, sans-serif`;
+      g.textAlign = 'center'; g.textBaseline = 'middle';
+      g.lineWidth = 2.4;
+      const chars = [...text], tracking = 0.4;
+      const widths = chars.map((ch) => g.measureText(ch).width + tracking);
+      const total = widths.reduce((a, b) => a + b, 0) - tracking;
+      let pos = 0;
+      for (let i = 0; i < chars.length; i++) {
+        const ch = chars[i], w = widths[i];
+        const dAng = (pos + (w - tracking) / 2 - total / 2) / R;
+        pos += w;
+        if (ch === ' ') continue;
+        const a = side === 'top' ? -Math.PI / 2 + dAng : Math.PI / 2 - dAng;
+        g.save();
+        g.translate(x + Math.cos(a) * R, y + Math.sin(a) * R);
+        g.rotate(side === 'top' ? a + Math.PI / 2 : a - Math.PI / 2);
+        if (art) g.strokeText(ch, 0, 0);
+        g.fillText(ch, 0, 0);
+        g.restore();
+      }
+      g.restore();
+    };
+    for (const [, x, y, r, , , arc] of LAMP_LAYOUT) {
+      if (arc) arcText(arc.text, x, y, r + 2.5 + arc.size * 0.45, arc.side, arc.size);
+    }
     g.restore();
 
     // bord du plateau
@@ -246,8 +329,7 @@ export class Renderer {
     return cv;
   }
 
-  // Illustration du plateau recadrée pour couvrir la surface de jeu, voilée légèrement,
-  // avec une pastille sombre sous chaque lampe pour qu'elle se détache (comme un insert).
+  // Illustration du plateau recadrée pour couvrir la surface de jeu, voilée légèrement.
   paintArt(g, img) {
     // zoom calé en haut : Fanny descend sous le Cercle, le bas de l'image passe sous le tablier
     const k = Math.max(W / img.width, H / img.height) * 1.25;
@@ -255,8 +337,6 @@ export class Renderer {
     g.drawImage(img, (W - w) / 2, 0, w, h);
     g.fillStyle = 'rgba(20,10,0,0.10)';
     g.fillRect(0, 0, W, H);
-    g.fillStyle = 'rgba(25,12,4,0.5)';
-    for (const [, x, y, r] of LAMP_LAYOUT) { g.beginPath(); g.arc(x, y, r + 3, 0, Math.PI * 2); g.fill(); }
   }
 
   // ------------------------------------------------------------ image
@@ -278,20 +358,12 @@ export class Renderer {
       const st = lamps[name] || 0;
       const lit = st === 1 || (st === 2 && blinkOn);
       if (lit) {
-        const gl = ctx.createRadialGradient(x, y, 0, x, y, r * 2.4);
-        gl.addColorStop(0, col); gl.addColorStop(0.45, col + 'aa'); gl.addColorStop(1, col + '00');
+        const gl = ctx.createRadialGradient(x, y, r * 0.4, x, y, r * 2.3);
+        gl.addColorStop(0, col + 'bb'); gl.addColorStop(0.5, col + '55'); gl.addColorStop(1, col + '00');
         ctx.fillStyle = gl;
-        ctx.beginPath(); ctx.arc(x, y, r * 2.4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x, y, r * 2.3, 0, Math.PI * 2); ctx.fill();
       }
-      ctx.fillStyle = lit ? col : C.lampOff;
-      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.35)'; ctx.lineWidth = 1; ctx.stroke();
-      if (label) {
-        ctx.fillStyle = lit ? '#2b1a10' : 'rgba(255,255,255,0.7)';
-        ctx.font = `bold ${r * 1.2}px system-ui, sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(label, x, y + 0.5);
-      }
+      drawLampInsert(ctx, x, y, r, col, label, lit);
     }
     ctx.textBaseline = 'alphabetic';
     // le Cercle (trou)
@@ -309,6 +381,7 @@ export class Renderer {
 
     // pièce du bouchon : une seule pièce en U aux coins arrondis
     if (GEO.bouchonPiece) this.plastic(GEO.bouchonPiece, 9);
+    if (GEO.tirerPlastic) this.plastic(GEO.tirerPlastic, 6);
     // murs et poteaux
     for (const b of T.walls) {
       if (b.plugin && b.plugin.hidden) continue;
@@ -377,14 +450,29 @@ export class Renderer {
         jack ? '#7a120c' : '#7a3c0e', false);
     });
 
-    // bumpers = boules de pétanque
+    // bumpers = pop bumpers (jupe conique + anneau de frappe + chapeau boule de pétanque)
     T.bumpers.forEach((b, i) => {
-      const hit = now - (sim.flash[`bumper${i}`] ?? -1e9) < 100;
-      if (hit) {
-        ctx.fillStyle = 'rgba(255,240,150,0.6)';
-        ctx.beginPath(); ctx.arc(b.position.x, b.position.y, b.circleRadius + 8, 0, Math.PI * 2); ctx.fill();
+      const age = now - (sim.flash[`bumper${i}`] ?? -1e9);
+      const hit = age < 110;
+      const cap = b.plugin.cap || b.circleRadius;
+      if (age < 170) {
+        const k = 1 - age / 170;
+        const gl = ctx.createRadialGradient(b.position.x, b.position.y, cap * 0.4, b.position.x, b.position.y, cap + 14);
+        gl.addColorStop(0, `rgba(255,235,140,${0.65 * k})`);
+        gl.addColorStop(1, 'rgba(255,210,80,0)');
+        ctx.fillStyle = gl;
+        ctx.beginPath(); ctx.arc(b.position.x, b.position.y, cap + 14, 0, Math.PI * 2); ctx.fill();
       }
-      this.popBumper(b.position.x, b.position.y, b.plugin.cap || b.circleRadius, hit, i);
+      // anneau chromé qui descend frapper la bille (léger débordement visible au choc)
+      const stroke = age < 26 ? Math.sin((age / 26) * (Math.PI / 2))
+        : age < 145 ? Math.max(0, Math.exp(-((age - 26) / 119) * 4) * (1 - (age - 26) / 119)) : 0;
+      if (stroke > 0.02) {
+        const d = sim.flashDir?.[`bumper${i}`];
+        const ox = d ? d.x * stroke * 2.5 : 0, oy = d ? d.y * stroke * 2.5 : 0;
+        ctx.beginPath(); ctx.arc(b.position.x + ox, b.position.y + oy, cap + 2.5 * stroke, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(235,240,248,${0.85 * stroke})`; ctx.lineWidth = 3; ctx.stroke();
+      }
+      this.popBumper(b.position.x, b.position.y, cap, hit, i);
     });
 
     // flippers

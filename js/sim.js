@@ -34,7 +34,7 @@ const V_MAX = 6.0;                        // m/s
 const ROULEMENT = 0.005;
 const FLIP_UP = 45;                       // rad/s (course complète ≈ 22 ms, comme une vraie bobine)
 const FLIP_DOWN = 20;
-const LAUNCH_V = 2.35;
+const LAUNCH_V = 2.50;
 const COURSE_LANCEUR = 50;               // mm : course du lanceur à ressort tiré à fond                    // m/s : suit l'arrondi du haut et retombe sur les bumpers
 const BUMPER_V = 1.25;                    // m/s, coup du bumper
 const SLING_V = 1.05;                     // m/s, coup du lance-pierre
@@ -67,7 +67,7 @@ const GR = { WALL: 0x0001, GATE: 0x0002, BALL: 0x0004 };
 const groupes = (membre, filtre) => (membre << 16) | filtre;
 
 // hauteur du fond de rampe à l'abscisse s (même profil que cao/modele.py et render3d.js)
-const RAMPE = { z: 62, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), desc: 120 };
+const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), desc: 120 };
 function zRampe(s, L) {
   const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente, s3 = L - RAMPE.desc;
   let z = p0 * Math.max(0, s);   // pente de la languette d'entrée (3 mm sur 30)
@@ -159,6 +159,7 @@ export class Sim {
     this.shooterClosed = false;
     this.dropsUp = GEO.drops.map(() => true);
     this.flash = {};            // nom → instant du dernier choc (pour le rendu)
+    this.flashDir = {};         // nom → vecteur unitaire (x, y) du choc (bascule de jupe de bumper)
     this.cool = {};             // anti-rebond des contacts
     this.info = new Map();      // poignée de collider → rôle (bumper, sling, cible…)
 
@@ -238,7 +239,7 @@ export class Sim {
       const pl = b.plugin || {};
       if (pl.flanc) continue;                                   // flancs de la rampe : dans son maillage
       const poteau = b.circleRadius && !pl.hidden;
-      if (!poteau && couvert(b)) continue;
+      if (!poteau && !pl.keep && couvert(b)) continue;
       const hors = b.position.x < 0 || b.position.x > W;       // murs de la caisse
       const mat = poteau ? 'caoutchouc' : b.label === 'apron' || b.label === 'plunger' ? 'mou' : 'plastique';
       this.ajouter(b, 0, hors ? H_VITRE + 10 : H_PAROI, mat, { type: 'paroi', nom: b.label, x: Math.round(b.position.x), y: Math.round(b.position.y) });
@@ -380,6 +381,8 @@ export class Sim {
         if (!this.power || !this.debounce(`bumper${r.idx}`, 60)) break;
         this.flash[`bumper${r.idx}`] = this.time;
         const c = r.corps.position;
+        const dx0 = x - c.x, dy0 = y - c.y, l0 = Math.hypot(dx0, dy0) || 1;
+        this.flashDir[`bumper${r.idx}`] = { x: dx0 / l0, y: dy0 / l0 };
         this.post.push(() => {
           const dx = x - c.x, dy = y - c.y, l = Math.hypot(dx, dy) || 1;
           b.body.setLinvel({ x: (dx / l) * BUMPER_V, y: (dy / l) * BUMPER_V, z: 0 }, true);
@@ -558,7 +561,7 @@ export class Sim {
         fp.still = 0;
         if (!fp.stuckAt || Math.hypot(x - fp.stuckAt.x, y - fp.stuckAt.y) > 30) { fp.stuckAt = { x, y }; fp.nudges = 0; }
         fp.nudges++;
-        const dx = CX_TABLE - x, dy = 480 - y, l = Math.hypot(dx, dy) || 1;
+        const dx = CX_TABLE - x, dy = H * 0.45 - y, l = Math.hypot(dx, dy) || 1;
         const k = 4 + 3 * Math.min(fp.nudges, 4);
         this.setVitesse(b, (dx / l) * k + (Math.random() - 0.5) * 3, (dy / l) * k - 3);
       }

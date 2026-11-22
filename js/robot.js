@@ -14,10 +14,16 @@ import { SW } from './rules.js';
 
 const MM = 0.001;
 const FLIP_LEN = GEO.flippers[0].len;   // 57,7 mm (géométrie moderne 3")
+const Y_POST = GEO.separators[0][0][1]; // haut des poteaux d'outlane (suit H)
+const Y_FLIP = GEO.flippers[0].py;      // axe des batteurs (H − 180)
+const Y_LANE = GEO.lanes[0].y;          // couloirs T-O-U-R en haut du plateau
 const TENUE_TIR_MS = 140;               // palette tenue après une frappe (assez courte pour ne pas rester figée)
 const BERCEAU_MS = 240;                 // bille immobile en berceau depuis … avant tir / passe
-const TILT_SUR = 1.25;                  // plafond de sim.bob avant un coup (+1 < 2,25 < TILT 2,4 : 0 Tilt garanti)
+const TILT_SUR = 1.25;                  // plafond de sim.bob avant un coup d'urgence (+1 < 2,25 < TILT 2,4 : 0 Tilt garanti)
+const TILT_SUR_BONUS = 1.05;            // plafond plus conservateur pour le bourrage bonus en haut (garde une marge pour le bas)
 const LE_GARDE = FLIP_LEN - 6.5;        // 51,2 mm : au-delà, frappe immédiate (empêche toute perte en bout de palette)
+// Forces du lanceur étalonnées sur Rapier au centre de la fenêtre T-O-U-R + bumpers (0 = T, 1 = O, 2 = U, 3 = R)
+const FORCE_TOUR = [0.796, 0.792, 0.788, 0.784];
 
 const NOMS_GESTES = {
   berceau: 'Berceau',
@@ -34,6 +40,8 @@ const NOMS_GESTES = {
   slapSave: 'Slap Save',
   slideSave: 'Slide Save',
   centerNudge: 'Bourrage central',
+  bumperNudge: 'Bourrage bonus T-O-U-R',
+  skillShot: 'Lancer dosé T-O-U-R',
   laneChange: 'Changement de couloir',
   sauvetage: 'Sauvetage',
 };
@@ -89,6 +97,9 @@ export class Robot {
     this.sim = sim; this.rules = rules; this.act = act; this.tirs = tirs;
     this.etat = { L: { phase: 'libre', t: 0 }, R: { phase: 'libre', t: 0 } };
     this.lanceur = 0;
+    this.lancerPlan = null;            // { force, tirage, lane } : lancer dosé en cours
+    this.dernierLancer = -1e9;
+    this.echecLanceur = 0;             // compteur de retombées dans le couloir (compense la force si besoin)
     this.dernierNudge = -1e9;
     this.dernierLane = -1e9;
     this.slap = null;                  // { first, second, t, phase }
@@ -135,8 +146,8 @@ export class Robot {
     return COTE_CIBLE[cible] === side;
   }
 
-  nudgeSur(dx, code, detail = '') {
-    if (this.sim.bob >= TILT_SUR || this.sim.time - this.dernierNudge < 550) return false;
+  nudgeSur(dx, code, detail = '', plafond = TILT_SUR, delai = 550) {
+    if (this.sim.bob >= plafond || this.sim.time - this.dernierNudge < delai) return false;
     this.dernierNudge = this.sim.time;
     this.act.nudge(dx);
     this.stats.coups++;
@@ -144,22 +155,62 @@ export class Robot {
     return true;
   }
 
+  // Calcule la direction la plus courte ('L' ou 'R') pour amener une lettre éteinte sur le couloir idx (0..3).
+  directionCouloir(idx) {
+    const l = this.rules.letters;
+    if (!l[idx] || !l.some((v) => !v)) return null;
+    let pasR = 4, pasL = 4;
+    for (let k = 1; k <= 3; k++) {
+      if (pasR === 4 && !l[(idx - k + 4) % 4]) pasR = k;
+      if (pasL === 4 && !l[(idx + k) % 4]) pasL = k;
+    }
+    return pasR <= pasL ? 'R' : 'L';
+  }
+
   tick(dtMs) {
     const sim = this.sim, r = this.rules;
     if (r.mode !== 'play') { this.relacher(); return; }
 
-    // 1. Lanceur à ressort (tiré progressivement) + changement de couloir avant le lancer
+    // 1. Lanceur à ressort dosé (Skill Shot T-O-U-R → bumpers) : chaque lancer cherche à allumer des lettres bonus
     if (sim.shooterClosed) {
-      if (this.lanceur === 0 && r.letters.some((l) => !l) && r.letters[2] && r.letters[3]) {
-        this.act.flip('R', true); this.act.flip('R', false);
-        this.noterGeste('laneChange', 'T-O-U-R');
+      if (!this.lancerPlan) {
+        // si la bille vient juste de retomber dans le couloir, on augmente légèrement la force
+        if (sim.time - this.dernierLancer < 2600) this.echecLanceur = Math.min(4, this.echecLanceur + 1);
+        else this.echecLanceur = 0;
+        // choisir une lettre T-O-U-R éteinte (priorité aux couloirs centraux U-O : au milieu de la fenêtre tolérante ±2 %)
+        const ordre = [2, 1, 3, 0];
+        const lane = ordre.find((i) => !r.letters[i]) ?? 2;
+        const base = FORCE_TOUR[lane];
+        const force = Math.min(0.96, base + this.echecLanceur * 0.032);
+        const tirage = Math.min(1, Math.max(0.45, (force - 0.35) / 0.72));
+        this.lancerPlan = { force, tirage, lane };
+      }
+      // aligner une lettre éteinte sur le couloir visé avant de lâcher le lanceur (en jouant des palettes)
+      if (this.lanceur < 420 && sim.time - this.dernierLane > 110 && r.letters[this.lancerPlan.lane] && r.letters.some((l) => !l)) {
+        const s = this.directionCouloir(this.lancerPlan.lane);
+        if (s) {
+          this.act.flip(s, true); this.act.flip(s, false);
+          this.dernierLane = sim.time;
+          this.noterGeste('laneChange', 'T-O-U-R');
+        }
       }
       this.lanceur += dtMs;
-      sim.tirage = Math.min(1, this.lanceur / 600);
-      if (this.lanceur > 600) { sim.tirage = 0; this.act.launch(1.1); this.lanceur = 0; this.log('lancer'); }
+      // tirage progressif jusqu'à la cote dosée (460 ms), courte pause de visée (140 ms), puis lâcher
+      sim.tirage = this.lancerPlan.tirage * Math.min(1, this.lanceur / 460);
+      if (this.lanceur > 600) {
+        const { force, lane } = this.lancerPlan;
+        const lettre = 'TOUR'[lane];
+        sim.tirage = 0;
+        this.act.launch(force);
+        this.dernierLancer = sim.time;
+        this.lanceur = 0;
+        this.lancerPlan = null;
+        this.noterGeste('skillShot', `${lettre} · ${Math.round(force * 100)}%`);
+      }
     } else {
       if (this.lanceur) sim.tirage = 0;
       this.lanceur = 0;
+      this.lancerPlan = null;
     }
 
     const billes = sim.balls.filter((b) => b.plugin.fp.mode === 'table' && !b.retiree && !sim.dansLanceur(b));
@@ -169,19 +220,64 @@ export class Robot {
       return;
     }
 
-    // 2. Changement de couloir T-O-U-R en vol (quand aucune bille n'est dans la zone basse des batteurs)
-    const basOccupe = billes.some((b) => b.position.y > 600);
-    if (!basOccupe && !this.slap && sim.time - this.dernierLane > 280 && r.letters.some((l) => !l) && r.letters.some(Boolean)) {
-      const bHaut = billes.find((b) => b.position.y > 55 && b.position.y < 128 && b.position.x > 155 && b.position.x < 323 && b.velocity.y > 0);
+    // 2. Changement de couloir T-O-U-R actif en vol (descente de l'arche OU rebond des bumpers vers le haut)
+    const basOccupe = billes.some((b) => b.position.y > Y_POST - 100);
+    if (!basOccupe && !this.slap && sim.time - this.dernierLane > 95 && r.letters.some((l) => !l) && r.letters.some(Boolean)) {
+      let bHaut = null, xPred = 0;
+      for (const b of billes) {
+        const { x, y } = b.position, vx = b.velocity.x * 60 * MM, vy = b.velocity.y * 60 * MM;
+        if (x > 130 && x < 350 && y > Y_LANE - 105 && y < Y_LANE - 6 && vy > -0.20) {
+          const dt = Math.min(0.22, (Y_LANE - y) * MM / Math.max(0.25, vy));
+          bHaut = b; xPred = x + (vx * dt) / MM; break;
+        }
+        // bille renvoyée vers le haut par les bumpers en direction des couloirs T-O-U-R
+        if (x > 140 && x < 340 && y >= Y_LANE + 10 && y < Y_LANE + 95 && vy < -0.20) {
+          const dt = Math.min(0.20, (y - Y_LANE) * MM / (-vy));
+          bHaut = b; xPred = x + (vx * dt) / MM; break;
+        }
+      }
       if (bHaut) {
-        const idx = Math.max(0, Math.min(3, Math.floor((bHaut.position.x - 155) / 42)));
-        if (r.letters[idx]) {
-          const versD = !r.letters[(idx + 3) % 4];
-          const s = versD ? 'R' : 'L';
+        const idx = Math.max(0, Math.min(3, Math.floor((xPred - 155) / 42)));
+        const s = this.directionCouloir(idx);
+        if (s && this.etat[s].phase === 'libre') {
           this.act.flip(s, true);
-          this.etat[s] = { phase: 'tenue', t: 0, duree: 45 };
+          this.etat[s] = { phase: 'tenue', t: 0, duree: 38 };
           this.dernierLane = sim.time;
-          this.noterGeste('laneChange', 'T-O-U-R');
+          this.noterGeste('laneChange', `T-O-U-R → ${'TOUR'[idx]}`);
+        }
+      }
+    }
+
+    // 2b. Bourrage bonus en zone haute (arche / couloirs T-O-U-R / bumpers) pour allumer plus de lettres et monter le ×
+    const chasseBonus = r.mult < 5 || (sim.time - this.dernierLancer < 6500);
+    if (chasseBonus && !basOccupe && !this.slap) {
+      for (const b of billes) {
+        const { x, y } = b.position, vx = b.velocity.x * 60 * MM, vy = b.velocity.y * 60 * MM;
+        // a) bille trop à droite / à gauche de l'entrée T-O-U-R : pousser latéralement vers les couloirs
+        if (y > 62 && y < Y_LANE + 12 && vy > 0.04) {
+          if (x > 322 && x < 410 && vx < 0.30) {
+            if (this.nudgeSur(-1, 'bumperNudge', 'vers T-O-U-R', TILT_SUR_BONUS, 620)) break;
+          } else if (x > 108 && x < 160 && vx < -0.10) {
+            if (this.nudgeSur(1, 'bumperNudge', 'vers T-O-U-R', TILT_SUR_BONUS, 620)) break;
+          }
+        }
+        // b) bille qui hésite sur le sommet d'un séparateur de couloir T-O-U-R : la faire tomber vers une lettre éteinte
+        if (y > Y_LANE - 48 && y < Y_LANE - 6 && x > 148 && x < 330 && Math.abs(vy) < 0.24) {
+          const idxLibre = [0, 1, 2, 3].find((i) => !r.letters[i]);
+          const xCible = idxLibre !== undefined ? 176 + idxLibre * 42 : CX;
+          if (this.nudgeSur(xCible >= x ? 1 : -1, 'bumperNudge', 'entrée couloir', TILT_SUR_BONUS, 620)) break;
+        }
+        // c) bille dans les bumpers : coup frontal vers le haut pour la remonter dans T-O-U-R, ou latéral pour la garder dans les bumpers
+        if (y > Y_LANE + 22 && y < 408 && x > 120 && x < 358) {
+          if (y < 292 && vy < -0.15 && vy > -1.45) {
+            if (this.nudgeSur(0, 'bumperNudge', 'remontée T-O-U-R', TILT_SUR_BONUS, 620)) break;
+          } else if (y > 325 && Math.abs(x - CX) < 52 && vy > 0.14 && vy < 1.35) {
+            if (this.nudgeSur(0, 'bumperNudge', 'relance bumpers', TILT_SUR_BONUS, 680)) break;
+          } else if (y > 235 && x < 174 && vx < 0.08 && vy > 0.05) {
+            if (this.nudgeSur(1, 'bumperNudge', 'retour bumpers', TILT_SUR_BONUS, 680)) break;
+          } else if (y > 235 && x > 304 && vx > -0.08 && vy > 0.05) {
+            if (this.nudgeSur(-1, 'bumperNudge', 'retour bumpers', TILT_SUR_BONUS, 680)) break;
+          }
         }
       }
     }
@@ -189,8 +285,8 @@ export class Robot {
     // 3. Slide Save : bourrage latéral prédictif UNIQUEMENT si la trajectoire vise un outlane (poteaux à x=40 et x=438)
     for (const b of billes) {
       const { x, y } = b.position, vx = b.velocity.x * 60 * MM, vy = b.velocity.y * 60 * MM;
-      if (y > 600 && y < 702 && vy > 0.12) {
-        const dtPost = (696 - y) * MM / vy;
+      if (y > Y_POST - 100 && y < Y_POST + 2 && vy > 0.12) {
+        const dtPost = (Y_POST - 4 - y) * MM / vy;
         if (dtPost > 0.30) continue;
         const xPost = x + (vx * dtPost) / MM;
         if (xPost < 46 && x < 72) {
@@ -223,8 +319,8 @@ export class Robot {
     if (librePourSlap) {
       for (const b of billes) {
         const { x, y } = b.position, vx = b.velocity.x * 60 * MM, vy = b.velocity.y * 60 * MM;
-        if (y > 760 && y < 902 && vy > 0.18) {
-          const dtTips = Math.max(0, (892 - y) * MM / vy);
+        if (y > Y_FLIP - 127 && y < Y_FLIP + 15 && vy > 0.18) {
+          const dtTips = Math.max(0, (Y_FLIP + 5 - y) * MM / vy);
           if (dtTips > 0.25) continue;
           const xPred = x + (vx * dtTips) / MM;
           if (Math.abs(xPred - CX) < 25) {
@@ -234,7 +330,7 @@ export class Robot {
               this.nudgeSur(first === 'L' ? -1 : 1, 'centerNudge', first);
             }
             // claque synchronisée juste avant la ligne des pointes (jamais 200 ms trop tôt sur bille lente !)
-            if (dtTips <= 0.045 || y > 888) {
+            if (dtTips <= 0.045 || y > Y_FLIP + 1) {
               this.act.flip(first, true);
               this.etat[first] = { phase: 'slap', t: 0 };
               this.etat[second] = { phase: 'slap', t: 0 };
@@ -312,7 +408,7 @@ export class Robot {
 
     // détection anticipée d'une bille descendant l'inlane de ce côté (pour lever tôt et réussir le Berceau)
     const bInlane = billes.find((b) => (side === 'L' ? b.position.x < 145 : b.position.x > 333)
-      && b.position.y > 720 && b.position.y < 885 && b.velocity.y * 60 * MM > 0.05);
+      && b.position.y > Y_POST + 20 && b.position.y < Y_FLIP - 2 && b.velocity.y * 60 * MM > 0.05);
     if (e.phase === 'libre' && bInlane && billes.length === 1 && !proches.length) {
       tenir(true); e.phase = 'attrape'; e.t = 0; e.raison = 'berceau';
       return;
@@ -385,7 +481,7 @@ export class Robot {
 
     // --- libre : bille qui descend vers la palette ou roule dessus ---
     const surPalette = q.t < BALL_R + 18;
-    const dansInlane = (side === 'L' ? b.position.x < 145 : b.position.x > 333) && b.position.y > 740;
+    const dansInlane = (side === 'L' ? b.position.x < 145 : b.position.x > 333) && b.position.y > Y_POST + 40;
 
     // A. Bille qui descend du plateau vers la palette
     if (!surPalette && vy > 0.15 && q.le > -4 && q.le < FLIP_LEN + 18) {
@@ -463,6 +559,8 @@ export class Robot {
 
   relacher() {
     this.lanceur = 0;
+    this.lancerPlan = null;
+    this.echecLanceur = 0;
     this.sim.tirage = 0;
     this.slap = null;
     for (const s of ['L', 'R']) { this.act.flip(s, false); this.etat[s] = { phase: 'libre', t: 0 }; }
@@ -480,7 +578,7 @@ export async function etalonner(creer) {
       sim.clear(); contacts.length = 0;
       sim.held = { L: false, R: false }; sim.held[side] = true;
       for (let k = 0; k < 10; k++) sim.step(1000 / 60);
-      const b = sim.makeBall(side === 'R' ? 417 : 61, 700);
+      const b = sim.makeBall(side === 'R' ? 417 : 61, Y_POST);
       for (let k = 0; k < 210; k++) sim.step(1000 / 60);
       if (repere(fl, b.position).r > FLIP_LEN + 30 || b.vitesse > 0.05) continue;
       contacts.length = 0;

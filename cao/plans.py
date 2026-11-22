@@ -408,9 +408,6 @@ def p_caisse():
     a = M.plateau_vers_caisse(0, 0); b = M.plateau_vers_caisse(0, M.H)
     ax.plot([a[1], b[1]], [a[2], b[2]], color=VERT, lw=0.8)
     ax.plot([a[1] + 20, b[1] - 40], [a[2] - M.EP, b[2] - M.EP - 5], color=VERT, lw=2.2, alpha=0.5)
-    c_ = M.plateau_vers_caisse(0, M.H + M.RALLONGE["h"])
-    ax.plot([b[1], c_[1]], [b[2], c_[2]], color=VERT, lw=0.8, ls="--")
-    ax.text(b[1] - 60, b[2] + 14, f"rallonge 12 mm : {fmt(M.RALLONGE['h'])}", fontsize=4.5, color=VERT)
     ax.text(a[1] + 30, a[2] + 8, f"dessus du plateau : {fmt(a[2])} à l'avant, {fmt(b[2])} à l'arrière (pente {M.V(PLATEAU['pente_deg'])}°)\n"
             f"tasseau 20 × 30 × {M.TASSEAU['longueur']} vissé-collé sous le plateau, face intérieure", fontsize=4.5, color=VERT)
     # façade
@@ -504,9 +501,6 @@ def p_assemblage():
                          closed=True, fc="#f3e6d3", ec=NOIR, lw=0.7, alpha=0.6))
     a = M.plateau_vers_caisse(0, 0); b = M.plateau_vers_caisse(0, M.H)
     ax.plot([a[1], b[1]], [a[2], b[2]], color=VERT, lw=2)
-    c_ = M.plateau_vers_caisse(0, M.H + M.RALLONGE["h"])
-    ax.plot([b[1], c_[1]], [b[2], c_[2]], color=VERT, lw=2, ls=(0, (2, 1)))
-    ax.text(b[1] - 120, b[2] + 25, f"rallonge {fmt(M.RALLONGE['h'])}", fontsize=5, color=VERT)
     ax.plot([0, M.LONG], [-h_sol, -h_sol], color=NOIR, lw=0.8)
     pd = M.PIED
     prof = [(-pd["ep"], pd["z_bas"]), (pd["aile_bas"] - pd["ep"], pd["z_bas"]), (pd["aile_haut"] - pd["ep"], pd["z_haut"] - pd["droit"]),
@@ -588,8 +582,8 @@ def p_nomenclature():
         for nom, x, y, l, h in fe:
             ax.add_patch(Rectangle((x, oy + y), l, h, fc="#f3e6d3", ec=NOIR, lw=0.4))
             ax.text(x + l / 2, oy + y + h / 2, f"{nom}\n{fmt(l)} × {fmt(h)}", fontsize=4, ha="center", va="center")
-    fig.text(215 / 420, 50 / 297, f"Plateau : contreplaqué bouleau 12 mm, {M.W} × {M.H} (1 panneau 1250 × 2500 ou 1220 × 1220 × 2), "
-             f"et sa rallonge fixe {M.W} × {fmt(M.RALLONGE['h'])} (encoche câbles {fmt(M.RALLONGE['encoche']['l'])} × {fmt(M.RALLONGE['encoche']['p'])}). "
+    fig.text(215 / 420, 50 / 297, f"Plateau : contreplaqué bouleau 12 mm, {M.W} × {M.H} (encoche câbles arrière "
+             f"{fmt(M.ENCOCHE_CABLES['l'])} × {fmt(M.ENCOCHE_CABLES['p'])}, 1 panneau 1250 × 2500). "
              "Fond du fronton : contreplaqué 6 mm.", fontsize=5.2)
 
 

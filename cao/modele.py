@@ -156,6 +156,9 @@ for i, s in enumerate(GEO.get("dividers", [])):
 # --- déflecteur
 for i, d in enumerate(GEO["deflectors"]):
     ruban(f"deflecteur_{i + 1}", "Déflecteur latéral", d, 8)
+# --- guide du couloir bonus (vers T-O-U-R)
+for i, bg in enumerate(GEO.get("bonusGuides", [])):
+    ruban(f"guide_bonus_{i + 1}", "Guide du couloir bonus (vers T-O-U-R)", recule(bg, 6), 8)
 # --- guides des couloirs T-O-U-R
 for i, lp in enumerate(GEO["lanePosts"]):
     ruban(f"guide_tour_{i + 1}", f"Guide de couloir T-O-U-R n° {i + 1}", [(lp["x"], lp["y1"]), (lp["x"], lp["y2"])], 6)
@@ -219,7 +222,7 @@ def poteaux_sling(s):
 poteaux = []          # (x, y, type d'anneau)
 for s in GEO["slings"]:
     poteaux += [(x, y, "sling") for x, y in poteaux_sling(s)]
-for s in GEO["separators"] + GEO.get("dividers", []):
+for s in GEO["separators"] + GEO.get("dividers", []) + GEO.get("bonusGuides", []):
     poteaux.append((s[0][0], s[0][1], "poteau"))
 for i, (x, y, ty) in enumerate(poteaux):
     g = V(CAOUTCHOUCS[ty])
@@ -425,7 +428,7 @@ BORD_TABLIER = ([(2, _yb(2))] + conge((0, AP["side"]), (_xl, APRON_Y), (_xr, APR
 piece(id="tablier", nom="Tablier (apron) : coque noire en V, cartes d'instructions", type="tablier",
       pts=BORD_TABLIER + [(W - 2, AP["lane"]), (W - 2, H - 2), (2, H - 2)], h=AP["lip"], ep=3,
       matiere="PETG noir 3 mm (3 tronçons collés) + cartes plastifiées",
-      fix=[(30, 1030), (CX, 1035), (GEO["playRight"] - 30, 1030)],
+      fix=[(30, H - 37), (CX, H - 32), (GEO["playRight"] - 30, H - 37)],
       note="bord avant = bras du jeu ; la lèvre ramène vers l'évacuation la bille des couloirs extérieurs")
 piece(id="bac", nom="Bac à billes (3 billes, 3 KW11) sous le plateau", type="bac", x=CX, y=H - 40)
 
@@ -538,6 +541,13 @@ _pb = next(p for p in PIECES if p["id"] == "piece_bouchon")
 piece(id="plastique_bouchon", nom="Plastique du bouchon (sur entretoises de 6 mm)", type="plaque", pts=GEO["bouchonPiece"],
       r=9, ep=3, z=H_PAROI + H_ENTRETOISE, marge=4, sous_rampe=True, matiere="PETG 3 mm décoré (ou acrylique 3 mm)",
       entretoises=[f for f in _pb["fix"] if not sous_rampe(f, 8)], h_entretoise=H_ENTRETOISE)
+piece(id="plastique_mur_cibles", nom="Plastique du mur des cibles rondes (sur entretoises de 6 mm)", type="plaque",
+      pts=_mur["pts"], r=6, ep=3, z=H_PAROI + H_ENTRETOISE, marge=4, decoupe_plateau=True,
+      matiere="PETG 3 mm décoré (ou acrylique 3 mm)", entretoises=_mur["fix"], h_entretoise=H_ENTRETOISE)
+_df1 = next(p for p in PIECES if p["id"] == "deflecteur_1")
+piece(id="plastique_tirer", nom="Plastique de la cible TIRER (sur entretoises de 6 mm)", type="plaque",
+      pts=GEO["tirerPlastic"], r=6, ep=3, z=H_PAROI + H_ENTRETOISE, marge=4, decoupe_plateau=True,
+      matiere="PETG 3 mm décoré (ou acrylique 3 mm)", entretoises=_df1["fix"], h_entretoise=H_ENTRETOISE)
 _en = GEO["enseigneRampe"]
 _z_en = z_rampe(_en["a"]) + V(RAMPE["ep"]) + 27 + 20.0         # bord avant : 20 mm au-dessus d'une bille sur la rampe (marge aux rebonds)
 piece(id="plastique_rampe", nom="Enseigne de rampe « ESCALE » (inclinée de 40°, pattes collées sur les flancs)", type="enseigne",
@@ -632,11 +642,9 @@ def aile_pied(z):
     return p["aile_bas"] + (p["aile_haut"] - p["aile_bas"]) * (z - p["z_bas"]) / (z_droit - p["z_bas"])
 
 
-# rallonge fixe dans le prolongement du plateau (même pente), jusqu'au panneau arrière
-_ra = V(CAISSE["rallonge"])
-RALLONGE = {"nom": "Rallonge du plateau", "l": W, "ep": EP, "jeu": _ra["jeu_arriere"],
-            "h": round((LONG - EPC - _ra["jeu_arriere"] - (Y_PF_AV + H * math.cos(PENTE_PF))) / math.cos(PENTE_PF), 1),
-            "encoche": {"l": _ra["encoche"][0], "p": _ra["encoche"][1]}}
+# encoche câbles au centre du bord arrière du plateau (le plateau allongé couvre toute la caisse WPC sans rallonge)
+_ec = V(PLATEAU["encoche_cables"])
+ENCOCHE_CABLES = {"l": _ec[0], "p": _ec[1]}
 
 TASSEAU = {"section": (20, 30), "longueur": round((LONG - 2 * EPC - Y_PF_AV) / math.cos(PENTE_PF) - 60)}
 

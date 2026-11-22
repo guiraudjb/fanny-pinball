@@ -7,13 +7,13 @@
 
 import * as THREE from '../vendor/three.module.min.js';
 import { W, H, CX, GEO, BALL_R, pointAt } from './table.js';
-import { Renderer, LAMP_LAYOUT, COLORS, drawApron } from './render.js';
+import { Renderer, LAMP_LAYOUT, COLORS, drawApron, drawLampInsert, drawLampInsertEmissive } from './render.js';
 import { drawSegDisplay } from './segfont.js';
 import { HABILLAGES, chargerImages, dessiner, estEmissif } from './habillages.js';
 
 const PENTE = (6.5 * Math.PI) / 180;      // pente du plateau (cao/cotes.py)
 const H_PAROI = 32;                        // parois et guides imprimés
-const RAMPE = { z: 62, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), desc: 120, larg: 39, flanc: 25 };
+const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), desc: 120, larg: 39, flanc: 25 };
 const TEX = 2;                             // résolution des textures peintes (px par mm)
 // la bille passe sous le tablier quand son centre dépasse le bord avant (bras en V, GEO.apron)
 function sousTablier(x, y) {
@@ -306,24 +306,33 @@ export class Renderer3D {
       this.table.add(sp);
       return sp;
     };
-    // lampes : insert allumé (pastille lumineuse à plat, insensible à l'ombre) + halo au-dessus
+    // lampes : pastilles en plastique coloré encastrées à fleur du plateau (opaques, brillantes) + halo au-dessus
     const disc = new THREE.CircleGeometry(1, 32);
     disc.rotateX(Math.PI);                           // face vers le haut (−z)
-    const ic = document.createElement('canvas'); ic.width = ic.height = 64;
-    const ig = ic.getContext('2d');
-    const ir = ig.createRadialGradient(32, 32, 0, 32, 32, 32);
-    ir.addColorStop(0, 'rgba(255,255,255,1)'); ir.addColorStop(0.45, 'rgba(255,255,255,0.9)'); ir.addColorStop(1, 'rgba(255,255,255,0)');
-    ig.fillStyle = ir; ig.fillRect(0, 0, 64, 64);
-    const insertTex = canvasTexture(ic);
-    this.lampGlows = LAMP_LAYOUT.map(([name, x, y, r, col]) => {
-      const ins = new THREE.Mesh(disc, new THREE.MeshBasicMaterial({ map: insertTex, color: col, transparent: true,
-        blending: THREE.AdditiveBlending, depthWrite: false }));
-      ins.scale.set(r * 1.3, r * 1.3, 1);
-      ins.position.set(x, y, -0.4);
-      ins.renderOrder = 1;
-      ins.visible = false;
+    this.lampGlows = LAMP_LAYOUT.map(([name, x, y, r, col, label]) => {
+      const sz = 96, rOut = r + 1.1, k = (sz / 2) / rOut;
+      const makeTex = (bg, fn) => {
+        const c = document.createElement('canvas'); c.width = c.height = sz;
+        const g = c.getContext('2d');
+        g.fillStyle = bg; g.fillRect(0, 0, sz, sz);
+        g.setTransform(k, 0, 0, k, 0, 0);
+        fn(g);
+        const t = canvasTexture(c);
+        t.anisotropy = this.gl.capabilities.getMaxAnisotropy();
+        return t;
+      };
+      const map = makeTex('#18110c', (g) => drawLampInsert(g, rOut, rOut, r, col, label, false));
+      const emissiveMap = makeTex('#000000', (g) => drawLampInsertEmissive(g, rOut, rOut, r, col, label));
+      const mat = new THREE.MeshStandardMaterial({
+        map, emissive: 0xffffff, emissiveMap, emissiveIntensity: 0,
+        roughness: 0.14, metalness: 0.04, envMapIntensity: 1.4,
+      });
+      const ins = new THREE.Mesh(disc, mat);
+      ins.scale.set(rOut, rOut, 1);
+      ins.position.set(x, y, -0.25);
+      ins.receiveShadow = true;
       this.table.add(ins);
-      return { name, ins, sp: this.glow(col, r * 4.4, x, y, 4) };
+      return { name, mat, sp: this.glow(col, r * 3.8, x, y, 4) };
     });
   }
 
@@ -367,6 +376,7 @@ export class Renderer3D {
     if (GEO.bouchonPiece) plastics.push(GEO.bouchonPiece);
     for (const b of T.walls) if (b.plugin && b.plugin.housing) plastics.push(b.vertices.map((v) => [v.x, v.y]));
     for (const p of plastics) pr.plastic(p, 6);
+    if (GEO.tirerPlastic) pr.plastic(GEO.tirerPlastic, 6);
     // plastrons supérieurs des lance-pierres : calés sur les 3 poteaux (marge = 10 mm en CAO) + 1,5 mm de fond perdu
     T.slings.forEach((b) => pr.slingPlastic(b.plugin.posts, b.plugin.rPlast, 1.5));
     if (GEO.enseigneRampe) enseigne(pr.ctx, GEO.enseigneRampe.pts, Math.cos((GEO.enseigneRampe.incl * Math.PI) / 180));
@@ -418,9 +428,86 @@ export class Renderer3D {
       return band;
     });
 
-    // bumpers : jupe chromée + chapeau peint (même dessin que la vue 2D)
+    // bumpers : géométrie réaliste de pop bumper (embase + vis, jupe conique mobile, corps cannelé translucide
+    // avec ampoule interne, anneau de frappe chromé biseauté + 2 tiges verticales coulissantes, chapeau bombé)
+    const lathe = (pts, segs = 48) => {
+      const g = new THREE.LatheGeometry(pts.map(([r, h]) => new THREE.Vector2(r, h)), segs);
+      g.rotateX(-Math.PI / 2);                                    // h → −z (hauteur au-dessus du plateau)
+      return g;
+    };
+    // corps cannelé translucide (type Williams 03-7443-5) : fût étroit laissant passer les tiges, évasé sous le chapeau
+    const flutedBodyGeo = (z0, z1, flutes = 16, segs = 64, rows = 14) => {
+      const pos = [], idx = [], stride = segs + 1;
+      for (let j = 0; j <= rows; j++) {
+        const t = j / rows, h = z0 + t * (z1 - z0);
+        const flare = t > 0.62 ? ((t - 0.62) / 0.38) ** 1.6 : 0;
+        const rBase = 14.8 + flare * 8.2 - 0.6 * Math.sin(Math.PI * Math.min(1, t / 0.65));
+        const amp = 0.65 * Math.sin(Math.PI * t) ** 0.5;
+        for (let i = 0; i <= segs; i++) {
+          const a = (i / segs) * Math.PI * 2;
+          const r = rBase + amp * Math.cos(flutes * a);
+          pos.push(r * Math.cos(a), r * Math.sin(a), -h);
+        }
+      }
+      for (let j = 0; j < rows; j++) {
+        for (let i = 0; i < segs; i++) {
+          const a = j * stride + i, b = a + 1, c = a + stride, d = c + 1;
+          idx.push(a, c, b, b, c, d);
+        }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      return g;
+    };
+    // dessus bombé du chapeau avec UV planaires (la sérigraphie « boule de pétanque » s'y plaque sans distorsion)
+    const domeCapGeo = (cap, zBase, domeH, segs = 48, rings = 10) => {
+      const pos = [], uv = [], idx = [], stride = segs + 1;
+      const kEdge = Math.sqrt(1 - 0.82);
+      for (let j = 0; j <= rings; j++) {
+        const u = j / rings, r = cap * u;
+        const h = zBase + domeH * ((Math.sqrt(Math.max(0, 1 - 0.82 * u * u)) - kEdge) / (1 - kEdge));
+        for (let i = 0; i <= segs; i++) {
+          const a = (i / segs) * Math.PI * 2, x = r * Math.cos(a), y = r * Math.sin(a);
+          pos.push(x, y, -h);
+          uv.push(0.5 + x / (2 * cap), 0.5 - y / (2 * cap));
+        }
+      }
+      for (let j = 0; j < rings; j++) {
+        for (let i = 0; i < segs; i++) {
+          const a = j * stride + i, b = a + 1, c = a + stride, d = c + 1;
+          idx.push(a, b, c, b, d, c);
+        }
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      return g;
+    };
+    const baseRingGeo = lathe([[15.5, 0], [33.5, 0], [33.5, 0.9], [31.5, 1.3], [16.5, 1.3], [15.5, 0]], 48);
+    const skirtGeo = lathe([
+      [17.5, -2.5], [29.8, -2.7], [31.2, -1.9], [30.8, -0.9], [25.4, 0.4], [21.2, 2.8], [18.6, 4.6],
+      [17.2, 4.4], [19.8, 2.2], [24.2, -0.5], [29.4, -1.8], [17.5, -2.5],
+    ], 48);
+    const bodyGeo = flutedBodyGeo(7.5, 34.0);
+    const rodGeo = new THREE.CylinderGeometry(1.8, 1.8, 24, 12);
+    rodGeo.rotateX(Math.PI / 2);                                  // axe selon z
+    const lugGeo = new THREE.BoxGeometry(6.5, 4.4, 2.2);
+    const screwGeo = new THREE.SphereGeometry(2.1, 12, 8);
+    const capScrewGeo = new THREE.SphereGeometry(1.6, 12, 8);
+    const bulbGeo = new THREE.SphereGeometry(5.5, 16, 12);
+    const skirtMat = new THREE.MeshStandardMaterial({ color: 0xf7f3e8, roughness: 0.22, metalness: 0.02, envMapIntensity: 0.9 });
+    const baseWaferMat = new THREE.MeshStandardMaterial({ color: 0xe8e2d4, roughness: 0.48, metalness: 0 });
+    const ringChrome = this.mat.steel.clone();
+    ringChrome.color.setHex(0xe8ecf2);
+    ringChrome.roughness = 0.11;
+    ringChrome.envMapIntensity = 2.2;
+
     this.bumpers = T.bumpers.map((b, i) => {
-      const cap = b.plugin.cap || b.circleRadius;
+      const cap = b.plugin.cap || b.circleRadius, rRing = b.circleRadius;
       const paint = (hit) => {
         const c = document.createElement('canvas');
         c.width = c.height = 256;
@@ -430,16 +517,92 @@ export class Renderer3D {
         return canvasTexture(c);
       };
       const tex = [paint(false), paint(true)];
-      const base = cylinder(b.circleRadius, 26, this.mat.chrome, b.position.x, b.position.y, 0, 40);
-      const topMat = new THREE.MeshStandardMaterial({ map: tex[0], roughness: 0.25, emissive: 0xffe08a, emissiveIntensity: 0 });
-      const sideMat = new THREE.MeshStandardMaterial({ color: 0x5b4fa0, roughness: 0.3, transparent: true, opacity: 0.92 });
-      const capGeo = new THREE.CylinderGeometry(cap, cap * 0.96, 9, 48);
-      capGeo.rotateX(-Math.PI / 2);
-      const capMesh = new THREE.Mesh(capGeo, [sideMat, topMat, sideMat]);
-      capMesh.position.set(b.position.x, b.position.y, -(26 + 4.5));
-      capMesh.castShadow = true;
-      this.table.add(base, capMesh);
-      return { topMat, tex, sp: this.glow(0xffd36a, cap * 3.4, b.position.x, b.position.y, 38) };
+      const grp = new THREE.Group();
+      grp.position.set(b.position.x, b.position.y, 0);
+
+      // 1. collerette d'embase posée sur le plateau + 3 vis de fixation (motif Williams Ø 69 mm)
+      const baseWafer = new THREE.Mesh(baseRingGeo, baseWaferMat);
+      baseWafer.receiveShadow = true;
+      grp.add(baseWafer);
+      for (const [dx, dy] of [[-25.5, -10.67], [25.5, -10.67], [0, -28.67]]) {
+        const vis = new THREE.Mesh(screwGeo, this.mat.chrome);
+        vis.scale.set(1, 1, 0.55);
+        vis.position.set(dx, dy, -1.3);
+        grp.add(vis);
+      }
+
+      // 2. jupe conique mobile (bascule vers la bille au contact pour déclencher la bobine)
+      const skirtPivot = new THREE.Group();
+      skirtPivot.position.set(0, 0, -4.5);
+      const skirt = new THREE.Mesh(skirtGeo, skirtMat);
+      skirt.castShadow = true; skirt.receiveShadow = true;
+      skirtPivot.add(skirt);
+      grp.add(skirtPivot);
+
+      // 3. corps cannelé translucide + ampoule interne
+      const bodyMat = new THREE.MeshStandardMaterial({
+        color: 0xe6e0f8, roughness: 0.22, metalness: 0, transparent: true, opacity: 0.88,
+        emissive: 0xffc857, emissiveIntensity: 0.1,
+      });
+      const body = new THREE.Mesh(bodyGeo, bodyMat);
+      body.castShadow = true;
+      grp.add(body);
+      const bulbMat = new THREE.MeshStandardMaterial({ color: 0xfff6d0, emissive: 0xffd86b, emissiveIntensity: 0.4, roughness: 0.2 });
+      const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+      bulb.position.set(0, 0, -24);
+      grp.add(bulb);
+
+      // 4. anneau de frappe chromé biseauté + 2 tiges verticales (entraxe 35 mm) : plonge vers le bas au tir
+      const ringGeo = lathe([
+        [20.5, -1.8], [24.2, -3.2], [rRing - 0.5, -2.0], [rRing, 0.2],
+        [rRing - 1.3, 3.2], [21.6, 3.2], [20.5, 2.2], [20.5, -1.8],
+      ], 48);
+      const ringGroup = new THREE.Group();
+      ringGroup.position.set(0, 0, -22.5);                        // position haute au repos (au-dessus de l'équateur de la bille)
+      const ringMesh = new THREE.Mesh(ringGeo, ringChrome);
+      ringMesh.castShadow = true;
+      ringGroup.add(ringMesh);
+      for (const sx of [-1, 1]) {
+        const rod = new THREE.Mesh(rodGeo, ringChrome);
+        rod.position.set(sx * 17.5, 0, 12);                       // descend dans les 2 trous du plateau
+        rod.castShadow = true;
+        const lug = new THREE.Mesh(lugGeo, ringChrome);
+        lug.position.set(sx * 19.6, 0, 0.8);
+        ringGroup.add(rod, lug);
+      }
+      grp.add(ringGroup);
+
+      // 5. chapeau bombé sérigraphié + collerette translucide + 2 vis de chapeau
+      const capGroup = new THREE.Group();
+      const sideMat = new THREE.MeshStandardMaterial({
+        color: 0x5b4fa0, roughness: 0.22, metalness: 0.04, transparent: true, opacity: 0.92,
+        emissive: 0xffc857, emissiveIntensity: 0.08,
+      });
+      const collarGeo = lathe([
+        [22.5, 33.4], [cap - 1.8, 33.8], [cap, 35.0], [cap, 37.9], [cap - 0.8, 38.0], [22.5, 37.2], [22.5, 33.4],
+      ], 48);
+      const collar = new THREE.Mesh(collarGeo, sideMat);
+      collar.castShadow = true;
+      const topMat = new THREE.MeshStandardMaterial({
+        map: tex[0], roughness: 0.18, metalness: 0.04, emissive: 0xffe08a, emissiveIntensity: 0,
+      });
+      const dome = new THREE.Mesh(domeCapGeo(cap, 37.8, 6.2), topMat);
+      dome.castShadow = true;
+      capGroup.add(collar, dome);
+      for (const sx of [-1, 1]) {
+        const cv = new THREE.Mesh(capScrewGeo, this.mat.chrome);
+        cv.scale.set(1, 1, 0.45);
+        cv.position.set(sx * (cap - 7), 0, -40.8);
+        capGroup.add(cv);
+      }
+      grp.add(capGroup);
+
+      this.table.add(grp);
+      return {
+        topMat, sideMat, bodyMat, bulbMat, tex, skirtPivot, ringGroup, capGroup,
+        tiltAxis: new THREE.Vector3(),
+        sp: this.glow(0xffd36a, cap * 3.6, b.position.x, b.position.y, 40),
+      };
     });
 
     // cibles fixes (cochonnets en bois peint)
@@ -632,6 +795,133 @@ export class Renderer3D {
     lip.receiveShadow = true;
     this.table.add(lip);
     // pas de poteaux dans le plateau : la rampe est portée par des pattes murales (pièces de la CAO)
+    this.buildWireformGuides();
+  }
+
+  // Ensemble des guides de bille du plateau en wireform d'acier inox chromé :
+  // tiges parallèles (Ø 4 mm à hauteur du centre de la bille + tige supérieure) à bouts coudés plantés dans le bois
+  // avec rondelles chromées et montants intermédiaires. Remplace les guides pleins en vue 3D (même physique Rapier).
+  buildWireformGuides() {
+    const inox = this.mat.chrome.clone();
+    inox.color.setHex(0xe6eaef);
+    inox.roughness = 0.13;
+    const recule = (pts, d) => {
+      const [a, b] = pts, dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+      return [[a[0] + (dx / l) * d, a[1] + (dy / l) * d], ...pts.slice(1)];
+    };
+    const lisse = (pts) => {
+      if (pts.length < 3) return pts;
+      const out = [pts[0]];
+      for (let i = 1; i < pts.length - 1; i++) {
+        const a = pts[i - 1], b = pts[i], c = pts[i + 1];
+        const l1 = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, l2 = Math.hypot(c[0] - b[0], c[1] - b[1]) || 1;
+        const r = Math.min(10, l1 * 0.35, l2 * 0.35);
+        const p1 = [b[0] - ((b[0] - a[0]) / l1) * r, b[1] - ((b[1] - a[1]) / l1) * r];
+        const p2 = [b[0] + ((c[0] - b[0]) / l2) * r, b[1] + ((c[1] - b[1]) / l2) * r];
+        out.push(p1, [0.25 * p1[0] + 0.5 * b[0] + 0.25 * p2[0], 0.25 * p1[1] + 0.5 * b[1] + 0.25 * p2[1]], p2);
+      }
+      out.push(pts[pts.length - 1]);
+      return out;
+    };
+    const ajouterFil = (vecs, rayon, segs = 36) => {
+      const m = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(vecs, false, 'catmullrom', 0.25), segs, rayon, 8), inox);
+      m.castShadow = true;
+      m.receiveShadow = true;
+      this.table.add(m);
+    };
+    const pied = (x, y, h = 0) => {
+      this.table.add(cylinder(3.4, 1.8, inox, x, y, 0, 14));
+      if (h > 0) this.table.add(cylinder(1.5, h, inox, x, y, 0, 10));
+    };
+    // points intermédiaires régulièrement espacés le long d'une polyligne (pour les montants verticaux)
+    const jalons = (pts, pas) => {
+      const segs = []; let L = 0;
+      for (let i = 0; i < pts.length - 1; i++) { const l = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]); segs.push([pts[i], pts[i + 1], l]); L += l; }
+      const n = Math.floor(L / pas);
+      if (n < 2) return [];
+      const out = [];
+      for (let k = 1; k < n; k++) {
+        let cible = (L * k) / n, acc = 0;
+        for (const [a, b, l] of segs) {
+          if (acc + l >= cible) { const t = (cible - acc) / (l || 1); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); break; }
+          acc += l;
+        }
+      }
+      return out;
+    };
+    const guideFil = (rawPts, { recul = 0, r1 = 2.0, r2 = 1.55, z1 = BALL_R, z2 = 23, z3 = 0, pasPieds = 130, coude = true, piedsH = 0 } = {}) => {
+      const pts = recul ? recule(rawPts, recul) : rawPts;
+      const sm = coude ? lisse(pts) : pts;
+      const p0 = sm[0], pN = sm[sm.length - 1];
+      const u0 = [sm[1][0] - p0[0], sm[1][1] - p0[1]], l0 = Math.hypot(...u0) || 1;
+      const uN = [pN[0] - sm[sm.length - 2][0], pN[1] - sm[sm.length - 2][1]], lN = Math.hypot(...uN) || 1;
+      const dC = Math.min(5, l0 * 0.35, lN * 0.35);
+      const segs = Math.min(180, Math.max(24, sm.length * 10));
+      const bas = [
+        new THREE.Vector3(p0[0], p0[1], 0),
+        new THREE.Vector3(p0[0], p0[1], -z1 + 3),
+        new THREE.Vector3(p0[0] + (u0[0] / l0) * dC, p0[1] + (u0[1] / l0) * dC, -z1),
+        ...sm.slice(1, -1).map(([x, y]) => new THREE.Vector3(x, y, -z1)),
+        new THREE.Vector3(pN[0] - (uN[0] / lN) * dC, pN[1] - (uN[1] / lN) * dC, -z1),
+        new THREE.Vector3(pN[0], pN[1], -z1 + 3),
+        new THREE.Vector3(pN[0], pN[1], 0),
+      ];
+      ajouterFil(bas, r1, segs);
+      const haut = [
+        new THREE.Vector3(p0[0], p0[1], -z1),
+        new THREE.Vector3(p0[0], p0[1], -z2 + 3),
+        new THREE.Vector3(p0[0] + (u0[0] / l0) * dC, p0[1] + (u0[1] / l0) * dC, -z2),
+        ...sm.slice(1, -1).map(([x, y]) => new THREE.Vector3(x, y, -z2)),
+        new THREE.Vector3(pN[0] - (uN[0] / lN) * dC, pN[1] - (uN[1] / lN) * dC, -z2),
+        new THREE.Vector3(pN[0], pN[1], -z2 + 3),
+        new THREE.Vector3(pN[0], pN[1], -z1),
+      ];
+      ajouterFil(haut, r2, segs);
+      if (z3) {
+        const top = [
+          new THREE.Vector3(p0[0], p0[1], -z2),
+          new THREE.Vector3(p0[0], p0[1], -z3 + 3),
+          new THREE.Vector3(p0[0] + (u0[0] / l0) * dC, p0[1] + (u0[1] / l0) * dC, -z3),
+          ...sm.slice(1, -1).map(([x, y]) => new THREE.Vector3(x, y, -z3)),
+          new THREE.Vector3(pN[0] - (uN[0] / lN) * dC, pN[1] - (uN[1] / lN) * dC, -z3),
+          new THREE.Vector3(pN[0], pN[1], -z3 + 3),
+          new THREE.Vector3(pN[0], pN[1], -z2),
+        ];
+        ajouterFil(top, r2, segs);
+      }
+      const hMax = piedsH || z3 || z2;
+      pied(p0[0], p0[1], 0);
+      pied(pN[0], pN[1], 0);
+      if (coude && pts.length === 3) pied(sm[2][0], sm[2][1], hMax);
+      else for (const [x, y] of jalons(sm, pasPieds)) pied(x, y, hMax);
+    };
+
+    // 1. Guides du bas : couloirs de retour et séparateurs
+    for (const s of GEO.separators) guideFil(s, { recul: 8 });
+    for (const d of GEO.dividers || []) guideFil(d, { recul: 8 });
+    // 2. Guide du couloir bonus (vers T-O-U-R)
+    for (const bg of GEO.bonusGuides || []) guideFil(bg, { recul: 8, coude: false, pasPieds: 110 });
+    // 3. Guides des couloirs du haut T-O-U-R
+    for (const lp of GEO.lanePosts) guideFil([[lp.x, lp.y1], [lp.x, lp.y2]], { r1: 1.75, r2: 1.4, z2: 22 });
+    // 4. Déflecteur gauche (deux colonnettes montent à z = 32,5 sous les entretoises de plastique_tirer)
+    for (const df of GEO.deflectors) {
+      guideFil(df, { pasPieds: 999 });
+      const [[x0, y0], [x1, y1]] = df;
+      for (const t of [0.2, 0.8]) pied(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t, 32.5);
+    }
+    // 5. Séparateur du couloir de lancement (3e fil à z = 28,5 portant les pattes de rampe à z = 30)
+    const ls = GEO.laneSep;
+    guideFil([[ls.x, ls.y1], [ls.x, GEO.apron.lane - 6]], { r1: 1.8, r2: 1.5, z2: 21, z3: 28.5, pasPieds: 170 });
+    // 6. Arche supérieure (3e fil à z = 30,5 portant les pattes de rampe à z = 32)
+    const e = GEO.ellipse, arc = [];
+    for (let i = 0; i <= 48; i++) {
+      const a = Math.PI + (Math.PI * i) / 48;
+      const nx = Math.cos(a) / e.rx, ny = Math.sin(a) / e.ry, nl = Math.hypot(nx, ny);
+      const x = Math.max(2, Math.min(W - 2, e.cx + e.rx * Math.cos(a) + (nx / nl) * 3));
+      const y = e.cy + e.ry * Math.sin(a) + (ny / nl) * 3;
+      arc.push([x, y]);
+    }
+    if (arc.length >= 2) guideFil(arc, { r1: 2.0, r2: 1.55, z2: 22, z3: 30.5, coude: false, pasPieds: 115 });
   }
 
   // Reflets : la bille et les chromes reflètent la vraie table (capture faite une fois, et quand
@@ -709,6 +999,8 @@ export class Renderer3D {
     const contours = [];
     for (const node of gltf.nodes) {
       const { categorie, contour } = node.extras;
+      for (const poly of contour) if (poly.length > 2) contours.push(poly);
+      if (categorie === 'guide') continue;
       const prim = gltf.meshes[node.mesh].primitives[0];
       const pos = lire(prim.attributes.POSITION), idx = lire(prim.indices);
       const geo = new THREE.BufferGeometry();
@@ -746,7 +1038,6 @@ export class Renderer3D {
       m.castShadow = true;
       m.receiveShadow = true;
       this.table.add(m);
-      for (const poly of contour) if (poly.length > 2) contours.push(poly);
     }
     // volumes provisoires remplacés
     const dedans = (x, y, poly) => {
@@ -954,8 +1245,7 @@ export class Renderer3D {
       const pos = lire(prim.attributes.POSITION);
       geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
       geo.setIndex(new THREE.BufferAttribute(lire(prim.indices), 1));
-      let mat = mats[node.extras.categorie] || bois;
-      if (node.extras.categorie === 'rallonge') mat = this.rallonge(geo, pos, machine.matrix, ex.rallonge.h);
+      const mat = mats[node.extras.categorie] || bois;
       geo.computeVertexNormals();
       const m = new THREE.Mesh(geo, mat);
       m.name = node.name;
@@ -1119,45 +1409,6 @@ export class Renderer3D {
     this.envDirty = true;
   }
 
-  // rallonge du plateau (derrière son bord haut, jusqu'au panneau arrière) : dessus peint et verni comme les coins
-  // du plateau, avec le titre du jeu ; chants en contreplaqué. Les UV viennent des coordonnées de la table.
-  rallonge(geo, pos, versTable, h) {
-    const idx = geo.index.array, dessus = [], chants = [];
-    const p = new THREE.Vector3(), n = new THREE.Vector3(), a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
-    const uv = new Float32Array((pos.length / 3) * 2);
-    for (let i = 0; i < pos.length / 3; i++) {
-      p.fromArray(pos, 3 * i).applyMatrix4(versTable);
-      uv[2 * i] = p.x / W; uv[2 * i + 1] = -p.y / h;           // haut de l'image côté panneau arrière (y = −h)
-    }
-    for (let i = 0; i < idx.length; i += 3) {
-      a.fromArray(pos, 3 * idx[i]); b.fromArray(pos, 3 * idx[i + 1]); c.fromArray(pos, 3 * idx[i + 2]);
-      n.subVectors(b, a).cross(c.clone().sub(a)).normalize();
-      (Math.abs(n.z) > 0.9 ? dessus : chants).push(idx[i], idx[i + 1], idx[i + 2]);
-    }
-    geo.setIndex([...dessus, ...chants]);
-    geo.addGroup(0, dessus.length, 0);
-    geo.addGroup(dessus.length, chants.length, 1);
-    geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-    const cv = document.createElement('canvas');
-    cv.width = W * TEX; cv.height = Math.round(h * TEX);
-    const g = cv.getContext('2d');
-    g.scale(TEX, TEX);
-    g.fillStyle = COLORS.wood; g.fillRect(0, 0, W, h);
-    g.strokeStyle = 'rgba(255,220,170,0.05)'; g.lineWidth = 1.2;       // fil du bois
-    for (let y = 3; y < h; y += 7) { g.beginPath(); g.moveTo(0, y); g.bezierCurveTo(W / 3, y + 3, (2 * W) / 3, y - 3, W, y + 1); g.stroke(); }
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillStyle = '#e8c35a'; g.font = `bold ${h * 0.2}px Georgia, serif`;
-    g.fillText('FANNY', W / 2, h * 0.36);
-    g.fillStyle = '#f4e6c2'; g.font = `${h * 0.085}px Georgia, serif`;
-    g.fillText('★  PÉTANQUE WORLD TOUR  ★', W / 2, h * 0.56);
-    const tex = canvasTexture(cv);
-    tex.anisotropy = this.gl.capabilities.getMaxAnisotropy();
-    const dessusMat = new THREE.MeshPhysicalMaterial({ map: tex, roughness: 0.6, clearcoat: this.light ? 0 : 0.5,
-      clearcoatRoughness: 0.12, envMapIntensity: 0.5, flatShading: true });
-    this.rallongeMat = dessusMat;
-    return [dessusMat, new THREE.MeshStandardMaterial({ color: 0xc9a77a, roughness: 0.8, flatShading: true })];
-  }
-
   // fond du panneau des afficheurs : tôle noire, deux grilles de haut-parleur, logements des TM1637
   panneauAfficheurs(cw, ch) {
     const c = document.createElement('canvas'); c.width = cw; c.height = ch;
@@ -1216,7 +1467,6 @@ export class Renderer3D {
   applyQuality() {
     this.gl.shadowMap.enabled = !this.light;
     if (this.floorMat) this.floorMat.clearcoat = this.light ? 0 : 0.5;
-    if (this.rallongeMat) this.rallongeMat.clearcoat = this.light ? 0 : 0.5;
     this.scene.traverse((o) => { if (o.material) [].concat(o.material).forEach((m) => { m.needsUpdate = true; }); });
   }
 
@@ -1343,12 +1593,12 @@ export class Renderer3D {
 
   tourUp() { const t = this.orbite; if (t) t.drag = null; }
 
-  tourZoom(dy) { this.zoomer(Math.exp(dy * 0.001)); }
+  tourZoom(dy) { this.zoomer(Math.exp(dy * 0.0013)); }
 
   zoomer(facteur) {
     const t = this.pilotable && this.orbite;
     if (!t) return;
-    t.zoom = Math.max(t.plateau ? 0.18 : 0.35, Math.min(1.8, t.zoom * facteur));
+    t.zoom = Math.max(t.plateau ? 0.03 : 0.25, Math.min(1.8, t.zoom * facteur));
     this.bougee(t);
   }
 
@@ -1447,9 +1697,11 @@ export class Renderer3D {
     }
     if (key !== this.lastFloorKey) {
       this.lastFloorKey = key;
-      for (const { name, ins, sp } of this.lampGlows) {
+      for (const { name, mat, sp } of this.lampGlows) {
         const st = lamps[name] || 0;
-        ins.visible = sp.visible = st === 1 || (st === 2 && blinkOn);
+        const lit = st === 1 || (st === 2 && blinkOn);
+        mat.emissiveIntensity = lit ? 1.55 : 0;
+        sp.visible = lit;
       }
     }
 
@@ -1472,12 +1724,36 @@ export class Renderer3D {
       }
     }
     this.bumpers.forEach((b, i) => {
-      const hit = now - (sim.flash[`bumper${i}`] ?? -1e9) < 100;
-      const want = b.tex[hit ? 1 : 0];
-      if (b.topMat.map !== want) { b.topMat.map = want; b.topMat.emissiveIntensity = hit ? 0.35 : 0; b.topMat.needsUpdate = true; }
       const age = now - (sim.flash[`bumper${i}`] ?? -1e9);
-      b.sp.visible = age < 180;
-      if (b.sp.visible) b.sp.material.opacity = 1 - age / 180;
+      const hit = age < 110;
+      const want = b.tex[hit ? 1 : 0];
+      if (b.topMat.map !== want) { b.topMat.map = want; b.topMat.needsUpdate = true; }
+      // 1. bascule de la jupe conique vers le côté frappé par la bille (0..115 ms)
+      if (age < 115) {
+        const d = sim.flashDir?.[`bumper${i}`] || { x: 0, y: 1 };
+        const tilt = 0.14 * Math.sin((Math.PI * age) / 115) * Math.exp(-age / 75);
+        b.skirtPivot.quaternion.setFromAxisAngle(b.tiltAxis.set(d.y, -d.x, 0), tilt);
+      } else if (b.skirtPivot.quaternion.w !== 1) {
+        b.skirtPivot.quaternion.identity();
+      }
+      // 2. coup de bobine : l'anneau chromé + ses 2 tiges plongent violemment vers le bas (10,5 mm en 26 ms) puis remontent par ressort
+      let stroke = 0;
+      if (age < 26) {
+        stroke = Math.sin((age / 26) * (Math.PI / 2));
+      } else if (age < 145) {
+        const u = (age - 26) / 119;
+        stroke = Math.exp(-u * 4.2) * Math.cos(u * Math.PI * 1.35) * (1 - u);
+      }
+      b.ringGroup.position.z = -(22.5 - stroke * 10.5);
+      // 3. léger recul vibratoire du chapeau + flash de l'ampoule interne dans le corps cannelé translucide
+      b.capGroup.position.z = age < 90 ? 0.7 * Math.sin((Math.PI * age) / 90) : 0;
+      const flash = age < 190 ? (1 - age / 190) ** 1.5 : 0;
+      b.topMat.emissiveIntensity = flash * 0.65;
+      b.sideMat.emissiveIntensity = 0.08 + flash * 1.1;
+      b.bodyMat.emissiveIntensity = 0.1 + flash * 1.6;
+      b.bulbMat.emissiveIntensity = 0.4 + flash * 2.4;
+      b.sp.visible = age < 190;
+      if (b.sp.visible) b.sp.material.opacity = flash;
     });
     this.slings.forEach((band, i) => {
       const hit = now - (sim.flash[`sling${i}`] ?? -1e9) < 90;
