@@ -185,8 +185,11 @@ _cs = V(CAOUTCHOUCS["sling"])
 
 
 def poteaux_sling(s):
-    """poteaux d'un lance-pierre, reculés vers l'intérieur pour que la face extérieure de l'anneau (gorge + corde)
-    tombe sur le contour de rebond du jeu ; les deux poteaux de la face gardent leur entraxe (gabarit du mécanisme)"""
+    """poteaux d'un lance-pierre : centres définis directement dans js/table.js (GEO['slings'][i]['posts']),
+    de sorte que l'anneau (gorge + corde = 8 mm) affleure le couloir de 34 mm, la ligne parallèle au guide
+    et la face de frappe (entraxe 101 mm du gabarit 500-5849)."""
+    if "posts" in s:
+        return [tuple(p) for p in s["posts"]]
     pts = [tuple(p) for p in s["pts"]]
     off = _cs["gorge_d"] / 2 + _cs["cord"]
     A, C = pts[s["face"][0]], pts[s["face"][1]]
@@ -245,12 +248,12 @@ for s in GEO["slings"]:
     ANNEAUX.append({"type": "sling", "poteaux": ps, "z": Z_CAOUT, "r": _cs["gorge_d"] / 2, "cord": _cs["cord"],
                     "face": s["face"], "id_pouces": taille_anneau(perim)})
 
-# --- lance-pierres : plastique décoré posé sur les poteaux + mécanisme acheté
+# --- lance-pierres : plastique décoré posé sur les 3 poteaux (+2 mm autour du caoutchouc) + mécanisme acheté
 for i, s in enumerate(GEO["slings"]):
-    pts = [tuple(p) for p in s["pts"]]
     pps = poteaux_sling(s)
     piece(id=f"plastique_sling_{'GD'[i]}", nom=f"Plastique de lance-pierre {'gauche droit'.split()[i]}", type="plaque",
-          pts=pts, r=8, ep=3, z=H_PAROI + 6, marge=7, matiere="PETG 3 mm décoré (ou acrylique 3 mm)")
+          pts=pps, r=0, ep=3, z=H_PAROI + 6, marge=s.get("rPlast", 10), vis=pps,
+          matiere="PETG 3 mm décoré (ou acrylique 3 mm)")
     A, C = pps[s["face"][0]], pps[s["face"][1]]          # poteaux de la face : le gabarit du mécanisme s'y pose
     m = ((A[0] + C[0]) / 2, (A[1] + C[1]) / 2)
     B = [p for k, p in enumerate(pps) if k not in s["face"]][0]

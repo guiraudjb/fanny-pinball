@@ -11,7 +11,7 @@ guide_tour_2                 ok           10.4 cm³
 guide_tour_3                 ok           10.4 cm³
 guide_tour_4                 ok           10.4 cm³
 guide_tour_5                 ok           10.4 cm³
-piece_bouchon                ok           186.1 cm³
+piece_bouchon                ok           185.9 cm³
 bloc_fanny                   ok           447.6 cm³
 mur_cibles                   ok           30.8 cm³
 poteau_1                     ok           2.7 cm³
@@ -24,9 +24,9 @@ poteau_7                     ok           2.7 cm³
 poteau_8                     ok           2.7 cm³
 poteau_9                     ok           2.7 cm³
 poteau_10                    ok           2.7 cm³
-plastique_sling_G            ok           9.4 cm³
+plastique_sling_G            ok           11.8 cm³
 meca_sling_G                 ok           432.0 cm³
-plastique_sling_D            ok           9.4 cm³
+plastique_sling_D            ok           11.8 cm³
 meca_sling_D                 ok           432.0 cm³
 meca_flipper_L               ok           753.1 cm³
 palette_L                    ok           29.8 cm³
@@ -63,7 +63,7 @@ rollover_R                   ok           21.8 cm³
 cuvette_cercle               ok           17.3 cm³
 tablier                      ok           351.3 cm³
 bac                          ok           131.5 cm³
-patte_rampe_1                ok           10.5 cm³
+patte_rampe_1                ok           10.3 cm³
 patte_rampe_2                ok           3.9 cm³
 patte_rampe_3                ok           4.2 cm³
 patte_rampe_4                ok           4.5 cm³
@@ -72,12 +72,12 @@ patte_rampe_6                ok           5.7 cm³
 patte_rampe_7                ok           4.4 cm³
 patte_rampe_8                ok           4.4 cm³
 patte_rampe_9                ok           5.8 cm³
-rampe                        ok           406.0 cm³
+rampe                        ok           405.8 cm³
 languette_rampe              ok           6.2 cm³
-plastique_bouchon            ok           48.0 cm³
+plastique_bouchon            ok           47.8 cm³
 plastique_rampe              ok           5.2 cm³
-rampe_troncon_1              ok           57.3 cm³
-rampe_troncon_2              ok           55.4 cm³
+rampe_troncon_1              ok           57.2 cm³
+rampe_troncon_2              ok           55.3 cm³
 rampe_troncon_3              ok           54.7 cm³
 rampe_troncon_4              ok           55.1 cm³
 rampe_troncon_5              ok           53.8 cm³

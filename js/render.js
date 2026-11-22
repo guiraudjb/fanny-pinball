@@ -321,20 +321,23 @@ export class Renderer {
     // lance-pierres
     T.slings.forEach((b, i) => {
       const hit = now - (sim.flash[`sling${i}`] ?? -1e9) < 90;
-      const pts = b.vertices.map((v) => [v.x, v.y]);
-      this.slingPlastic(pts, 4.5);
-      if (hit) { this.offsetPath(pts, 4.5); ctx.fillStyle = 'rgba(255,246,190,0.55)'; ctx.fill(); }
+      const { A, C: Cc, posts, rPlast } = b.plugin;
+      this.slingPlastic(posts, rPlast);
+      if (hit) { this.offsetPath(posts, rPlast); ctx.fillStyle = 'rgba(255,246,190,0.55)'; ctx.fill(); }
       // élastique blanc et butoir rouge au milieu (la face qui frappe)
-      const { A, C: Cc } = b.plugin;
       ctx.lineCap = 'round';
-      ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 6;
+      ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 5;
       ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(Cc[0], Cc[1]); ctx.stroke();
-      ctx.strokeStyle = hit ? '#fffbe6' : '#f4f1ea'; ctx.lineWidth = 4;
+      ctx.strokeStyle = hit ? '#fffbe6' : '#f4f1ea'; ctx.lineWidth = 3.2;
       ctx.beginPath(); ctx.moveTo(A[0], A[1]); ctx.lineTo(Cc[0], Cc[1]); ctx.stroke();
       const mx = (A[0] + Cc[0]) / 2, my = (A[1] + Cc[1]) / 2, dx = Cc[0] - A[0], dy = Cc[1] - A[1], l = Math.hypot(dx, dy);
-      ctx.strokeStyle = hit ? '#ffd23f' : '#e8392c'; ctx.lineWidth = 5;
+      ctx.strokeStyle = hit ? '#ffd23f' : '#e8392c'; ctx.lineWidth = 4.5;
       ctx.beginPath(); ctx.moveTo(mx - dx / l * 9, my - dy / l * 9); ctx.lineTo(mx + dx / l * 9, my + dy / l * 9); ctx.stroke();
-      for (const p of [A, Cc]) { ctx.beginPath(); ctx.arc(p[0], p[1], 3, 0, Math.PI * 2); ctx.fillStyle = '#e6e9ee'; ctx.fill(); ctx.strokeStyle = '#4c535e'; ctx.lineWidth = 1; ctx.stroke(); }
+      // têtes de vis M3 des 3 poteaux du plastron
+      for (const p of posts) {
+        ctx.beginPath(); ctx.arc(p[0], p[1], 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#e6e9ee'; ctx.fill(); ctx.strokeStyle = '#4c535e'; ctx.lineWidth = 0.9; ctx.stroke();
+      }
     });
 
     // cibles tombantes
@@ -584,10 +587,10 @@ export class Renderer {
     ctx.closePath();
   }
 
-  // Plastron supérieur sérigraphié d'un lance-pierre, ajusté au débord réel (marge = 7 mm en CAO 3D, 4,5 mm en 2D) :
-  // bordure ocre cernée de brun qui épouse tout le pourtour (y compris les pointes aiguës à 22° et 43,5°),
+  // Plastron supérieur sérigraphié d'un lance-pierre, ajusté aux 3 poteaux et au débord réel (marge = 10 mm,
+  // soit +2 mm autour du caoutchouc Ø 16) : bordure ocre cernée de brun qui épouse tout le pourtour,
   // rayons de soleil et boule de pétanque gravée au centre inscrit, étoile provençale dans la pointe haute.
-  slingPlastic(pts, marge = 4.5, bleed = 0) {
+  slingPlastic(pts, marge = 10, bleed = 0) {
     const ctx = this.ctx;
     const [p0, p1, p2] = pts;
     const l0 = Math.hypot(p1[0] - p2[0], p1[1] - p2[1]);
@@ -600,16 +603,17 @@ export class Renderer {
     const x0 = Math.min(...xs) - marge, x1 = Math.max(...xs) + marge;
     const y0 = Math.min(...ys) - marge, y1 = Math.max(...ys) + marge;
     const R = Math.hypot(x1 - x0, y1 - y0);
+    const rim = 1.3, ochre = 3.2, innerRim = 1.2;
     ctx.save();
     // bordure en couches concentriques : brun extérieur (+ fond perdu en 3D), liseré ocre, filet brun intérieur
     this.offsetPath(pts, marge + bleed);
     ctx.fillStyle = '#2b1a10'; ctx.fill();
-    this.offsetPath(pts, marge * 0.82);
+    this.offsetPath(pts, marge - rim);
     ctx.fillStyle = '#e9b44c'; ctx.fill();
-    this.offsetPath(pts, marge * 0.34);
+    this.offsetPath(pts, marge - rim - ochre);
     ctx.fillStyle = '#2b1a10'; ctx.fill();
     // champ intérieur : dégradé lavande → indigo, rayons de soleil depuis le centre inscrit, pois crème
-    this.offsetPath(pts, marge * 0.17);
+    this.offsetPath(pts, Math.max(0.5, marge - rim - ochre - innerRim));
     ctx.save();
     ctx.clip();
     const g = ctx.createLinearGradient(ix, y0, ix, y1);
@@ -642,8 +646,8 @@ export class Renderer {
     const bl = Math.hypot(bx, by) || 1; bx /= bl; by /= bl;
     const dTop = Math.hypot(ix - tp[0], iy - tp[1]);
     if (dTop > 45) {
-      const sx = tp[0] + bx * dTop * 0.52, sy = tp[1] + by * dTop * 0.52;
-      const sr = marge >= 6 ? 4.8 : 4.0;
+      const sx = tp[0] + bx * dTop * 0.50, sy = tp[1] + by * dTop * 0.50;
+      const sr = 5.0;
       ctx.beginPath();
       for (let j = 0; j < 10; j++) {
         const rr = j % 2 ? sr * 0.44 : sr, a = -Math.PI / 2 + (j * Math.PI) / 5;
@@ -654,7 +658,7 @@ export class Renderer {
       ctx.strokeStyle = '#2b1a10'; ctx.lineWidth = 0.9; ctx.stroke();
     }
     // boule de pétanque gravée au centre inscrit (stries + reflet)
-    const br = marge >= 6 ? 7.5 : 6.5;
+    const br = 8.0;
     const gb = ctx.createRadialGradient(ix - br * 0.3, iy - br * 0.3, br * 0.15, ix, iy, br);
     gb.addColorStop(0, '#ffffff'); gb.addColorStop(0.45, '#b9bec6'); gb.addColorStop(1, '#4c535e');
     ctx.beginPath(); ctx.arc(ix, iy, br, 0, Math.PI * 2); ctx.fillStyle = gb; ctx.fill();

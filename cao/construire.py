@@ -212,7 +212,7 @@ def construire_piece(p):
         return inserts(s.removeSplitter(), p["fix"])
     if k == "plaque":
         s = bloc(p["pts"], p["ep"], p.get("r", 0), p.get("marge", 0), p["z"])
-        for (x, y) in p.get("fix", []):
+        for (x, y) in p.get("fix", []) + p.get("vis", []):
             s = s.cut(Part.makeCylinder(1.75, p["ep"] + 2, tv(x, y, p["z"] - 1)))
         if p.get("sous_rampe"):                        # échancré là où la rampe passe plus bas que lui ; on garde le gros morceau
             s = s.cut(gabarit_rampe(next(q for q in M.PIECES if q["id"] == "rampe"), 2.0, lambda q: q[3] < 220))

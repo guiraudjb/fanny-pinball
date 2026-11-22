@@ -55,14 +55,43 @@ const slingLine = (x) => slingP0.y + ((x - slingP0.x) / dir.x) * dir.y - SL_LEVE
 const DIV_X = SEP_X + GUIDE_T / 2 + INLANE + GUIDE_T / 2;   // séparateur retour 1 / retour 2
 const SL_X1 = DIV_X + GUIDE_T / 2 + INLANE; // bord vertical du lance-pierre
 // Face (caoutchouc) entre les deux poteaux : 101 mm, l'entraxe du mécanisme Williams 500-5849
-// (gabarit Pinball Makers), à 68° sur l'horizontale (60,8° avant : le poteau bas avançait au-dessus de la
-// palette ; les jeux modernes écartent les deux poteaux bas de 7 3/4" à 8 1/2", ici ≈ 7" sur un plateau
-// plus étroit), pied posé sur la ligne parallèle au guide.
+// (gabarit Pinball Makers), à 68° sur l'horizontale. Les 3 poteaux (rayon extérieur du caoutchouc
+// SL_RUB = 8 mm : gorge Ø 8 + corde 4 mm) sont placés pour que le caoutchouc affleure exactement le
+// couloir de retour de 34 mm (x = SL_X1) et la ligne parallèle au guide (slingLine). Le plastron
+// supérieur (SL_PLAST = 10 mm) coiffe les 3 poteaux avec 2 mm de débord uniforme autour du caoutchouc.
 const SL_FACE = 101;
 const SL_ANG = deg(68);
-const SL_X2 = SL_X1 + SL_FACE * Math.cos(SL_ANG);
-const SL_Y1 = slingLine(SL_X2) - SL_FACE * Math.sin(SL_ANG);
-const SLING = [[SL_X1, SL_Y1], [SL_X1, slingLine(SL_X1)], [SL_X2, slingLine(SL_X2)]];
+const SL_RUB = 8;
+const SL_PLAST = 10;
+const slPostLine = (x) => slingLine(x) - SL_RUB / Math.cos(Math.atan2(dir.y, dir.x));
+const SL_P1X = SL_X1 + SL_RUB;
+const SL_P2X = SL_P1X + SL_FACE * Math.cos(SL_ANG);
+const SL_P2Y = slPostLine(SL_P2X);
+const SLING_POSTS = [[SL_P1X, SL_P2Y - SL_FACE * Math.sin(SL_ANG)], [SL_P1X, slPostLine(SL_P1X)], [SL_P2X, SL_P2Y]];
+function offsetPoly(pts, m, steps = 6) {
+  const n = pts.length;
+  const cx = pts.reduce((t, p) => t + p[0], 0) / n, cy = pts.reduce((t, p) => t + p[1], 0) / n;
+  const nrm = [], ang = [];
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n], dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1;
+    let nx = -dy / l, ny = dx / l;
+    if (nx * (cx - a[0]) + ny * (cy - a[1]) > 0) { nx = -nx; ny = -ny; }
+    nrm.push([nx, ny]); ang.push(Math.atan2(ny, nx));
+  }
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], prev = (i - 1 + n) % n;
+    const acw = nrm[prev][0] * nrm[i][1] - nrm[prev][1] * nrm[i][0] < 0;
+    let da = ang[i] - ang[prev];
+    if (acw) { while (da > 0) da -= Math.PI * 2; } else { while (da < 0) da += Math.PI * 2; }
+    for (let s = 0; s <= steps; s++) {
+      const a = ang[prev] + (da * s) / steps;
+      out.push([p[0] + Math.cos(a) * m, p[1] + Math.sin(a) * m]);
+    }
+  }
+  return out;
+}
+const SLING = offsetPoly(SLING_POSTS, SL_RUB);
 
 // Couloir d'entrée de rampe : bouche M, axe u (de la bouche vers le fond) orienté pour que
 // le tir de la palette droite y entre dans l'axe.
@@ -133,8 +162,8 @@ export const GEO = {
     [[0, 465], [32, 500]],
   ],
   slings: [
-    { pts: SLING, face: [0, 2] },
-    { pts: SLING.map(([x, y]) => [mx(x), y]), face: [0, 2] },
+    { pts: SLING, posts: SLING_POSTS, face: [0, 2], rRub: SL_RUB, rPlast: SL_PLAST },
+    { pts: SLING.map(([x, y]) => [mx(x), y]), posts: SLING_POSTS.map(([x, y]) => [mx(x), y]), face: [0, 2], rRub: SL_RUB, rPlast: SL_PLAST },
   ],
   // bumpers : r = anneau qui frappe la bille (Ø 57 mm ; c'est le « Radius » 45 u. de VPX + jupe),
   // cap = chapeau vu de dessus (Ø 68 mm, 2,5 billes)
@@ -316,12 +345,16 @@ export function buildTable(engine) {
   // --- lance-pierres
   GEO.slings.forEach((s, i) => {
     const body = add(polyBody(s.pts, { isStatic: true, restitution: 0.3, label: 'sling' }));
-    const A = s.pts[s.face[0]], C = s.pts[s.face[1]];
-    const B = s.pts.find((_, k) => k !== s.face[0] && k !== s.face[1]);
-    let nx = C[1] - A[1], ny = -(C[0] - A[0]);
+    const posts = s.posts || s.pts;
+    const pA = posts[s.face[0]], pC = posts[s.face[1]];
+    const pB = posts.find((_, k) => k !== s.face[0] && k !== s.face[1]);
+    let nx = pC[1] - pA[1], ny = -(pC[0] - pA[0]);
     const nl = Math.hypot(nx, ny); nx /= nl; ny /= nl;
-    if ((B[0] - A[0]) * nx + (B[1] - A[1]) * ny > 0) { nx = -nx; ny = -ny; }
-    body.plugin = { idx: i, A, C, n: { x: nx, y: ny } };
+    if ((pB[0] - pA[0]) * nx + (pB[1] - pA[1]) * ny > 0) { nx = -nx; ny = -ny; }
+    const rRub = s.rRub || 0;
+    const A = [pA[0] + nx * rRub, pA[1] + ny * rRub];
+    const C = [pC[0] + nx * rRub, pC[1] + ny * rRub];
+    body.plugin = { idx: i, A, C, n: { x: nx, y: ny }, posts, rRub, rPlast: s.rPlast || 10 };
     T.slings.push(body);
   });
 

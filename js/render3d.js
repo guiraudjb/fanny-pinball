@@ -367,8 +367,8 @@ export class Renderer3D {
     if (GEO.bouchonPiece) plastics.push(GEO.bouchonPiece);
     for (const b of T.walls) if (b.plugin && b.plugin.housing) plastics.push(b.vertices.map((v) => [v.x, v.y]));
     for (const p of plastics) pr.plastic(p, 6);
-    // plastrons supérieurs des lance-pierres : débord de 7 mm identique à la CAO (cao/modele.py) + 1,5 mm de fond perdu
-    T.slings.forEach((b) => pr.slingPlastic(b.vertices.map((v) => [v.x, v.y]), 7, 1.5));
+    // plastrons supérieurs des lance-pierres : calés sur les 3 poteaux (marge = 10 mm en CAO) + 1,5 mm de fond perdu
+    T.slings.forEach((b) => pr.slingPlastic(b.plugin.posts, b.plugin.rPlast, 1.5));
     if (GEO.enseigneRampe) enseigne(pr.ctx, GEO.enseigneRampe.pts, Math.cos((GEO.enseigneRampe.incl * Math.PI) / 180));
     const tex = canvasTexture(cv);
     tex.repeat.set(1 / W, -1 / H);
