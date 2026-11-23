@@ -290,6 +290,21 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
     | Blocages depuis la rampe | 2 | 0 |
 
     Le point restant est une bille posée pile au sommet du poteau haut du lance-pierres droit (2 départs sur 1 286). C'est un équilibre instable, et un bourrage la libère.
+- **Frottement de pivotement** :
+  - Constat : la prédiction corrigée a fait tomber le berceau de 16/16 à 0/16. Le 16/16 venait du freinage fantôme à 2 cm. Avec les vrais contacts, une bille qui frappe la palette en biais prend une rotation autour de la verticale, que Rapier ne freine jamais. Cette rotation la poussait le long de la palette levée, par-dessus la pointe.
+  - Correction : un frottement de pivotement au plateau est ajouté (`PIVOTEMENT`, 13 rad/s²). Il vient de μ 0,2 et d'une tache de contact d'environ 0,5 mm ; cette valeur est une estimation, pas une mesure.
+  - Banc des gestes :
+
+    | Geste | Résultat |
+    | :--- | :---: |
+    | Berceau, palette tenue | 8/16 |
+    | Tirs | 2,1 à 2,6 m/s |
+    | Rebond mort | 5/24 |
+    | Passes G→D | 5/30 |
+    | Passes D→G | 3/30 |
+    | Drop catch | 10/54 |
+
+  - Nouvel essai au banc : la réception depuis le couloir de retour (palette levée au passage de la bille).
 - **Collision de la CAO** : les triangles d'aire nulle (sommets arrondis au 0,1 mm dans les STL) sont retirés à l'export (`outils/cao_web.py`).
 - **Résistance au roulement sur la rampe** : le même coefficient de 0,005 que sur le plateau s'applique quand la bille roule sur le fond de la rampe. Au tir centré, la rampe demande maintenant environ 2 m/s ; à 2,4 m/s, elle est faite pour toutes les entrées.
 - **Vitre** : dans le S de rayon 70 mm, une bille à 2,4–2,8 m/s grimpe le flanc extérieur relevé jusqu'à toucher la vitre (23 essais sur 180). Elle ne peut pas passer par-dessus, puisqu'il reste 2 mm de jeu.

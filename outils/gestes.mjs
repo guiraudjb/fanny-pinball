@@ -65,6 +65,24 @@ function berceau(side) {
     for (let k = 0; k < 240 && !bille.retiree; k++) pas();
     if (!bille.retiree && bille.vitesse < 0.03 && surPalette(side, bille.position)) return bille;
   }
+  for (const v of [0, 0.5]) for (const lane of ['inExt', 'inInt']) for (const leC of [-30, -15, 0, 10, 20, 30, 40]) {
+    const bille = receptionCouloir(side, lane, v, leC);
+    if (bille) return bille;
+  }
+  return null;
+}
+// réception depuis le couloir de retour, comme un joueur : la palette est au repos, il la lève quand la bille, arrivée
+// sur la palette, a roulé jusqu'à « leC » mm de l'axe ; renvoie la bille immobile en berceau (ou null)
+function receptionCouloir(side, lane, v, leC) {
+  reset();
+  const l = GEO.lowerLanes.find((q) => q.id === lane + side);
+  const bille = sim.makeBall(l.x, l.y - 20);
+  sim.setVitesse(bille, 0, vImg(v));
+  for (let t = 0; t < 4000 && !bille.retiree; t += 1000 / 480) {
+    sim.step(1000 / 480);
+    if (!sim.held[side] && distPalette(side, bille.position) < 3 && le(side, bille.position) >= leC) sim.held[side] = true;
+    if (sim.held[side] && bille.vitesse < 0.03 && distPalette(side, bille.position) < 2) return bille;
+  }
   return null;
 }
 // distance de la bille à la surface de la palette (angle courant), en mm
@@ -134,6 +152,17 @@ const note = (nom, ok, total, detail = '') => {
     if (!bille.retiree && bille.vitesse < 0.03 && surPalette(side, bille.position)) ok++;
   }
   note('berceau (couloir → palette levée)', ok, n, 'v 0 à 1,5 m/s, 2 couloirs, 2 côtés');
+}
+// 1 bis. Réception depuis le couloir de retour (palette au repos, levée quand la bille a roulé jusqu'à le mm) :
+//        réussite = au moins un instant de levée qui met la bille en berceau
+{
+  let ok = 0, n = 0; const regl = [];
+  for (const side of ['L', 'R']) for (const v of [0, 0.5, 1.0]) for (const lane of ['inInt', 'inExt']) {
+    n++;
+    const r = [-30, -15, 0, 10, 20, 30, 40, 50].filter((leC) => receptionCouloir(side, lane, v, leC));
+    if (r.length) { ok++; regl.push(`${side}${lane.slice(2)}/${v}:${r.length}`); }
+  }
+  note('réception depuis le couloir de retour', ok, n, regl.join(' '));
 }
 
 // relâche la palette (bille en berceau) et attend que la bille ait roulé jusqu'à « leCible » mm de l'axe

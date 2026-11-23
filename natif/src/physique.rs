@@ -23,6 +23,8 @@ const BILLE_E: f32 = 0.95;
 const SPINNER_I: f32 = 2.5e-6;
 const V_MAX: f32 = 6.0;
 const ROULEMENT: f32 = 0.005;
+/// frottement de pivotement au plateau (rad/s²), comme js/sim.js PIVOTEMENT
+const PIVOTEMENT: f32 = 13.0;
 const LAUNCH_V: f32 = 2.50;
 pub const COURSE_LANCEUR: f32 = 50.0;
 const BUMPER_V: f32 = 1.25;
@@ -526,6 +528,13 @@ impl Sim {
                 let w = *c.angvel();
                 c.set_linvel(v * k, true);
                 c.set_angvel(w * k, true);
+            }
+            if h < 0.3 {
+                let c = &mut self.bodies[self.billes[i].corps];
+                let w = *c.angvel();
+                let dw = PIVOTEMENT * dt as f32 / 1000.0;
+                let wz = if w.z.abs() <= dw { 0.0 } else { w.z - w.z.signum() * dw };
+                if w.z != 0.0 { c.set_angvel(vector![w.x, w.y, wz], true); }
             }
             let (x, y) = self.position(i);
             if y > drain_y || x < -20.0 || x > self.w + 20.0 || y < -40.0 || h > H_VITRE + 20.0 || h < -40.0 {

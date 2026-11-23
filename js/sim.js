@@ -32,6 +32,11 @@ const V_MAX = 6.0;                        // m/s
 // Résistance au roulement (Rapier n'en a pas) : la bille roulant au contact du plateau perd ROULEMENT × g
 // (m/s²) tant qu'elle avance : 0,005 correspond au roulement d'une bille d'acier sur un plateau verni.
 const ROULEMENT = 0.005;
+// Frottement de pivotement (Rapier n'en a pas) : la rotation de la bille autour de la normale au plateau est freinée
+// par la tache de contact. Couple μ·N·a avec μ 0,2 et a ≈ 0,5 mm (acier sur plateau verni, estimation) :
+// décélération μ·g·a / (2/5·r²) ≈ 13 rad/s². Sans lui, la rotation prise en frappant un caoutchouc en biais
+// n'était jamais freinée et poussait la bille le long de la palette, par-dessus sa pointe.
+const PIVOTEMENT = 13;
 const FLIP_UP = 45;                       // rad/s : palette cinématique (ancien modèle, option motorisee: false)
 const FLIP_DOWN = 20;
 // Palette motorisée (modèle par défaut) : un corps qui a son inertie, tourné par la bobine comme sur un vrai jeu.
@@ -660,7 +665,12 @@ export class Sim {
         const k = Math.max(0, 1 - (ROULEMENT * G * dt) / 1000 / sp), w = b.body.angvel();
         b.body.setLinvel({ x: v.x * k, y: v.y * k, z: v.z }, true);
         b.body.setAngvel({ x: w.x * k, y: w.y * k, z: w.z * k }, true);
-      } else if (b.hauteur >= 0.3 && sp > 0.005 && this.surRampe(b)) {
+      }
+      if (b.hauteur < 0.3) {
+        const w = b.body.angvel(), dw = (PIVOTEMENT * dt) / 1000;
+        if (w.z !== 0) b.body.setAngvel({ x: w.x, y: w.y, z: Math.abs(w.z) <= dw ? 0 : w.z - Math.sign(w.z) * dw }, true);
+      }
+      if (sp <= V_MAX && b.hauteur >= 0.3 && sp > 0.005 && this.surRampe(b)) {
         // même résistance au roulement sur le fond de la rampe (vitesse 3D : le fond est en pente)
         const k = Math.max(0, 1 - (ROULEMENT * G * dt) / 1000 / sp), w = b.body.angvel();
         b.body.setLinvel({ x: v.x * k, y: v.y * k, z: v.z * k }, true);
