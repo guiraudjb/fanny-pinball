@@ -314,6 +314,7 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   - La rampe se fait depuis la palette droite, avec `le` entre 35 et 36,5 mm : une fenêtre étroite, comme sur une vraie machine.
   - Depuis la palette gauche, elle est inaccessible, ce qui est normal puisque l'entrée regarde la palette droite.
   - Parties du robot : 1,3 à 2 minutes, 17 000 à 71 000 points, presque toutes les billes perdues entre les palettes.
+  - Réétalonnage vers 16 h, après le frottement d'impact : parties de 1,3 à 2,3 minutes, 15 700 à 41 300 points, aucun blocage.
 - **Version native, afficheurs et caméra** :
   - Le score et l'info s'allument maintenant sur le fronton, avec la police 7 segments du jeu web. Ils ne passent plus seulement par le titre de la fenêtre.
   - Caméra orbitale à la souris : glisser pour tourner autour de la machine, molette pour zoomer. Pour les essais sans écran, l'option `--orbite lacet,tangage,distance` la place directement.
