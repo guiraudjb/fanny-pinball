@@ -228,6 +228,27 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   - Suppression du plot central (`centerPost` / `poteau_11`) devenu inutile à 45,9 mm d'écart, tablier réaligné (`side = 868`, `front = 960`) et ajout du **bourrage latéral** (`Ctrl gauche` / `Ctrl droit` en plus d'`Espace` / `↑` frontal).
   - Chaîne CAO (`99 objets ; 0 échecs`), GLB (`pieces.glb`, `collision.glb`, `caisse.glb`), 12 planches PDF, ré-étalonnage robot (`outils/robot_tirs.json` + `TIRS_DEFAUT`) et cache PWA (`sw.js`) régénérés.
 
+## Revue de réalisme, palettes aux cotes vérifiées et palette motorisée (23/11)
+
+- **Revue du travail de Gemini (21–22/11)** : écarts relevés entre la physique et un vrai flipper (palettes réglées pour faciliter le berceau, aides à la rampe, bumpers qui imposent leur vitesse, portage Rust en 2D avec rampe sur rail et bonus de vitesse ×1,08…). Les points qui restent sont listés dans « Reste à faire ».
+- **Document des batteurs corrigé** (`docs/analyse_de_l_espacement…`) : l'entraxe de 158,7–165,1 mm, le repos de 22–25° et la course de 28–32° n'avaient pas de source (et la course rendait le berceau impossible) ; Shatz = Alley Pass ; palettes Lightning ≈ 1/8" plus courtes. Sources en fin de document.
+- **Palettes aux cotes sourcées** (`js/table.js`, `pi2/`, `rust3d/`) : axes à 6-7/8" (174,6 mm, WPC 6-13/16" à 7") et à 7" du bas (178 mm), repos 31°, levée 20° (course 51°, valeurs Visual Pinball / Black Knight), palette 3" conservée. L'écart entre les pointes en découle : 62,7 mm (aucune cote publiée pour le fixer). Les guides de retour et les lance-pierres suivent le nouvel angle de repos. CAO régénérée (108 objets, 0 échec ; la CAO commitée avant n'était pas à jour), GLB, 13 planches.
+- **Rebond du caoutchouc de palette** ramené de 0,65 à 0,5 (`js/sim.js`), et à 0,5 fixe dans le Rust (il passait de 0,34 à 0,55 selon que la palette bougeait).
+- **Palette motorisée** (`js/sim.js`, option `motorisee`, par défaut) : corps Rapier dynamique (inertie 1e-4 kg·m², HYP) tourné par la bobine comme un vrai jeu — coup de puissance de 40 ms (Fliptronics), puis maintien, nouveau coup si une bille rabat la palette (fin de course), ressort de rappel, butées sans rebond. Une tape plus courte que le coup donne une palette moins forte : les passes douces se jouent par des tapes de 4 à 12 ms. Couple étalonné (0,5 N·m) pour des tirs de ≈ 2,5 m/s comme l'ancien modèle ; course à vide 21 ms, retour 77 ms. Le portage Rust garde l'ancienne palette cinématique.
+- **Banc des gestes** `node outils/gestes.mjs [--cinematique]` : berceau, tir, rebond mort, passes depuis le berceau, drop catch, chute au centre, mesurés en réussites. Résultats (même banc) :
+
+  | Geste | Avant (Gemini) | Après |
+  | :--- | :---: | :---: |
+  | Berceau depuis le couloir de retour | 16/16 | 4/16 |
+  | Rebond mort rattrapé sur l'autre palette | 7/24 | 0/24 |
+  | Passes depuis le berceau | 6/60 | 7/60 |
+  | Drop catch | 16/54 | 2/54 |
+  | Tir (m/s, frappe à 30–40 mm) | 2,4–2,6 | 2,4–2,5 |
+  | Écart entre les pointes | 45,9 mm | 62,7 mm |
+
+  Une bille qui descend lentement le couloir de retour passe par-dessus la palette levée : avec une résistance au roulement de 0,012 ou une levée à −25°, le berceau remonte à 12/16. **Choix de l'utilisateur (23/11) : garder les cotes et le roulement réels sans retouche** ; c'est au modèle d'amortissement du caoutchouc de progresser.
+- **Robot** : réétalonné (sa mise en berceau donne une vitesse d'arrivée à la bille) ; 3 parties de 1,2 à 1,5 min, 19 000 à 25 000 points (avant : 2,3 à 3,2 min, 22 000 à 88 000), toutes les billes perdues entre les palettes. Node.js 22 installé sans sudo dans `~/aitools/node` pour les bancs.
+
 ## Reste à faire
 
 | Sujet | Détail |
@@ -239,3 +260,9 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Réplique : impression | Imprimer une pièce test (poteau, guide) pour valider inserts et tolérances, puis la série |
 | Caisse | Débiter et assembler la caisse et le fronton (planches 08, 09, 11) |
 | Son sur la réplique | Le DFPlayer ne joue qu'une piste à la fois : priorité à la voix, ou second DFPlayer sur Serial2 |
+| Réalisme : berceau | Amortissement du caoutchouc de palette au choc lent (le berceau depuis le couloir de retour échoue 12 fois sur 16 avec les cotes réelles) ; mesurer si possible la résistance au roulement réelle |
+| Réalisme : bumpers, lance-pierres, lanceur | Impulsions qui s'ajoutent à la vitesse de la bille au lieu de la remplacer ; lanceur par tige à ressort |
+| Réalisme : rampe et tourniquet | Retirer les aides (frottement 0,04 « sans freiner », pas de résistance au roulement sur la rampe) ; tourniquet qui freine la bille |
+| Réalisme : aides invisibles | Secousse automatique d'une bille immobile 1,5 s (`frameChecks`) ; plafond de vitesse 6 m/s |
+| Portage Rust | Palette motorisée à porter ; rampe sur rail avec bonus ×1,08 ; horloge qui retarde de 4 % (`time_ms += 2` pour des pas de 2,083 ms) |
+| Plateau | Allongé à 1263 mm par Gemini (standard : 1067 mm) : à rediscuter avec la caisse |

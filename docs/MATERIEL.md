@@ -9,7 +9,7 @@ commerce.
 
 | Élément du jeu | Réalisation physique |
 |---|---|
-| Échelle | 1 unité du jeu = 1 mm. Plateau standard 514 × 1067 mm (20,25" × 42"), bille de flipper 27 mm (1-1/16"), flippers de 63 mm d'axe à pointe, axes écartés de 174 mm à 180 mm du bas, angles 31° / 19°, bumpers à anneau Ø 57 mm et chapeau Ø 68 mm, banque de cibles à 75° (Black Hole) au pas Williams de 31,75 mm, entrée de rampe de 52 mm — cotes relevées dans les tables VPX Black Knight (1980), Black Hole (1981) et Top Score (1975) |
+| Échelle | 1 unité du jeu = 1 mm. Plateau standard 514 × 1067 mm (20,25" × 42"), bille de flipper 27 mm (1-1/16"), flippers 3" (76,2 mm hors-tout), axes écartés de 174,6 mm (6-7/8") à 178 mm (7") du bas, repos 31° / levée 20° (Visual Pinball, Black Knight), bumpers à anneau Ø 57 mm et chapeau Ø 68 mm, banque de cibles à 75° (Black Hole) au pas Williams de 31,75 mm, entrée de rampe de 52 mm — cotes relevées dans les tables VPX Black Knight (1980), Black Hole (1981) et Top Score (1975) |
 | Règles (`js/rules.js`) | Code à porter presque ligne à ligne en C++ sur le Mega |
 | Contacts | Un contact = une entrée du Mega (INPUT_PULLUP, contact vers la masse) |
 | Flippers, bumpers, lance-pierres | Le Mega tire la bobine dès que le bouton ou le contact se ferme |

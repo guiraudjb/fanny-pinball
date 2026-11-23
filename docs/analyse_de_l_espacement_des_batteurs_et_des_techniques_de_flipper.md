@@ -27,8 +27,8 @@ L'avènement des flippers électroniques (1977-1979) transforme la conception de
 
 ### Les années 1990 : Standardisation WPC et expérimentations de difficulté
 Durant l'âge d'or des écrans matriciels (DMD), la géométrie du bas de plateau atteint sa maturité industrielle, portée notamment par l'architecture Williams/Bally WPC :
-* **Le standard des 4,5 à 5 cm :** Une bille d'acier standard mesure 1 1/16 de pouce (2,7 cm) de diamètre. L'espacement entre les pointes des batteurs au repos se fixe autour de 1,75 à 2 pouces (4,4 à 5,1 cm), soit moins de deux fois le diamètre de la bille. Cela permet au joueur de réaliser des passes d'un batteur à l'autre (*ski pass*, *alley pass*) tout en conservant un risque de perte directe (*drain*) sur un tir mal centré.
-* **L'épisode des « Lightning Flippers » :** Au milieu des années 1990, pour accélérer le rythme et raccourcir des parties jugées trop longues sur certains modèles rapides (comme *Bram Stoker's Dracula*, *Indiana Jones* ou *The Shadow*), Williams utilise des batteurs légèrement plus courts de 1/8 de pouce (environ 3 mm de moins chacun). Ce raccourcissement augmente l'écart central de 6 mm, rendant le contrôle central nettement plus exigeant.
+* **L'écart entre les pointes :** Une bille d'acier standard mesure 1 1/16 de pouce (2,7 cm) de diamètre. L'écart entre les pointes des batteurs au repos est réglé pour qu'une bille passe tout juste (« presque impossible, mais pas tout à fait », brevet US4971324). *Aucune cote publiée n'a été trouvée pour cet écart : les 4,4 à 5,1 cm d'une première version de ce document n'avaient pas de source.* Cela permet au joueur de réaliser des passes d'un batteur à l'autre (*ski pass*, *alley pass*) tout en conservant un risque de perte directe (*drain*) sur un tir mal centré.
+* **L'épisode des « Lightning Flippers » :** Au début des années 1990, Williams monte sur quelques jeux (*Bram Stoker's Dracula*, *Fish Tales*, confirmés par des témoignages de joueurs) des batteurs en éclair plus courts d'environ 1/8 de pouce (≈ 3 mm, selon les vendeurs de pièces ; un podcast parle de 1/16"), soit environ 2,875". L'écart central s'en trouve élargi de quelques millimètres. *Indiana Jones* et *The Shadow*, cités dans une première version, ne sont pas confirmés.
 
 ### Des années 2000 à nos jours : L'ère de la précision et de la compétition
 Depuis la reprise du marché par Stern Pinball et l'arrivée de nouveaux constructeurs (Jersey Jack Pinball, Spooky, American Pinball), l'espacement des batteurs n'est plus utilisé comme une variable d'ajustement de difficulté :
@@ -38,20 +38,24 @@ Depuis la reprise du marché par Stern Pinball et l'arrivée de nouveaux constru
 
 ---
 
-## 2. État de l'art : Géométrie et dimensions des batteurs modernes
+## 2. État de l'art : géométrie des batteurs (cotes vérifiées le 23/11/2026)
 
-Sur les flippers contemporains (Stern Spike 2, Jersey Jack Pinball, Spooky, Chicago Gaming), les cotes du bas de plateau répondent à un standard industriel hérité de l'architecture Williams/Bally WPC des années 1990.
+Les cotes ci-dessous ont été vérifiées une par une. La première version de ce tableau donnait un entraxe de 158,7 à 165,1 mm, un repos de 22–25° et une course de 28–32° : ces valeurs n'avaient pas de source, et la dernière rendait le berceau impossible (palette levée à l'horizontale).
 
-| Paramètre mécanique | Valeur standard (Impérial) | Valeur métrique | Rôle et impact sur le gameplay |
+| Paramètre | Valeur | Source | Fanny Pinball (`js/table.js`) |
 | :--- | :--- | :--- | :--- |
-| **Longueur du batteur (hors caoutchouc)** | 2,875 po | 73 mm | Corps plastique standard (hors variantes *Lightning* de 2,75 po). |
-| **Longueur totale (avec caoutchouc)** | 3,00 po | 76,2 mm | Référence absolue pour la portée de tir et le bras de levier. |
-| **Diamètre standard de la bille** | 1,0625 po (1 1/16") | 26,99 mm | Sert d'unité de référence pour calibrer tous les passages et écarts. |
-| **Espacement entre pointes (au repos)** | 1,75 à 1,875 po | 44,5 à 47,6 mm | Équivaut à **1,65 à 1,76 fois** le diamètre de la bille ; permet les passes tout en punissant les tirs manqués au centre. |
-| **Entraxe des axes de rotation (pivots)** | ~6,25 à 6,50 po | 158,7 à 165,1 mm | Détermine l'arc de balayage et l'ouverture maximale vers le haut du plateau. |
-| **Angle de repos** | ~22° à 25° | ~22° à 25° | Aligné dans la continuité exacte de la pente des guides des *inlanes* (couloirs de retour). |
-| **Course angulaire (débattement)** | ~28° à 32° | ~28° à 32° | Permet d'atteindre les tirs serrés (*backhands*) tout en fermant l'angle central en position haute. |
-| **Inclinaison du plateau (*Pitch*)** | 6,5° à 7,0° | 6,5° à 7,0° | Accélère la bille par rapport aux 6° historiques, rendant les amortis plus techniques. |
+| **Longueur totale (avec caoutchouc)** | 3" (76,2 mm) | désignation commerciale des batteurs WPC / Stern | 12 + 57,7 + 6,5 = 76,2 mm |
+| **Batteur *Lightning*** | ≈ 1/8" plus court (≈ 2,875") | vendeurs de pièces (Planetary Pinball) | — |
+| **Bille** | 1-1/16" (26,99 mm) | standard | 27 mm |
+| **Entraxe des axes** | 6-13/16" à 7" (173 à 178 mm) sur la plupart des WPC ; ≈ 6-3/4" Williams/Bally, ≈ 7" Stern/Sega | wiki Pinball Makers (*Design*), Pinside | 6-7/8" = 174,6 mm |
+| **Hauteur des axes** | 7" (178 mm) au-dessus du bord bas du plateau | wiki Pinball Makers | 178 mm |
+| **Trou d'axe** | Ø 1/2" | wiki Pinball Makers, plan A-15205 | Ø 12,7 |
+| **Angle de repos** | ≈ 31° sous l'horizontale (axe de la palette) | valeur par défaut de Visual Pinball (121°), retrouvée sur Black Knight 1980 | 31° ; guides de retour dans le prolongement de la face supérieure (36,5°) |
+| **Position levée** | ≈ 20° au-dessus de l'horizontale, soit une course ≈ 51° | valeur par défaut de Visual Pinball (70°) | −20°, course 51° |
+| **Écart entre pointes au repos** | pas de cote publiée trouvée | — | ≈ 62 mm, conséquence des cotes ci-dessus |
+| **Inclinaison du plateau** | ≈ 6,5° sur les jeux modernes | usage courant (manuels d'installation) | 6,5° par défaut, réglable 4,5–8,5° |
+
+Ce qui reste à confirmer : l'écart entre pointes et les angles exacts d'un jeu WPC précis (à relever sur un plateau réel ou sur une table Visual Pinball recréée d'après un scan de plateau). Le banc `outils/gestes.mjs` mesure, sur la physique du jeu, quels gestes sont réalisables avec cette géométrie.
 
 ---
 
@@ -63,13 +67,12 @@ Cette géométrie standardisée conditionne l'ensemble des techniques de contrô
 * **Cradle (Berceau / Blocage) :** Maintenir le batteur levé pour immobiliser la bille dans l'angle formé par la palette et le guide du couloir de retour (*inlane*), permettant de viser calmement.
 * **Live Catch (Amorti à la volée) :** Lever le batteur à l'instant exact où la bille arrive à son contact afin d'absorber toute son énergie cinétique ; la bille s'arrête net sur le caoutchouc sans rebondir.
 * **Drop Catch (Amorti par relâchement) :** Partir d'un batteur levé et le relâcher au moment précis de l'impact de la bille pour annuler le rebond et la faire tomber directement en position de berceau.
-* **Shatz (Tir de remontée d'inlane) :** Tirer avec la pointe extrême du batteur pour faire remonter la bille le long du couloir de retour opposé (*inlane*) afin de déclencher un contact ou de ralentir le jeu.
 
 ### Techniques de transfert d'un batteur à l'autre (*Passing*)
 * **Dead Bounce / Dead Flip (Rebond mort) :** Laisser la bille frapper un batteur au repos sans l'actionner ; l'élasticité du caoutchouc la renvoie proprement vers le batteur opposé pour un blocage facile.
 * **Post Pass (Passe sur plot) :** Depuis un blocage (*cradle*), donner une brève impulsion pour envoyer la bille frapper le plot en caoutchouc situé juste au-dessus du batteur, la faisant rebondir directement vers l'autre palette.
 * **Tap Pass (Passe par micro-impulsion) :** Relâcher très brièvement le batteur sur lequel la bille est bloquée puis le réactiver instantanément ; la bille roule sur la pente du batteur et saute vers le batteur opposé.
-* **Alley Pass / Ski Pass :** Envoyer la bille depuis un batteur à travers les couloirs inférieurs (en passant au-dessus ou derrière les *slingshots*) pour qu'elle redescende par le couloir de retour opposé.
+* **Alley Pass, ou « Shatz » :** C'est un seul et même geste, nommé d'après le joueur Neil Shatz. Frapper la bille au tout dernier moment, quand elle roule vers le bout de la palette : elle passe sous le lance-pierre opposé et remonte vers le couloir de retour opposé, puis redescend sur l'autre palette. Mal dosée, elle file trop haut et ressort par le couloir de sortie (*shatz-drain*).
 * **Loop Pass :** Tirer dans une boucle (*orbit*) qui renvoie la bille directement dans le couloir de retour du batteur opposé.
 
 ### Techniques de tir de précision (*Shooting*)
@@ -80,7 +83,17 @@ Cette géométrie standardisée conditionne l'ensemble des techniques de contrô
 
 ### Techniques de sauvetage et d'intervention physique (*Saving & Nudging*)
 * **Slap Save (Sauvetage par claque) :** Actionner rapidement les deux batteurs l'un après l'autre (souvent accompagné d'un léger coup latéral sur la caisse) lorsqu'une bille tombe droit au centre, afin de la frapper du bout de la palette avant qu'elle ne franchisse la ligne.
-* **Death Save (Sauvetage de la mort) :** Technique extrême (interdite en tournoi officiel) consistant, lorsqu'une bille sort par un couloir latéral (*outlane*), à imprimer une poussée diagonale violente à la caisse au moment où la bille rebondit sous l'arche inférieure pour la renvoyer sur le plateau via le batteur opposé.
+* **Death Save (Sauvetage de la mort) :** Technique extrême (interdite en tournoi d'après l'usage rapporté par les joueurs ; texte du règlement PAPA/IFPA non vérifié) consistant, lorsqu'une bille sort par un couloir latéral (*outlane*), à imprimer une poussée diagonale violente à la caisse au moment où la bille rebondit sous l'arche inférieure pour la renvoyer sur le plateau via le batteur opposé.
 * **Bang Back :** Variante du *Death Save* réalisée par un choc frontal vers l'avant sur la caisse au moment précis où la bille heurte le fond du couloir de sortie.
 * **Slide Save (Nudge latéral) :** Donner une impulsion latérale sèche sur la caisse (*nudging*) pour déplacer le plateau sous la bille et l'empêcher de tomber au centre ou dans un *outlane* sans déclencher le *Tilt*.
 * **Up-Post / Center Drain Nudge :** Pousser la machine vers l'avant lorsqu'une bille descend lentement au centre pour lui faire heurter la pointe d'un batteur ou un plot central.
+---
+
+## Sources (vérification du 23/11/2026)
+
+* Pinball Makers, *Design* — *Playfield Spacing* : https://pinballmakers.com/wiki/index.php?title=Design
+* Pinside, *General lane widths and flipper spacing* : https://pinside.com/pinball/forum/topic/general-lane-widths-and-flipper-spacing
+* Visual Pinball, valeurs par défaut des batteurs (bibliothèque vpin) : https://docs.rs/crate/vpin/0.26.1/source/src/vpx/gameitem/flipper.rs
+* Fun With Bonus, *Alley pass / Shatz* : https://funwithbonus.com/new-pinball-dictionary-alley-pass-shatz-the-inlane
+* Planetary Pinball, batteur *Lightning* 20-9734 : https://www.planetarypinball.com/PPS-20-9734-6
+* Brevet US4971324 (écart entre batteurs) : https://patents.google.com/patent/US4971324

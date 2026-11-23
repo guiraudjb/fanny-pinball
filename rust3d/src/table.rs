@@ -426,10 +426,10 @@ impl TableGeo {
         let flip_len = 57.7_f32;
         let flip_r1 = 12.0_f32;
         let flip_r2 = 6.5_f32;
-        let flip_rest = deg(19.0);
-        let flip_up = deg(-28.0);
-        let flip_pivot_dx = 84.0_f32;
-        let flip_pivot_y = H - 180.0;
+        let flip_rest = deg(31.0);
+        let flip_up = deg(-20.0);
+        let flip_pivot_dx = 87.3_f32; // axes à 6-7/8" (174,6 mm)
+        let flip_pivot_y = H - 178.0; // 7" du bas du plateau
         let lpx = CX - flip_pivot_dx;
 
         let flippers = [

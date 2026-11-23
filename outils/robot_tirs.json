@@ -34,7 +34,7 @@
   },
   {
    "d": 133,
-   "cible": "drain"
+   "cible": "-"
   },
   {
    "d": 150,
@@ -42,7 +42,7 @@
   },
   {
    "d": 167,
-   "cible": "drain"
+   "cible": "-"
   },
   {
    "d": 183,
@@ -86,7 +86,7 @@
   },
   {
    "d": 350,
-   "cible": "-"
+   "cible": "dropA"
   },
   {
    "d": 367,
@@ -98,11 +98,11 @@
   },
   {
    "d": 400,
-   "cible": "drain"
+   "cible": "-"
   },
   {
    "d": 417,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 433,
@@ -110,23 +110,23 @@
   },
   {
    "d": 450,
-   "cible": "-"
+   "cible": "dropF"
   },
   {
    "d": 467,
-   "cible": "-"
+   "cible": "dropN1"
   },
   {
    "d": 483,
-   "cible": "-"
-  },
-  {
-   "d": 500,
    "cible": "boule3"
   },
   {
-   "d": 517,
+   "d": 500,
    "cible": "-"
+  },
+  {
+   "d": 517,
+   "cible": "drain"
   },
   {
    "d": 533,
@@ -134,7 +134,7 @@
   },
   {
    "d": 550,
-   "cible": "-"
+   "cible": "laneR"
   },
   {
    "d": 567,
@@ -142,59 +142,59 @@
   },
   {
    "d": 583,
-   "cible": "-"
+   "cible": "dropF"
   },
   {
    "d": 600,
-   "cible": "tirer"
+   "cible": "dropA"
   },
   {
    "d": 617,
-   "cible": "tirer"
+   "cible": "dropN1"
   },
   {
    "d": 633,
-   "cible": "dropF"
+   "cible": "dropY"
   },
   {
    "d": 650,
-   "cible": "saucer"
+   "cible": "dropY"
   },
   {
    "d": 667,
-   "cible": "boule3"
+   "cible": "-"
   },
   {
    "d": 683,
-   "cible": "tirer"
+   "cible": "-"
   },
   {
    "d": 700,
-   "cible": "tirer"
+   "cible": "drain"
   },
   {
    "d": 717,
-   "cible": "tirer"
+   "cible": "drain"
   },
   {
    "d": 733,
-   "cible": "tirer"
+   "cible": "drain"
   },
   {
    "d": 750,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 767,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 783,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 800,
-   "cible": "dropF"
+   "cible": "drain"
   }
  ],
  "R": [
@@ -216,7 +216,7 @@
   },
   {
    "d": 67,
-   "cible": "drain"
+   "cible": "-"
   },
   {
    "d": 83,
@@ -232,15 +232,15 @@
   },
   {
    "d": 133,
-   "cible": "drain"
+   "cible": "-"
   },
   {
    "d": 150,
-   "cible": "drain"
+   "cible": "-"
   },
   {
    "d": 167,
-   "cible": "drain"
+   "cible": "-"
   },
   {
    "d": 183,
@@ -260,7 +260,7 @@
   },
   {
    "d": 250,
-   "cible": "drain"
+   "cible": "-"
   },
   {
    "d": 267,
@@ -276,7 +276,7 @@
   },
   {
    "d": 317,
-   "cible": "drain"
+   "cible": "-"
   },
   {
    "d": 333,
@@ -284,11 +284,11 @@
   },
   {
    "d": 350,
-   "cible": "-"
+   "cible": "boule1"
   },
   {
    "d": 367,
-   "cible": "drain"
+   "cible": "tirer"
   },
   {
    "d": 383,
@@ -296,11 +296,11 @@
   },
   {
    "d": 400,
-   "cible": "drain"
+   "cible": "dropF"
   },
   {
    "d": 417,
-   "cible": "-"
+   "cible": "drain"
   },
   {
    "d": 433,
@@ -316,11 +316,11 @@
   },
   {
    "d": 483,
-   "cible": "-"
+   "cible": "laneO"
   },
   {
    "d": 500,
-   "cible": "dropF"
+   "cible": "-"
   },
   {
    "d": 517,
@@ -328,39 +328,39 @@
   },
   {
    "d": 533,
-   "cible": "saucer"
+   "cible": "dropF"
   },
   {
    "d": 550,
-   "cible": "-"
-  },
-  {
-   "d": 567,
-   "cible": "tirer"
-  },
-  {
-   "d": 583,
-   "cible": "tirer"
-  },
-  {
-   "d": 600,
-   "cible": "tirer"
-  },
-  {
-   "d": 617,
    "cible": "dropN1"
   },
   {
-   "d": 633,
+   "d": 567,
    "cible": "-"
+  },
+  {
+   "d": 583,
+   "cible": "-"
+  },
+  {
+   "d": 600,
+   "cible": "drain"
+  },
+  {
+   "d": 617,
+   "cible": "pointer"
+  },
+  {
+   "d": 633,
+   "cible": "tirer"
   },
   {
    "d": 650,
-   "cible": "-"
+   "cible": "tirer"
   },
   {
    "d": 667,
-   "cible": "-"
+   "cible": "dropN1"
   },
   {
    "d": 683,
@@ -368,31 +368,31 @@
   },
   {
    "d": 700,
-   "cible": "bouchon"
-  },
-  {
-   "d": 717,
-   "cible": "dropF"
-  },
-  {
-   "d": 733,
    "cible": "drain"
   },
   {
+   "d": 717,
+   "cible": "drain"
+  },
+  {
+   "d": 733,
+   "cible": "-"
+  },
+  {
    "d": 750,
-   "cible": "ramp"
+   "cible": "drain"
   },
   {
    "d": 767,
-   "cible": "ramp"
+   "cible": "drain"
   },
   {
    "d": 783,
-   "cible": "boule1"
+   "cible": "drain"
   },
   {
    "d": 800,
-   "cible": "-"
+   "cible": "drain"
   }
  ]
 }

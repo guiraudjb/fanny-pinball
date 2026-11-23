@@ -3,8 +3,8 @@
 // Sert au mode Autoplay dans la page et au banc d'essai headless (outils/robot.mjs).
 //
 // Répertoire technique complet (voir docs/analyse_de_l_espacement_des_batteurs_et_des_techniques_de_flipper.md) :
-//   • Amorti & contrôle : Berceau (Cradle), Live Catch, Drop Catch, Séparation en multibille (Cradle Separation), Shatz
-//   • Transferts (Passing) : Dead Bounce (rebond mort), Post Pass, Tap / Alley Pass, Changement de couloir T-O-U-R
+//   • Amorti & contrôle : Berceau (Cradle), Live Catch, Drop Catch, Séparation en multibille (Cradle Separation)
+//   • Transferts (Passing) : Dead Bounce (rebond mort), Post Pass, Tap Pass, Alley Pass (= Shatz), Changement de couloir T-O-U-R
 //   • Tirs de précision : Coup droit (Forehand), Revers (Backhand), Flick / Tip Shot — tous asservis sur la position
 //     réelle « le » de la bille le long de la palette (garde-fou anti-perte en bout de palette)
 //   • Sauvetage & bourrage : Slap Save (claque synchronisée sur le temps avant impact + nudge latéral),
@@ -13,9 +13,9 @@ import { GEO, BALL_R, CX } from './table.js';
 import { SW } from './rules.js';
 
 const MM = 0.001;
-const FLIP_LEN = GEO.flippers[0].len;   // 57,7 mm (géométrie moderne 3")
+const FLIP_LEN = GEO.flippers[0].len;   // 57,7 mm (palette 3")
 const Y_POST = GEO.separators[0][0][1]; // haut des poteaux d'outlane (suit H)
-const Y_FLIP = GEO.flippers[0].py;      // axe des batteurs (H − 180)
+const Y_FLIP = GEO.flippers[0].py;      // axe des batteurs (H − 178)
 const Y_LANE = GEO.lanes[0].y;          // couloirs T-O-U-R en haut du plateau
 const TENUE_TIR_MS = 140;               // palette tenue après une frappe (assez courte pour ne pas rester figée)
 const BERCEAU_MS = 240;                 // bille immobile en berceau depuis … avant tir / passe
@@ -32,8 +32,8 @@ const NOMS_GESTES = {
   cradleSep: 'Séparation multibille',
   deadBounce: 'Dead Bounce',
   postPass: 'Post Pass',
-  tapPass: 'Tap / Alley Pass',
-  shatz: 'Shatz',
+  tapPass: 'Tap Pass',
+  shatz: 'Alley Pass (Shatz)',
   forehand: 'Coup droit',
   backhand: 'Revers',
   flick: 'Flick visé',
@@ -58,16 +58,22 @@ function repere(fl, p) {
 // Étalonnage par défaut (issu d'outils/robot_tirs.json), conservé pour compatibilité avec outils/robot.mjs.
 export const TIRS_DEFAUT = {
   L: [
-    [417, '-'], [433, '-'], [450, '-'], [467, '-'], [483, '-'], [500, 'boule3'], [517, '-'], [533, '-'],
-    [550, '-'], [567, '-'], [583, '-'], [600, 'tirer'], [617, 'tirer'], [633, 'dropF'], [650, 'saucer'],
-    [667, 'boule3'], [683, 'tirer'], [700, 'tirer'], [717, 'tirer'], [733, 'tirer'], [750, '-'], [767, '-'],
-    [783, '-'], [800, 'dropF'],
+    [0, 'drain'], [17, 'drain'], [33, 'drain'], [50, 'drain'], [67, 'drain'], [83, 'drain'], [100, 'drain'], [117, 'drain'],
+    [133, '-'], [150, 'drain'], [167, '-'], [183, 'drain'], [200, 'drain'], [217, 'drain'], [233, 'drain'], [250, 'drain'],
+    [267, 'drain'], [283, 'drain'], [300, 'drain'], [317, 'drain'], [333, 'drain'], [350, 'dropA'], [367, 'drain'], [383, 'drain'],
+    [400, '-'], [417, 'drain'], [433, '-'], [450, 'dropF'], [467, 'dropN1'], [483, 'boule3'], [500, '-'], [517, 'drain'],
+    [533, '-'], [550, 'laneR'], [567, '-'], [583, 'dropF'], [600, 'dropA'], [617, 'dropN1'], [633, 'dropY'], [650, 'dropY'],
+    [667, '-'], [683, '-'], [700, 'drain'], [717, 'drain'], [733, 'drain'], [750, 'drain'], [767, 'drain'], [783, 'drain'],
+    [800, 'drain'],
   ].map(([d, cible]) => ({ d, cible })),
   R: [
-    [417, '-'], [433, '-'], [450, '-'], [467, '-'], [483, '-'], [500, 'dropF'], [517, '-'], [533, 'saucer'],
-    [550, '-'], [567, 'tirer'], [583, 'tirer'], [600, 'tirer'], [617, 'dropN1'], [633, '-'], [650, '-'],
-    [667, '-'], [683, '-'], [700, 'bouchon'], [717, 'dropF'], [733, 'drain'], [750, 'ramp'], [767, 'ramp'],
-    [783, 'boule1'], [800, '-'],
+    [0, 'drain'], [17, 'drain'], [33, 'drain'], [50, 'drain'], [67, '-'], [83, 'drain'], [100, 'drain'], [117, 'drain'],
+    [133, '-'], [150, '-'], [167, '-'], [183, 'drain'], [200, 'drain'], [217, 'drain'], [233, 'drain'], [250, '-'],
+    [267, 'drain'], [283, 'drain'], [300, 'drain'], [317, '-'], [333, 'drain'], [350, 'boule1'], [367, 'tirer'], [383, 'drain'],
+    [400, 'dropF'], [417, 'drain'], [433, '-'], [450, '-'], [467, '-'], [483, 'laneO'], [500, '-'], [517, '-'],
+    [533, 'dropF'], [550, 'dropN1'], [567, '-'], [583, '-'], [600, 'drain'], [617, 'pointer'], [633, 'tirer'], [650, 'tirer'],
+    [667, 'dropN1'], [683, '-'], [700, 'drain'], [717, 'drain'], [733, '-'], [750, 'drain'], [767, 'drain'], [783, 'drain'],
+    [800, 'drain'],
   ].map(([d, cible]) => ({ d, cible })),
 };
 
@@ -578,12 +584,20 @@ export async function etalonner(creer) {
     const fl = sim.T.flippers.find((f) => f.def.side === side);
     for (let n = 0; n <= 48; n++) {
       const d = Math.round(n * 1000 / 60);
-      sim.clear(); contacts.length = 0;
-      sim.held = { L: false, R: false }; sim.held[side] = true;
-      for (let k = 0; k < 10; k++) sim.step(1000 / 60);
-      const b = sim.makeBall(side === 'R' ? 417 : 61, Y_POST);
-      for (let k = 0; k < 210; k++) sim.step(1000 / 60);
-      if (repere(fl, b.position).r > FLIP_LEN + 30 || b.vitesse > 0.05) continue;
+      // mise en berceau : la bille descend le couloir de retour à une vitesse d'arrivée qui la bloque sur la palette levée
+      // (lâchée sans vitesse, elle peut passer par-dessus la pointe, comme sur un vrai jeu)
+      let b = null;
+      for (const v of [1.0, 0.5, 1.5, 0]) {
+        sim.clear(); contacts.length = 0;
+        sim.held = { L: false, R: false }; sim.held[side] = true;
+        for (let k = 0; k < 10; k++) sim.step(1000 / 60);
+        b = sim.makeBall(side === 'R' ? 417 : 61, Y_POST);
+        sim.setVitesse(b, 0, v * 1000 / 60);
+        for (let k = 0; k < 210; k++) sim.step(1000 / 60);
+        if (!b.retiree && repere(fl, b.position).r <= FLIP_LEN + 30 && b.vitesse <= 0.05) break;
+        b = null;
+      }
+      if (!b) continue;
       contacts.length = 0;
       let cible = null;
       for (let k = 0; k < 60 * 3 && !b.retiree; k++) {

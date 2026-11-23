@@ -1,5 +1,6 @@
 //! Moteur physique 2D dédié au flipper en Rust pur (480 Hz, zéro dépendance externe).
-//! Calibré sur les constantes réelles de `js/sim.js` (mm, secondes, gravité selon la pente).
+//! Moteur 2D simplifié (pas Rapier) : il reprend les constantes de `js/sim.js` (mm, secondes, gravité selon la pente)
+//! mais pas toute sa physique (pas de hauteur ni de rotation de bille, rampe sur rail).
 
 use std::f32::consts::PI;
 
@@ -668,7 +669,7 @@ impl Sim {
                 let v_rel = b.vel.sub(v_surf);
                 let vn = v_rel.dot(n);
                 if vn < 0.0 {
-                    let e = if st.omega.abs() > 2.0 { 0.55 } else { 0.34 };
+                    let e = 0.5; // caoutchouc de palette (même valeur que js/sim.js, en mouvement ou non)
                     b.vel = b.vel.sub(n.scale((1.0 + e) * vn));
                     // adhérence caoutchouc rouge de la palette
                     let tang = Vec2::new(-n.y, n.x);

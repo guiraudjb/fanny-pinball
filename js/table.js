@@ -2,8 +2,8 @@
 //
 // Cotes réelles en millimètres (1 unité = 1 mm), origine = coin haut gauche du plateau.
 // Référence : plateau standard 20,25" × 42" (514 × 1067 mm), bille 1-1/16" (27 mm),
-// flippers 3" — mêmes proportions que les tables Visual Pinball X (bille de rayon 25 unités VP,
-// flipper ≈ 147 unités VP caoutchouc compris, angles de repos 121° / levée 70°).
+// flippers 3" — angles des tables Visual Pinball X (repos 121° / levée 70°, soit 31° sous et 20° au-dessus
+// de l'horizontale).
 // Silhouette inspirée des Gottlieb des années 70 (Top Score, Big Brave) : haut presque
 // rectangulaire aux coins arrondis, grands flippers rapprochés, lance-pierres hauts.
 
@@ -23,13 +23,14 @@ export const CX = PLAY_R / 2; // axe de symétrie de la zone de jeu
 const mx = (x) => PLAY_R - x;
 const deg = (a) => (a * Math.PI) / 180;
 
-// --- flippers (géométrie standard moderne WPC / Stern 3")
-// Longueur hors-tout caoutchouc compris = 12 + 57,7 + 6,5 = 76,2 mm (3,00"), entraxe 168 mm :
-//   • espacement entre pointes au repos = 45,9 mm (1,70 bille : dans le standard 44,5–47,6 mm) ;
-//   • angle de la face supérieure au repos = 24,5° (axe 19° + conicité 5,5°), aligné sans cassure sur les guides ;
-//   • position haute symétrique : face supérieure à -22,5° (axe -28°, course 47° : berceau 100 % stable même sur
-//     plateau glissant à ROULEMENT = 0,005, dead bounce et passes fluides, > 52 mm de jeu avec le lance-pierre).
-const FLIP = { len: 57.7, r1: 12, r2: 6.5, rest: deg(19), up: deg(-28), pivotDX: 84, pivotY: H - 180 };
+// --- flippers (géométrie WPC / Stern 3", cotes sourcées : voir docs/analyse_de_l_espacement_des_batteurs…)
+// Longueur hors-tout caoutchouc compris = 12 + 57,7 + 6,5 = 76,2 mm (3,00").
+//   • axes à 6-7/8" l'un de l'autre (174,6 mm ; WPC : 6-13/16" à 7", wiki Pinball Makers) et à 7" du bas (178 mm) ;
+//   • repos : axe à 31° sous l'horizontale, levée : 20° au-dessus (course 51°) — valeurs par défaut de Visual Pinball
+//     (121° / 70°), retrouvées sur Black Knight 1980 ; les guides des couloirs de retour prolongent la face supérieure
+//     au repos (36,5° avec la conicité) ;
+//   • l'espacement entre pointes au repos en découle (≈ 62 mm) : aucune cote publiée ne permet de le fixer autrement.
+const FLIP = { len: 57.7, r1: 12, r2: 6.5, rest: deg(31), up: deg(-20), pivotDX: 87.3, pivotY: H - 178 };
 const LPX = CX - FLIP.pivotDX;
 
 // Guide de couloir de retour : prolonge exactement la FACE SUPÉRIEURE du flipper au repos

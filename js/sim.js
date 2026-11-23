@@ -29,11 +29,23 @@ const H_VITRE = 105;                      // mm, dessous de la vitre
 const MASSE = 0.080;                      // kg, bille de 1-1/16"
 const V_MAX = 6.0;                        // m/s
 // Résistance au roulement (Rapier n'en a pas) : la bille roulant au contact du plateau perd ROULEMENT × g
-// (m/s²) tant qu'elle avance. Avec la géométrie moderne des batteurs (repos +24,5°, levée −22,5°), 0,005 correspond
-// au roulement acier sur plateau verni : berceau stable à toute vitesse et descente fluide sur la palette.
+// (m/s²) tant qu'elle avance : 0,005 correspond au roulement d'une bille d'acier sur un plateau verni.
 const ROULEMENT = 0.005;
-const FLIP_UP = 45;                       // rad/s (course complète ≈ 22 ms, comme une vraie bobine)
+const FLIP_UP = 45;                       // rad/s : palette cinématique (ancien modèle, option motorisee: false)
 const FLIP_DOWN = 20;
+// Palette motorisée (modèle par défaut) : un corps qui a son inertie, tourné par la bobine comme sur un vrai jeu.
+// Appui : coup de puissance de 40 ms (Fliptronics ; Data East/Sega 40 ms, Stern 50 ms par défaut), puis couple de
+// maintien ; si une bille rabat la palette tenue, le contact de fin de course redonne un coup (comme Fliptronics).
+// Relâchée, un ressort la ramène. Butées haute et basse sans rebond. Inertie et couples : HYPOTHÈSES, réglées pour
+// des tirs aussi forts qu'avec l'ancien modèle (course à vide ≈ 21 ms).
+const PALETTE = {
+  inertie: 1.0e-4,        // kg·m² autour de l'axe (palette, axe, manivelle, plongeur ramenés à l'axe) — HYP
+  couple: 0.5,            // N·m pendant le coup de puissance — HYP, étalonné : tir ≈ 2,7 m/s comme l'ancien modèle
+  maintien: 0.06,         // N·m enroulement de maintien — HYP
+  ressort: 0.03,          // N·m ressort de rappel — HYP
+  coupMs: 40,             // ms
+  eos: (8 * Math.PI) / 180, // rabattue de plus de 8° sous la butée haute : nouveau coup
+};
 const LAUNCH_V = 2.50;
 const COURSE_LANCEUR = 50;               // mm : course du lanceur à ressort tiré à fond                    // m/s : suit l'arrondi du haut et retombe sur les bumpers
 const BUMPER_V = 1.25;                    // m/s, coup du bumper
@@ -56,14 +68,14 @@ const MATIERES = {
   rampe: [0.22, 0.04],       // PVC lisse : peu de frottement et de rebond pour monter et parcourir la rampe sans freiner
   metal: [0.45, 0.1],
   caoutchouc: [0.8, 0.7],    // anneaux, lance-pierres
-  palette: [0.65, 0.6],      // caoutchouc rouge de palette (rebond fidèle pour les dead bounces)
+  palette: [0.5, 0.6],       // caoutchouc de palette : un rebond mort doit amortir la bille, pas la relancer
   bumper: [0.6, 0.3],
   cible: [0.45, 0.2],
   mou: [0.2, 0.2],           // bras du tablier, lanceur
 };
 
 // Groupes de collision : le portillon du couloir de lancement ne touche que les billes qui l'ont passé.
-const GR = { WALL: 0x0001, GATE: 0x0002, BALL: 0x0004 };
+const GR = { WALL: 0x0001, GATE: 0x0002, BALL: 0x0004, PAL: 0x0008 };   // PAL : palettes (ne touchent que les billes)
 const groupes = (membre, filtre) => (membre << 16) | filtre;
 
 // hauteur du fond de rampe à l'abscisse s (même profil que cao/modele.py et render3d.js)
@@ -131,15 +143,16 @@ class Bille {
 }
 
 // Création : Rapier (WebAssembly) et les surfaces de la CAO se chargent d'abord.
-export async function creerSim(onSwitch, { collision = 'assets/cao/collision.glb', glb = null } = {}) {
+export async function creerSim(onSwitch, { collision = 'assets/cao/collision.glb', glb = null, motorisee = true } = {}) {
   await R.init();
   const buf = glb || await (await fetch(collision)).arrayBuffer();
-  return new Sim(onSwitch, lireGLB(buf));
+  return new Sim(onSwitch, lireGLB(buf), { motorisee });
 }
 
 export class Sim {
-  constructor(onSwitch, surfaces = []) {
+  constructor(onSwitch, surfaces = [], { motorisee = true } = {}) {
     this.onSwitch = onSwitch;
+    this.motorisee = motorisee;
     // table.js décrit les formes avec des corps Matter.js : on s'en sert comme gabarits (et pour le rendu)
     this.T = buildTable(Engine.create());
     this.ramps = { L: rampPath(GEO.ramps.L) };
@@ -192,7 +205,8 @@ export class Sim {
     const [e, f] = MATIERES[nom];
     return desc.setRestitution(e / BILLE_E).setFriction(f)
       .setRestitutionCombineRule(R.CoefficientCombineRule.Multiply)
-      .setFrictionCombineRule(R.CoefficientCombineRule.Multiply);
+      .setFrictionCombineRule(R.CoefficientCombineRule.Multiply)
+      .setCollisionGroups(groupes(GR.WALL, GR.BALL));   // les pièces fixes ne touchent que les billes (pas les palettes)
   }
 
   // prisme vertical d'un contour 2D (mm), de la hauteur h0 à h1 au-dessus du plateau
@@ -285,13 +299,25 @@ export class Sim {
 
     // palettes : corps cinématiques en rotation autour de leur axe ; Rapier en déduit la vitesse de
     // surface transmise à la bille
+    // palettes : corps en rotation autour de leur axe. Motorisées : corps dynamiques (inertie, couple de la bobine) ;
+    // sinon cinématiques à vitesse imposée (ancien modèle)
     this.palettes = T.flippers.map((fl) => {
       const { px, py } = fl.def;
-      const body = w.createRigidBody(R.RigidBodyDesc.kinematicPositionBased().setTranslation(px * MM, py * MM, 0));
+      const desc = this.motorisee
+        ? R.RigidBodyDesc.dynamic().lockTranslations().enabledRotations(false, false, true).setGravityScale(0)
+          .setCanSleep(false).setCcdEnabled(true).setAngularDamping(0)
+        : R.RigidBodyDesc.kinematicPositionBased();
+      const body = w.createRigidBody(desc.setTranslation(px * MM, py * MM, 0));
       const pts = fl.body.vertices.map((v) => [v.x - px, v.y - py]);
-      const c = w.createCollider(this.matiere(this.prisme(pts, 3, 25), 'palette'), body);
+      const cd = this.matiere(this.prisme(pts, 3, 25), 'palette').setCollisionGroups(groupes(GR.PAL, GR.BALL));
+      if (this.motorisee) {
+        const I = PALETTE.inertie;
+        cd.setMassProperties(0.1, { x: 0, y: 0, z: 0 }, { x: I, y: I, z: I }, { x: 0, y: 0, z: 0, w: 1 });
+      }
+      const c = w.createCollider(cd, body);
       this.info.set(c.handle, { type: 'palette', nom: fl.def.side });
-      return { fl, body, a0: fl.angle };
+      const sens = Math.sign(fl.def.up - fl.def.rest);           // sens de la levée autour de z
+      return { fl, body, a0: fl.angle, sens, tenue: false, debutCoup: -1e9, coups: 0 };
     });
   }
 
@@ -306,7 +332,7 @@ export class Sim {
       .setRestitutionCombineRule(R.CoefficientCombineRule.Multiply)
       .setFrictionCombineRule(R.CoefficientCombineRule.Multiply)
       .setActiveEvents(R.ActiveEvents.COLLISION_EVENTS)
-      .setCollisionGroups(groupes(GR.BALL, GR.WALL | GR.BALL));
+      .setCollisionGroups(groupes(GR.BALL, GR.WALL | GR.BALL | GR.PAL));
     const b = new Bille(body, this.world.createCollider(desc, body));
     this.info.set(b.collider.handle, { type: 'ball', bille: b });
     this.balls.push(b);
@@ -487,6 +513,7 @@ export class Sim {
     for (const p of this.palettes) {
       const { fl } = p;
       const held = this.power && this.held[fl.def.side];
+      if (this.motorisee) { this.bobine(p, held); continue; }
       const target = held ? fl.def.up : fl.def.rest;
       const speed = ((held ? FLIP_UP : FLIP_DOWN) * dt) / 1000;
       const delta = Math.max(-speed, Math.min(speed, target - fl.angle));
@@ -503,10 +530,11 @@ export class Sim {
       const { x, y } = b.position;
       if (y < GEO.gate.y - GEO.gate.drop / 2 - BALL_R - 6 && x < GEO.playRight - 4) fp.gate = true;
       else if (x > GEO.playRight && y > GEO.gate.y + GEO.gate.drop / 2 + BALL_R + 4) fp.gate = false;
-      b.collider.setCollisionGroups(groupes(GR.BALL, GR.WALL | GR.BALL | (fp.gate ? GR.GATE : 0)));
+      b.collider.setCollisionGroups(groupes(GR.BALL, GR.WALL | GR.BALL | GR.PAL | (fp.gate ? GR.GATE : 0)));
     }
 
     this.world.step(this.events);
+    if (this.motorisee) for (const p of this.palettes) this.butees(p);
     this.events.drainCollisionEvents((h1, h2, debut) => {
       if (!debut) return;
       let a = this.info.get(h1), o = this.info.get(h2);
@@ -541,6 +569,33 @@ export class Sim {
       }
     }
     this.stepSpinner(dt);
+  }
+
+  // Bobine d'une palette motorisée : coup de puissance à l'appui (et à la fin de course perdue), maintien, ressort
+  bobine(p, tenue) {
+    const { fl } = p, P = PALETTE;
+    if (tenue && !p.tenue) { p.debutCoup = this.time; p.coups++; }
+    p.tenue = tenue;
+    let enCoup = tenue && this.time - p.debutCoup < P.coupMs;
+    if (tenue && !enCoup && Math.abs(fl.def.up - fl.angle) > P.eos) { p.debutCoup = this.time; enCoup = true; }
+    const c = (tenue ? (enCoup ? P.couple : P.maintien) : 0) - P.ressort;
+    p.body.resetTorques(false);
+    p.body.addTorque({ x: 0, y: 0, z: p.sens * c }, true);
+  }
+
+  // Butées de la palette motorisée (caoutchouc de butée : arrêt sans rebond) ; met à jour l'angle et le gabarit
+  butees(p) {
+    const { fl } = p, q = p.body.rotation();
+    let a = p.a0 + 2 * Math.atan2(q.z, q.w);
+    const lo = Math.min(fl.def.rest, fl.def.up), hi = Math.max(fl.def.rest, fl.def.up);
+    if (a < lo || a > hi) {
+      a = Math.max(lo, Math.min(hi, a));
+      const h = (a - p.a0) / 2;
+      p.body.setRotation({ x: 0, y: 0, z: Math.sin(h), w: Math.cos(h) }, true);
+      p.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    }
+    Body.rotate(fl.body, a - fl.angle, { x: fl.def.px, y: fl.def.py });   // gabarit, pour le rendu
+    fl.angle = a;
   }
 
   // Tourniquet métallique (spinner) à l'entrée de la rampe : la bille lance la plaque en rotation 360°
