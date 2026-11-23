@@ -41,6 +41,15 @@ function libre(x, y, h = 1.2) {
     (c) => { const r = sim.info.get(c.handle); if (!r || r.type !== 'lane' && r.type !== 'lowerLane' && r.type !== 'saucer' && r.type !== 'ramp') touche = true; return !touche; });
   return !touche;
 }
+// bille enfoncée de plus de 1 mm dans une pièce : départ posé dans l'épaisseur d'un mur (un maillage est creux, la
+// sphère de test de libre() ne touche alors aucune face) ; ce n'est pas un endroit où la bille peut se trouver en jeu
+function enfoncee(bille) {
+  let k = false;
+  sim.world.contactPairsWith(bille.collider, (o) => {
+    sim.world.contactPair(bille.collider, o, (m) => { for (let i = 0; i < m.numContacts(); i++) if (m.contactDist(i) < -0.001) k = true; });
+  });
+  return k;
+}
 const auCercle = (p) => Math.hypot(p.x - GEO.saucer.x, p.y - GEO.saucer.y) < 20;
 const auLanceur = (p) => p.x > GEO.playRight + 2 && p.y > GEO.plunger.top - 140;
 
@@ -52,6 +61,7 @@ function suivre(bille, duree = DUREE) {
   for (let t = 0; t < duree; t += DT) {
     sim.step(DT);
     if (bille.retiree) return { issue: 'perdue', t };
+    if (t < 30 && enfoncee(bille)) return { issue: 'départ dans une paroi', t };
     if (bille.plugin.fp.mode === 'saucer') return { issue: 'cercle', t };
     const q = bille.position;
     if (bille.vitesse < 0.01 && (!ici || Math.hypot(q.x - ici.x, q.y - ici.y) < 1)) { ici ||= q; immobile += DT; } else { immobile = 0; ici = null; }
