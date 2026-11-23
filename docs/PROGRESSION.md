@@ -305,6 +305,13 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
     | Drop catch | 10/54 |
 
   - Nouvel essai au banc : la réception depuis le couloir de retour (palette levée au passage de la bille).
+- **Recherche de bille au lieu de la secousse invisible** :
+  - Avant : une bille immobile depuis 1,5 s recevait une vitesse sans aucune cause physique.
+  - Maintenant, comme sur une vraie machine, après 8 s d'immobilité les bobines pulsent. Seul le bumper ou le lance-pierres que la bille touche la frappe. Ailleurs, c'est au joueur de bourrer la caisse.
+- **Visée du robot** : la table `LE_VOL` (position le long de la palette où frapper pour chaque cible) est réétalonnée sur la physique du jour par `outils/etalonner_le.mjs`.
+  - La rampe se fait depuis la palette droite, avec `le` entre 35 et 36,5 mm : une fenêtre étroite, comme sur une vraie machine.
+  - Depuis la palette gauche, elle est inaccessible, ce qui est normal puisque l'entrée regarde la palette droite.
+  - Parties du robot : 1,3 à 2 minutes, 17 000 à 71 000 points, presque toutes les billes perdues entre les palettes.
 - **Collision de la CAO** : les triangles d'aire nulle (sommets arrondis au 0,1 mm dans les STL) sont retirés à l'export (`outils/cao_web.py`).
 - **Résistance au roulement sur la rampe** : le même coefficient de 0,005 que sur le plateau s'applique quand la bille roule sur le fond de la rampe. Au tir centré, la rampe demande maintenant environ 2 m/s ; à 2,4 m/s, elle est faite pour toutes les entrées.
 - **Vitre** : dans le S de rayon 70 mm, une bille à 2,4–2,8 m/s grimpe le flanc extérieur relevé jusqu'à toucher la vitre (23 essais sur 180). Elle ne peut pas passer par-dessus, puisqu'il reste 2 mm de jeu.
@@ -327,6 +334,7 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Réalisme : roulement | Mesurer si possible la résistance au roulement réelle |
 | Réalisme : lanceur | Lanceur par tige à ressort |
 | Réalisme : rampe | Bille qui touche la vitre dans le S serré (R70) à 2,4–2,8 m/s : élargir le virage ou ajouter une lèvre sur le flanc extérieur |
-| Réalisme : aides invisibles | Secousse automatique d'une bille immobile 1,5 s (`frameChecks`) ; plafond de vitesse 6 m/s |
+| Réalisme : aides invisibles | Plafond de vitesse 6 m/s |
+| Robot | Réflexes de sauvetage à revoir : il perd presque toutes ses billes entre les palettes |
 | Version native | Afficheurs du fronton (aujourd'hui dans le titre de la fenêtre) ; caméras pilotables (tour, lilliputien) ; ombres |
 | Plateau | Allongé à 1263 mm par Gemini (standard : 1067 mm) : à rediscuter avec la caisse |

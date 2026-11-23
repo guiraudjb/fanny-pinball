@@ -84,9 +84,9 @@ const LE_BERCEAU = {
 };
 
 // Positions « le » (mm depuis le pivot) pour un tir visé à la volée sur bille roulante (Flick)
-const LE_VOL = {
-  L: { tirer: 23, saucer: 26, drops: 34, ramp: 28, bouchon: 46, pointer: 44, boule: 48 },
-  R: { tirer: 23, ramp: 26, bouchon: 30, boule: 30, pointer: 37, drops: 49, saucer: 46 },
+const LE_VOL = {   // outils/etalonner_le.mjs (23/11, physique à prédiction 2 mm et pivotement) : milieu de la plus longue plage
+  L: { tirer: 16.75, pointer: 20.5, saucer: 36.25, boule: 45, drops: 50.25, bouchon: 60 },
+  R: { saucer: 21.25, drops: 22.5, ramp: 35.75, bouchon: 45.25, pointer: 48, tirer: 52, boule: 56 },
 };
 
 // Côté du plateau où se trouve chaque cible (pour distinguer Coup droit / Forehand et Revers / Backhand)

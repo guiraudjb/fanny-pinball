@@ -136,7 +136,7 @@ for (let n = 1; n <= Number(arg('parties', 1)); n++) {
   console.log(`  robot : ${r.robot.berceaux} berceaux, ${r.robot.tirs_vises} tirs visés, ${r.robot.sauvetages} frappes de sauvetage, ${r.robot.coups} bourrages`);
   console.log(`  gestes : ${Object.entries(r.robot.gestes || {}).sort().map(([k, v]) => `${k} ${v}`).join(', ') || 'aucun'}`);
   console.log(`  pertes : ${r.pertes.map((p) => `${p.ou}${p.sauvee ? ' (sauvée)' : ''}`).join(', ') || 'aucune'}`);
-  console.log(`  blocages (bille immobile 1,5 s, secouée) : ${r.blocages.map((l) => `(${l.x},${l.y}) ×${l.fois}${l.secousses > 1 ? ` jusqu'à ${l.secousses} secousses` : ''}`).join(' ; ') || 'aucun'}`);
+  console.log(`  blocages (bille immobile 8 s, recherche de bille) : ${r.blocages.map((l) => `(${l.x},${l.y}) ×${l.fois}${l.secousses > 1 ? ` jusqu'à ${l.secousses} recherches` : ''}`).join(' ; ') || 'aucun'}`);
   console.log(`  contacts : ${Object.entries(r.contacts).sort().map(([k, v]) => `${k} ${v}`).join(', ')}`);
 }
 if (arg('json')) writeFileSync(arg('json'), JSON.stringify(rapports, null, 1));

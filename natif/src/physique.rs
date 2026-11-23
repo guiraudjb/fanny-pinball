@@ -25,6 +25,8 @@ const V_MAX: f32 = 6.0;
 const ROULEMENT: f32 = 0.005;
 /// frottement de pivotement au plateau (rad/s²), comme js/sim.js PIVOTEMENT
 const PIVOTEMENT: f32 = 13.0;
+/// recherche de bille : bobines pulsées après 8 s d'immobilité (js/sim.js RECHERCHE_MS)
+const RECHERCHE_MS: f64 = 8000.0;
 const LAUNCH_V: f32 = 2.50;
 pub const COURSE_LANCEUR: f32 = 50.0;
 const BUMPER_V: f32 = 1.25;
@@ -60,8 +62,6 @@ pub struct Bille {
     still: f64,
     saucer_ignore_until: f64,
     spinner_at: f64,
-    stuck_at: Option<(f32, f32)>,
-    nudges: u32,
     v_avant: Option<Vector<f32>>,
     contacts_caout: HashSet<ColliderHandle>,
     pub retiree: bool,
@@ -115,7 +115,7 @@ pub struct Sim {
 
     pub geo: Value,
     pub ball_r: f32,
-    pub w: f32, pub h: f32, pub cx: f32,
+    pub w: f32, #[allow(dead_code)] pub h: f32, pub cx: f32,
     roles: HashMap<ColliderHandle, Role>,
     caoutchoucs: HashMap<ColliderHandle, bool>,   // true = palette, false = anneau
     drops: Vec<ColliderHandle>,
@@ -287,7 +287,7 @@ impl Sim {
         let hc = self.colliders.insert_with_parent(col, hb, &mut self.bodies);
         self.billes.push(Bille {
             corps: hb, collider: hc, mode: ModeBille::Table, gate: false, still: 0.0, saucer_ignore_until: 0.0, spinner_at: -1e9,
-            stuck_at: None, nudges: 0, v_avant: None, contacts_caout: HashSet::new(), retiree: false,
+v_avant: None, contacts_caout: HashSet::new(), retiree: false,
         });
         self.billes.len() - 1
     }
@@ -736,18 +736,32 @@ impl Sim {
             let (x, y) = self.position(i);
             let tenue = y > fy - 90.0 && ((self.held[0] && x < self.cx) || (self.held[1] && x >= self.cx));
             if self.vitesse(i) < 0.03 && !tenue { self.billes[i].still += dt_ms; } else { self.billes[i].still = 0.0; }
-            if self.billes[i].still > 1500.0 {
-                self.billes[i].still = 0.0;
-                let loin = self.billes[i].stuck_at.map_or(true, |(sx, sy)| (x - sx).hypot(y - sy) > 30.0);
-                if loin { self.billes[i].stuck_at = Some((x, y)); self.billes[i].nudges = 0; }
-                self.billes[i].nudges += 1;
-                let (dx, dy) = (self.cx - x, self.h * 0.45 - y);
-                let l = dx.hypot(dy).max(1e-6);
-                let k = 4.0 + 3.0 * self.billes[i].nudges.min(4) as f32;
-                let (h1, h2) = (self.hasard(), self.hasard());
-                let m = 60.0 * MM;
-                self.set_vitesse_si(i, vector![(dx / l * k + (h1 - 0.5) * 3.0) * m, (dy / l * k - 3.0) * m, 0.0] + vector![0.0, 0.0, 0.0 * h2]);
+            if self.billes[i].still > RECHERCHE_MS { self.billes[i].still = 0.0; self.recherche_bille(i); }
+        }
+    }
+
+    /// recherche de bille : le bumper ou le lance-pierres que la bille touche la frappe (rien d'autre ne la pousse)
+    fn recherche_bille(&mut self, i: usize) {
+        if !self.power { return; }
+        let hb = self.billes[i].collider;
+        let mut coups = vec![];
+        for pair in self.narrow.contact_pairs_with(hb) {
+            let autre = if pair.collider1 == hb { pair.collider2 } else { pair.collider1 };
+            let touche = pair.manifolds.iter().any(|m| m.points.iter().any(|q| q.dist < 0.001));
+            if !touche { continue; }
+            match self.roles.get(&autre) {
+                Some(Role::Bumper { idx, centre }) => coups.push((format!("bumper{idx}"), Some(*centre), (0.0, 0.0), BUMPER_V)),
+                Some(Role::Sling { idx, n, .. }) => coups.push((format!("sling{idx}"), None, *n, SLING_V)),
+                _ => {}
             }
+        }
+        for (cle, centre, n, v) in coups {
+            self.flash.insert(cle, self.time);
+            let (nx, ny) = match centre {
+                Some(c) => { let (x, y) = self.position(i); let (dx, dy) = (x - c.0, y - c.1); let l = dx.hypot(dy).max(1e-6); (dx / l, dy / l) }
+                None => n,
+            };
+            self.frapper(i, nx, ny, v);
         }
     }
 

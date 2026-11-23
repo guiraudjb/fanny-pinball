@@ -37,6 +37,7 @@ const ROULEMENT = 0.005;
 // décélération μ·g·a / (2/5·r²) ≈ 13 rad/s². Sans lui, la rotation prise en frappant un caoutchouc en biais
 // n'était jamais freinée et poussait la bille le long de la palette, par-dessus sa pointe.
 const PIVOTEMENT = 13;
+const RECHERCHE_MS = 8000;                // recherche de bille : bobines pulsées après 8 s sans mouvement
 const FLIP_UP = 45;                       // rad/s : palette cinématique (ancien modèle, option motorisee: false)
 const FLIP_DOWN = 20;
 // Palette motorisée (modèle par défaut) : un corps qui a son inertie, tourné par la bobine comme sur un vrai jeu.
@@ -216,7 +217,7 @@ export class Sim {
     this.flash = {};            // nom → instant du dernier choc (pour le rendu)
     this.flashDir = {};         // nom → vecteur unitaire (x, y) du choc (bascule de jupe de bumper)
     this.cool = {};             // anti-rebond des contacts
-    this.secoueAuto = true;     // secousse automatique d'une bille immobile (désactivée par outils/blocages.mjs)
+    this.secoueAuto = true;     // recherche de bille (bobines pulsées) après RECHERCHE_MS d'immobilité (désactivée par outils/blocages.mjs)
     this.info = new Map();      // poignée de collider → rôle (bumper, sling, cible…)
 
     this.penteDeg = 6.5;
@@ -494,6 +495,26 @@ export class Sim {
   resetDrops() {
     for (const [, r] of this.info) if (r.type === 'drop') r.collider.setEnabled(true);
     this.dropsUp = this.dropsUp.map(() => true);
+  }
+
+  // impulsion des bobines de bumper et de lance-pierres au contact de la bille (recherche de bille)
+  rechercheBille(b) {
+    if (!this.power) return;
+    this.world.contactPairsWith(b.collider, (o) => {
+      const r = this.info.get(o.handle);
+      if (!r || (r.type !== 'bumper' && r.type !== 'sling')) return;
+      let touche = false;
+      this.world.contactPair(b.collider, o, (m) => { for (let i = 0; i < m.numContacts(); i++) if (m.contactDist(i) < 0.001) touche = true; });
+      if (!touche) return;
+      if (r.type === 'bumper') {
+        const c = r.corps.position, dx = b.position.x - c.x, dy = b.position.y - c.y, l = Math.hypot(dx, dy) || 1;
+        this.flash[`bumper${r.idx}`] = this.time;
+        this.frapper(b, dx / l, dy / l, BUMPER_V);
+      } else {
+        this.flash[`sling${r.idx}`] = this.time;
+        this.frapper(b, r.n.x, r.n.y, this.slingTune.kick);
+      }
+    });
   }
 
   // la bille roule-t-elle sur le fond de la rampe ? (contact réel, normale proche de la verticale)
@@ -845,23 +866,22 @@ export class Sim {
       this.shooterClosed = inShooter;
       this.onSwitch(SW.SHOOTER, inShooter);
     }
-    // bille immobile hors couloir (coincée) : petite secousse automatique
+    // recherche de bille, comme une vraie machine : une bille immobile depuis RECHERCHE_MS (hors berceau et lanceur)
+    // fait pulser les bobines ; seuls le bumper ou le lance-pierres qu'elle touche la frappent. Ailleurs, rien ne
+    // la pousse : c'est au joueur de bourrer la caisse (plus de secousse invisible).
     for (const b of this.balls) {
       const fp = b.plugin.fp;
       if (!this.secoueAuto || fp.mode !== 'table' || b.retiree || this.dansLanceur(b)) { fp.still = 0; continue; }
       const { x, y } = b.position;
-      // bille tenue volontairement sur une palette levée : on ne la secoue pas
+      // bille tenue volontairement sur une palette levée : pas de recherche
       const cradled = y > GEO.flippers[0].py - 90 && ((this.held.L && x < CX_TABLE) || (this.held.R && x >= CX_TABLE));
       if (b.vitesse < 0.03 && !cradled) fp.still += dtMs; else fp.still = 0;
-      if (fp.still > 1500) {
-        // secousses de plus en plus fortes, dirigées vers le centre de la table (comme un joueur qui
-        // secoue la caisse) ; le compteur repart quand la bille a quitté l'endroit
+      if (fp.still > RECHERCHE_MS) {
         fp.still = 0;
+        // compteur gardé pour les bancs (outils/robot.mjs) : endroit et nombre de recherches
         if (!fp.stuckAt || Math.hypot(x - fp.stuckAt.x, y - fp.stuckAt.y) > 30) { fp.stuckAt = { x, y }; fp.nudges = 0; }
         fp.nudges++;
-        const dx = CX_TABLE - x, dy = H * 0.45 - y, l = Math.hypot(dx, dy) || 1;
-        const k = 4 + 3 * Math.min(fp.nudges, 4);
-        this.setVitesse(b, (dx / l) * k + (Math.random() - 0.5) * 3, (dy / l) * k - 3);
+        this.rechercheBille(b);
       }
     }
   }
