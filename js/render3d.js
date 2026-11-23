@@ -14,13 +14,13 @@ import { HABILLAGES, chargerImages, dessiner, estEmissif } from './habillages.js
 const PENTE = (6.5 * Math.PI) / 180;      // pente du plateau (cao/cotes.py)
 const H_PAROI = 32;                        // parois et guides imprimés
 const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), larg: 39, flanc: 25, ep: 3,
-  flancHaut: { s0: 120, s1: 360, raccord: 25, sommet: 103 } };   // flancs relevés sous la vitre (js/sim.js, cao/cotes.py)
-// hauteur des flancs au-dessus du dessus du fond (zf) : comme js/sim.js flancRampe et cao/construire.py flanc_rampe
-function flancRampe(s, zf) {
-  const { s0, s1, raccord: r, sommet } = RAMPE.flancHaut, h = RAMPE.flanc;
+  flancHaut: { s0: 120, s1: 360, raccord: 25, capot: 36, epCapot: 2 } };   // capot sur le S (js/sim.js, cao/cotes.py)
+// hauteur des flancs au-dessus du dessus du fond : comme js/sim.js flancRampe et cao/construire.py flanc_rampe
+function flancRampe(s) {
+  const { s0, s1, raccord: r, capot } = RAMPE.flancHaut, h = RAMPE.flanc;
   if (s <= s0 - r || s >= s1 + r) return h;
   const w = s >= s0 && s <= s1 ? 1 : 0.5 - 0.5 * Math.cos(Math.PI * (1 - (s < s0 ? s0 - s : s - s1) / r));
-  return h + Math.max(0, sommet - zf - h) * w;
+  return h + (capot - h) * w;
 }
 const TEX = 2;                             // résolution des textures peintes (px par mm)
 // la bille passe sous le tablier quand son centre dépasse le bord avant (bras en V, GEO.apron)
@@ -772,7 +772,7 @@ export class Renderer3D {
     pts.forEach((p, i) => {
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1;
-      const nx = -dy / l, ny = dx / l, z = zRampe(p.s, L), hf = RAMPE.ep + flancRampe(p.s, z + RAMPE.ep);
+      const nx = -dy / l, ny = dx / l, z = zRampe(p.s, L), hf = RAMPE.ep + flancRampe(p.s);
       const hp = half + Math.max(0, (bouche.half - half) * (1 - p.s / bouche.evase));   // entonnoir de la bouche
       for (const [k, sg] of [[0, 1], [1, -1]]) {
         const x = p.x + nx * hp * sg, y = p.y + ny * hp * sg;
@@ -828,6 +828,25 @@ export class Renderer3D {
     const mesh = new THREE.Mesh(geo, [this.rampMat, this.rampFlank]);
     mesh.renderOrder = 2;
     this.table.add(mesh);
+
+    // capot en polycarbonate sur le S : plaque transparente posée sur les flancs, rails chromés comme bordure
+    {
+      const fh = RAMPE.flancHaut, cp = [], ci = [];
+      const sel = pts.filter((p) => p.s >= fh.s0 && p.s <= fh.s1);
+      sel.forEach((p, j) => {
+        const i = pts.indexOf(p), a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+        const l = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / l, ny = (b.x - a.x) / l;
+        const zc = zRampe(p.s, L) + RAMPE.ep + flancRampe(p.s) + fh.epCapot, hp = half + RAMPE.ep;
+        cp.push(p.x + nx * hp, p.y + ny * hp, -zc, p.x - nx * hp, p.y - ny * hp, -zc);
+        if (j) { const o = (j - 1) * 2; ci.push(o, o + 2, o + 1, o + 1, o + 2, o + 3); }
+      });
+      const gc = new THREE.BufferGeometry();
+      gc.setAttribute('position', new THREE.Float32BufferAttribute(cp, 3));
+      gc.setIndex(ci); gc.computeVertexNormals();
+      const capot = new THREE.Mesh(gc, this.rampFlank);
+      capot.renderOrder = 3;
+      this.table.add(capot);
+    }
 
     for (const r of rails) {
       const tube = new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(r), r.length * 2, 2, 8), this.mat.chrome);

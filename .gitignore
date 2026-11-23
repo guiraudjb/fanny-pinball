@@ -12,4 +12,5 @@ rust3d/target/
 natif/target/
 natif/donnees/.GLTFExporter.js
 natif/donnees/scene.glb
+natif/donnees/scene_leger.glb
 outils/_*.mjs

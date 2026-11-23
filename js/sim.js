@@ -122,15 +122,17 @@ const groupes = (membre, filtre) => (membre << 16) | filtre;
 
 // hauteur du fond de rampe à l'abscisse s (même profil que cao/modele.py et render3d.js)
 const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), larg: 39, ep: 3, flanc: 25,   // cao/cotes.py RAMPE
-  flancHaut: { s0: 120, s1: 360, raccord: 25, sommet: 103 },   // flancs relevés sous la vitre (cao/construire.py flanc_rampe)
+  // dans le S (rayons de 70 mm), capot en polycarbonate posé sur les flancs relevés à « capot » mm au-dessus du fond
+  // (cao/cotes.py RAMPE flanc_haut) : la bille qui grimpe le flanc extérieur bute dessous au lieu de toucher la vitre
+  flancHaut: { s0: 120, s1: 360, raccord: 25, capot: 36, epCapot: 2 },
   pas: 1.5 };   // mm : échantillonnage de la surface de collision (au pas de 6 mm du chemin, chaque facette des
                 // virages serrés, angle de 7°, était un petit choc qui coûtait jusqu'à 40 % de l'énergie de la bille)
-// hauteur des flancs au-dessus du dessus du fond (zf, hauteur de ce dessus) : comme cao/construire.py flanc_rampe
-function flancRampe(s, zf) {
-  const { s0, s1, raccord: r, sommet } = RAMPE.flancHaut, h = RAMPE.flanc;
+// hauteur des flancs au-dessus du dessus du fond : comme cao/construire.py flanc_rampe
+function flancRampe(s) {
+  const { s0, s1, raccord: r, capot } = RAMPE.flancHaut, h = RAMPE.flanc;
   if (s <= s0 - r || s >= s1 + r) return h;
   const w = s >= s0 && s <= s1 ? 1 : 0.5 - 0.5 * Math.cos(Math.PI * (1 - (s < s0 ? s0 - s : s - s1) / r));
-  return h + Math.max(0, sommet - zf - h) * w;
+  return h + (capot - h) * w;
 }
 function zRampe(s, L) {
   const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente;
@@ -392,18 +394,32 @@ export class Sim {
   // long du chemin lissé et du profil en long zRampe, au pas fin RAMPE.pas : une seule surface continue.
   construireRampe() {
     const E = GEO.rampEntries[0], path = rampPath(GEO.ramps.L, RAMPE.pas), L = path.length, pts = path.pts;
-    const e = RAMPE.ep;
+    const e = RAMPE.ep, fh = RAMPE.flancHaut, cv = [], ic = [];
     const demi = (s) => RAMPE.larg / 2 + Math.max(0, (2 * E.half - RAMPE.larg) / 2 * (1 - s / E.evase));
     const v = [], idx = [];
     pts.forEach((p, i) => {
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const l = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / l, ny = (b.x - a.x) / l;
-      const hw = demi(p.s), z = zRampe(p.s, L), hf = flancRampe(p.s, z + e);
+      const hw = demi(p.s), z = zRampe(p.s, L), hf = flancRampe(p.s);
       // comme la CAO : dessous du fond à zRampe, dessus du fond à zRampe + ep
       for (const [u, w] of [[-hw - e, 0], [hw + e, 0], [hw + e, hf + e], [hw, hf + e], [hw, e], [-hw, e], [-hw, hf + e], [-hw - e, hf + e]]) {
         v.push((p.x + nx * u) * MM, (p.y + ny * u) * MM, -(z + w) * MM);
       }
+      if (p.s >= fh.s0 && p.s <= fh.s1) {          // capot : plaque sur les flancs, dessous à fh.capot du fond
+        ic.push(cv.length / 3);
+        for (const [u, w] of [[-hw - e, hf + e], [hw + e, hf + e], [hw + e, hf + e + fh.epCapot], [-hw - e, hf + e + fh.epCapot]]) {
+          cv.push((p.x + nx * u) * MM, (p.y + ny * u) * MM, -(z + w) * MM);
+        }
+      }
     });
+    const cidx = [];
+    for (let j = 0; j + 1 < ic.length; j++) for (let k = 0; k < 4; k++) {
+      const a = ic[j] + k, b = ic[j] + ((k + 1) % 4), c = ic[j + 1] + k, d = ic[j + 1] + ((k + 1) % 4);
+      cidx.push(a, d, b, a, c, d);
+    }
+    const capot = this.world.createCollider(this.matiere(R.ColliderDesc.trimesh(new Float32Array(cv), new Uint32Array(cidx),
+      R.TriMeshFlags.FIX_INTERNAL_EDGES), 'acrylique'));
+    this.info.set(capot.handle, { type: 'surface', nom: 'capot_rampe' });
     const n = 8;
     for (let i = 0; i + 1 < pts.length; i++) for (let k = 0; k < n; k++) {
       const a = i * n + k, b = i * n + ((k + 1) % n), c = a + n, d = b + n;

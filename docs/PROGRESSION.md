@@ -271,7 +271,7 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   Le banc sous-estime les passes et le drop catch, parce que le joueur simulé ne corrige pas son geste.
 - **Rampe** : elle commence par une montée droite, suivie d'un S de deux arcs de 70 mm.
   - Le fond est un maillage lisse calculé, et les tolérances du solveur sont corrigées (`lengthUnit` 1, erreur admise 0,001). Avant, une unité plus petite faisait freiner la bille sur les arêtes internes.
-  - Les flancs montent jusqu'à 103 mm, sous la vitre (105 mm), entre s = 120 et 360 mm, avec des raccords en cosinus. C'est là que la bille sortait du canal.
+  - Entre s = 120 et 360 mm (le S), les flancs montent à 36 mm au-dessus du fond, avec des raccords en cosinus, et portent un capot en polycarbonate de 2 mm. C'est là que la bille sortait du canal. Les flancs relevés jusqu'à 103 mm de la version précédente la laissaient grimper jusqu'à la vitre (voir 23/11 soir).
   - La CAO suit : un seul loft réglé pour le gabarit (la fusion échouait sans le dire et laissait du plastique dans le canal) et 9 pattes de 80 mm au plus.
   - Banc `outils/essai_rampe.mjs` : la rampe est faite à partir d'environ 1,8 m/s en tir centré, et de 2,4 m/s pour toutes les entrées. En dessous de 1,6 m/s, la bille redescend.
 - **Points de blocage** (`outils/blocages.mjs`) :
@@ -365,8 +365,25 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Son sur la réplique | Le DFPlayer ne joue qu'une piste à la fois : priorité à la voix, ou second DFPlayer sur Serial2 |
 | Réalisme : roulement | Mesurer si possible la résistance au roulement réelle |
 | Réalisme : lanceur | Précharge du ressort (20 mm, HYP) à mesurer sur un ressort de lanceur réel |
-| Réalisme : rampe | Bille qui touche la vitre dans le S serré (R70) à 2,4–2,8 m/s : élargir le virage ou ajouter une lèvre sur le flanc extérieur |
+| Réalisme : rampe | Réglé le 23/11 au soir : capot sur le S. Restent des « airballs » rares hors de la rampe (bille à 3–4 m/s qui frappe de biais le bout d'un flanc) |
 | Réalisme : berceau depuis le couloir de retour | Encore difficile (6/16) avec les valeurs physiques : chercher la dissipation qui manque à l'impact oblique sur la palette levée |
 | Robot | Réflexes de sauvetage à revoir : il perd presque toutes ses billes entre les palettes |
 | Version native | Vue lilliputien ; ombres |
 | Plateau | Allongé à 1263 mm par Gemini (standard : 1067 mm) : à rediscuter avec la caisse |
+
+## 23/11 soir — caoutchouc de palette, capot de rampe, machine modeste
+
+- **Caoutchouc de palette** : c'était une corde ronde de 4 mm ; c'est maintenant une bande plate de 1/2" (12,7 mm) de large, comme les caoutchoucs Bally/Williams/Stern (anneau de 1-1/2" ID ; 3/8" chez Gottlieb). Seul le rendu change : la physique utilisait déjà une paroi pleine hauteur.
+- **Vitre** :
+  - Les 23 touches de vitre sur 180 essais venaient du premier virage du S (s ≈ 180–250 mm, rayon 70 mm, bille à 1,5–2,7 m/s, soit environ 6 g). La bille grimpait le flanc extérieur relevé à 103 mm.
+  - Deux solutions essayées au banc :
+    - un dévers du fond dans les virages : la rampe n'était plus réussie que 0 à 15 fois sur 150 au lieu de 40, quel que soit le sens ;
+    - un capot transparent, comme sur les vraies rampes à virage serré : retenu.
+  - Le capot en polycarbonate de 2 mm est posé sur les flancs, eux-mêmes ramenés à 36 mm au-dessus du fond, ce qui laisse 9 mm au-dessus de la bille. Il est présent dans la simulation (matière acrylique), le rendu web, la CAO (pièce `capot_rampe`, 21 cm³) et la version native.
+  - Résultat : plus aucune touche de vitre dans le S, rampe réussie 37 fois sur 150 au lieu de 40, aucun blocage.
+  - Il reste 5 touches de vitre sur 150, hors de la rampe : à 3–4 m/s, une bille qui frappe de biais le bout d'un flanc de la bouche décolle sous l'effet de sa rotation et du frottement (vitesse verticale 1,3 m/s, soit environ 80 mm). Ce sont des airballs réels, pas des défauts de géométrie.
+- **CAO** : sous FreeCAD 1.0, `freecadcmd cao/construire.py` nomme le module « construire » au lieu de « __main__ » ; le script ne faisait plus rien, sans message. C'est corrigé.
+- **Version native** :
+  - Textures des plastiques : le lecteur glTF ignorait `KHR_texture_transform`, et la texture de table se répétait en pointillés. C'est corrigé.
+  - Nouveau mode `--leger` pour machine modeste, et option `--profil` pour mesurer les temps de physique et de rendu (détails dans natif/README.md).
+  - Sur un Celeron G3900T avec un HD 510, en 1280×800 : 66–72 images/s en réglage normal, 100–105 en `--leger`. La physique (480 Hz) coûte 2 à 4 ms par image.

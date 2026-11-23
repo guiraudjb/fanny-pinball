@@ -371,6 +371,8 @@ def construire_piece(p):
         return b
     if k == "rampe":
         return construire_rampe(p)
+    if k == "capot_rampe":
+        return construire_capot(p)
     raise ValueError(k)
 
 
@@ -380,8 +382,8 @@ def demi_rampe(p, s):
 
 
 def flanc_rampe(p, s, z):
-    """hauteur des flancs au-dessus du dessus du fond (z) à l'abscisse s : h_flanc, relevée jusqu'au « sommet »
-    (hauteur absolue au-dessus du plateau) entre s0 et s1, avec des raccords en cosinus"""
+    """hauteur des flancs au-dessus du dessus du fond à l'abscisse s : h_flanc, relevée à « capot » (sous le capot
+    du S) entre s0 et s1, avec des raccords en cosinus"""
     fh, h = p.get("flanc_haut"), p["h"]
     if not fh:
         return h
@@ -389,7 +391,7 @@ def flanc_rampe(p, s, z):
     if s <= fh["s0"] - r or s >= fh["s1"] + r:
         return h
     w = 1.0 if fh["s0"] <= s <= fh["s1"] else 0.5 - 0.5 * math.cos(math.pi * (1 - (fh["s0"] - s if s < fh["s0"] else s - fh["s1"]) / r))
-    return h + max(0.0, fh["sommet"] - z - h) * w
+    return h + (fh["capot"] - h) * w
 
 
 def section_rampe(x, y, z, dx, dy, p, s=1e9):
@@ -445,6 +447,20 @@ def construire_rampe(p, s_min=None, s_max=None):
         lo = Part.makeLoft([w1, w2], True, True)
         solide = lo if solide is None else solide.fuse(lo)
     return solide.removeSplitter() if solide else None
+
+
+def construire_capot(p):
+    """capot du S : plaque de polycarbonate posée sur les flancs relevés, de s0 à s1 (largeur hors tout de la rampe)"""
+    fh, e = p["flanc_haut"], p["ep"]
+    q3 = [q for q in p["pts3d"] if fh["s0"] <= q[3] <= fh["s1"]]
+    fils = []
+    for i, (x, y, z, s) in enumerate(q3):
+        a = q3[max(0, i - 1)]; b = q3[min(len(q3) - 1, i + 1)]
+        dx, dy = M.unit((b[0] - a[0], b[1] - a[1])); nx, ny = -dy, dx
+        hw, z0 = demi_rampe(p, s) + e, z + e + flanc_rampe(p, s, z)
+        pts = [tv(x + nx * u, y + ny * u, z0 + w) for u, w in ((-hw, 0), (hw, 0), (hw, fh["ep_capot"]), (-hw, fh["ep_capot"]))]
+        fils.append(Part.makePolygon(pts + [pts[0]]))
+    return Part.makeLoft(fils, True, True)
 
 
 # ------------------------------------------------------------------ caisse
@@ -935,5 +951,5 @@ def main():
     print("ok", len(rapport), "objets ;", sum(1 for r in rapport if r[1] != "ok"), "échecs")
 
 
-if __name__ == "__main__":
+if __name__ in ("__main__", "construire"):   # FreeCAD 1.0 : « freecadcmd cao/construire.py » nomme le module « construire »
     main()
