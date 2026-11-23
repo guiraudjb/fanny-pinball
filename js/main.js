@@ -1,4 +1,4 @@
-import { creerSim } from './sim.js';
+import { creerSim, forceLanceur } from './sim.js';
 import { Rules, SW, SND, CITIES } from './rules.js';
 import { Renderer } from './render.js';
 import { drawSegDisplay } from './segfont.js';
@@ -297,8 +297,8 @@ function setAutoplay(on) {
     robot.relacher();
   }
 }
-// lanceur à ressort : maintenir pour tirer (pleine course en TIRAGE_S), relâcher pour lancer. La vitesse suit la
-// course : 30 % de la vitesse nominale à peine tiré (la bille retombe sur le lanceur), 110 % tiré à fond.
+// lanceur à ressort : maintenir pour tirer (pleine course en TIRAGE_S), relâcher pour lancer. La vitesse suit
+// l'énergie du ressort précomprimé (js/sim.js forceLanceur) : presque rien à peine tiré, 110 % tiré à fond.
 const TIRAGE_S = 0.9;
 let tirageDebut = null;
 const tirer = () => { if (tirageDebut === null) tirageDebut = performance.now(); };
@@ -308,7 +308,7 @@ function relacher(lancer = true) {
   tirageDebut = null;
   sim.tirage = 0;
   if (!lancer) return;
-  sim.force = 0.3 + 0.8 * p;
+  sim.force = forceLanceur(p);
   rules.onSwitch(SW.LAUNCH);
 }
 const LILLI_KEYS = new Set([

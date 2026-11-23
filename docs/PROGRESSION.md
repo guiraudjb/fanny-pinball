@@ -313,6 +313,10 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   - Depuis la palette gauche, elle est inaccessible, ce qui est normal puisque l'entrée regarde la palette droite.
   - Parties du robot : 1,3 à 2 minutes, 17 000 à 71 000 points, presque toutes les billes perdues entre les palettes.
 - **Version native, afficheurs** : le score et l'info s'allument maintenant sur le fronton, avec la police 7 segments du jeu web. Ils ne passent plus seulement par le titre de la fenêtre.
+- **Lanceur à ressort** :
+  - Avant : la vitesse suivait une loi linéaire, avec 30 % de la vitesse nominale même à peine tiré.
+  - Maintenant, elle suit l'énergie d'un ressort précomprimé, qui rend k·(x₀·x + x²/2), avec x₀ = 20 mm (HYP). La vitesse vaut v ∝ √E : 25 % à 10 % de course, 66 % à mi-course, 110 % à fond (inchangé).
+  - Même loi dans le jeu web, le robot (course calculée par la loi inverse) et la version native.
 - **Plafond de vitesse** : en trois parties du robot (lancers compris), le plafond de 6 m/s ne s'est jamais déclenché. Il est porté à 10 m/s et ne sert plus que de garde-fou numérique contre une divergence du solveur ; ce n'est plus une aide de jeu.
 - **Collision de la CAO** : les triangles d'aire nulle (sommets arrondis au 0,1 mm dans les STL) sont retirés à l'export (`outils/cao_web.py`).
 - **Résistance au roulement sur la rampe** : le même coefficient de 0,005 que sur le plateau s'applique quand la bille roule sur le fond de la rampe. Au tir centré, la rampe demande maintenant environ 2 m/s ; à 2,4 m/s, elle est faite pour toutes les entrées.
@@ -334,7 +338,7 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Caisse | Débiter et assembler la caisse et le fronton (planches 08, 09, 11) |
 | Son sur la réplique | Le DFPlayer ne joue qu'une piste à la fois : priorité à la voix, ou second DFPlayer sur Serial2 |
 | Réalisme : roulement | Mesurer si possible la résistance au roulement réelle |
-| Réalisme : lanceur | Lanceur par tige à ressort |
+| Réalisme : lanceur | Précharge du ressort (20 mm, HYP) à mesurer sur un ressort de lanceur réel |
 | Réalisme : rampe | Bille qui touche la vitre dans le S serré (R70) à 2,4–2,8 m/s : élargir le virage ou ajouter une lèvre sur le flanc extérieur |
 | Robot | Réflexes de sauvetage à revoir : il perd presque toutes ses billes entre les palettes |
 | Version native | Caméras pilotables (tour, lilliputien) ; ombres |

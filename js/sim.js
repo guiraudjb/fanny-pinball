@@ -72,6 +72,19 @@ const rebondCaoutchouc = (v, e1) => Math.max(0, 1 - (1 - e1) * Math.pow(v, 0.2))
 export const REGLAGES = { MATIERES: null, CAOUTCHOUC, PALETTE };
 const LAUNCH_V = 2.50;
 const COURSE_LANCEUR = 50;               // mm : course du lanceur à ressort tiré à fond                    // m/s : suit l'arrondi du haut et retombe sur les bumpers
+// Ressort du lanceur précomprimé de PRECHARGE mm au repos (HYP, ressort de lanceur WPC) : tiré de x, il rend
+// k·(x0·x + x²/2) ; la bille part à la vitesse du lanceur quand il revient en butée, v ∝ √(énergie). Tiré à fond,
+// 110 % de launchV (comme l'ancienne loi linéaire) ; à peine tiré, presque rien (la bille retombe).
+const PRECHARGE = 20;
+export function forceLanceur(p) {
+  const x0 = PRECHARGE, X = COURSE_LANCEUR, x = Math.max(0, Math.min(1, p)) * X;
+  return 1.1 * Math.sqrt((x0 * x + (x * x) / 2) / (x0 * X + (X * X) / 2));
+}
+// tirage (0..1) qui donne une force donnée (inverse de forceLanceur)
+export function tirageLanceur(f) {
+  const x0 = PRECHARGE, X = COURSE_LANCEUR, e = Math.min(1, (f / 1.1) ** 2) * (x0 * X + (X * X) / 2);
+  return (-x0 + Math.sqrt(x0 * x0 + 2 * e)) / X;
+}
 // Bumper et lance-pierre : une pièce mobile (anneau tiré vers le bas, bras du lance-pierre) frappe la bille. Le rebond
 // de la bille est calculé par la physique ; le coup ajoute à sa vitesse normale ce que donne la pièce qui avance :
 // une bille arrêtée repart à BUMPER_V / SLING_V, une bille qui arrive vite repart plus vite. La vitesse le long de

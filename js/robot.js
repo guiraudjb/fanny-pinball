@@ -10,6 +10,7 @@
 //   • Sauvetage & bourrage : Slap Save (claque synchronisée sur le temps avant impact + nudge latéral),
 //     Slide Save (nudge prédictif devant les poteaux d'outlane), Center Nudge (plafonné sous le seuil de Tilt)
 import { GEO, BALL_R, CX } from './table.js';
+import { tirageLanceur } from './sim.js';
 import { SW } from './rules.js';
 
 const MM = 0.001;
@@ -191,7 +192,7 @@ export class Robot {
         const kPente = Math.sqrt(Math.max(0.65, 1 + 0.62 * (Math.sin(sim.pente ?? ((6.5 * Math.PI) / 180)) / sinRef - 1)));
         const base = FORCE_TOUR[lane] * kPente;
         const force = Math.min(1.08, base + this.echecLanceur * 0.032);
-        const tirage = Math.min(1, Math.max(0.45, (force - 0.35) / 0.72));
+        const tirage = tirageLanceur(force);   // course à tirer pour cette force (ressort précomprimé)
         this.lancerPlan = { force, tirage, lane };
       }
       // aligner une lettre éteinte sur le couloir visé avant de lâcher le lanceur (en jouant des palettes)

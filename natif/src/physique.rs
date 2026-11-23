@@ -25,6 +25,12 @@ const V_MAX: f32 = 10.0; // m/s : garde-fou numérique, jamais atteint en jeu (j
 const ROULEMENT: f32 = 0.005;
 /// frottement de pivotement au plateau (rad/s²), comme js/sim.js PIVOTEMENT
 const PIVOTEMENT: f32 = 13.0;
+/// ressort du lanceur précomprimé de 20 mm (js/sim.js PRECHARGE) : force (part de launchV) pour un tirage 0..1
+pub fn force_lanceur(p: f32) -> f32 {
+    let (x0, xm) = (20.0f32, COURSE_LANCEUR);
+    let x = p.clamp(0.0, 1.0) * xm;
+    1.1 * ((x0 * x + x * x / 2.0) / (x0 * xm + xm * xm / 2.0)).sqrt()
+}
 /// recherche de bille : bobines pulsées après 8 s d'immobilité (js/sim.js RECHERCHE_MS)
 const RECHERCHE_MS: f64 = 8000.0;
 const LAUNCH_V: f32 = 2.50;

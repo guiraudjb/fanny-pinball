@@ -116,7 +116,7 @@ fn main() -> Result<(), String> {
                     Scancode::Down => if let Some(t) = tirage_debut.take() {
                         let p = (t.elapsed().as_secs_f64() / TIRAGE_S).min(1.0) as f32;
                         sim.tirage = 0.0;
-                        sim.force = 0.3 + 0.8 * p;
+                        sim.force = physique::force_lanceur(p);
                         regles.on_switch(regles::sw::LAUNCH, true);
                     },
                     _ => {}
