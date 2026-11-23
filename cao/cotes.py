@@ -123,6 +123,9 @@ RAMPE = {
     "larg_int": c(39.0, "choix", "largeur intérieure = bille 27 + 2 × 6"),
     "ep": c(3.0, "choix", "fond et flancs imprimés (PETG)"),
     "h_flanc": c(25.0, "choix", "hauteur des flancs au-dessus du fond"),
+    "flanc_haut": c({"s0": 120.0, "s1": 360.0, "raccord": 25.0, "sommet": 103.0}, "choix",
+                    "flancs relevés jusqu'à 2 mm sous la vitre (105 mm) de s0 à s1 : au sommet de la montée, la bille "
+                    "rapide décolle et volait par-dessus les flancs de 25 mm dans le S"),
     "z_haut": c(48.0, "choix", "fond de rampe au-dessus du plateau sur l'arrondi (passe au-dessus des parois de 32 mm)"),
     "pente_entree": c(25.0, "choix", "pente de la montée (°) : 36 mm au moins au-dessus du toit du bouchon, que la bille passe dessous"),
     "pas_supports": c(140.0, "choix", "écart des poteaux de rampe"),

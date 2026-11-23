@@ -13,7 +13,15 @@ import { HABILLAGES, chargerImages, dessiner, estEmissif } from './habillages.js
 
 const PENTE = (6.5 * Math.PI) / 180;      // pente du plateau (cao/cotes.py)
 const H_PAROI = 32;                        // parois et guides imprimés
-const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), larg: 39, flanc: 25 };
+const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), larg: 39, flanc: 25, ep: 3,
+  flancHaut: { s0: 120, s1: 360, raccord: 25, sommet: 103 } };   // flancs relevés sous la vitre (js/sim.js, cao/cotes.py)
+// hauteur des flancs au-dessus du dessus du fond (zf) : comme js/sim.js flancRampe et cao/construire.py flanc_rampe
+function flancRampe(s, zf) {
+  const { s0, s1, raccord: r, sommet } = RAMPE.flancHaut, h = RAMPE.flanc;
+  if (s <= s0 - r || s >= s1 + r) return h;
+  const w = s >= s0 && s <= s1 ? 1 : 0.5 - 0.5 * Math.cos(Math.PI * (1 - (s < s0 ? s0 - s : s - s1) / r));
+  return h + Math.max(0, sommet - zf - h) * w;
+}
 const TEX = 2;                             // résolution des textures peintes (px par mm)
 // la bille passe sous le tablier quand son centre dépasse le bord avant (bras en V, GEO.apron)
 function sousTablier(x, y) {
@@ -748,14 +756,14 @@ export class Renderer3D {
     pts.forEach((p, i) => {
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const dx = b.x - a.x, dy = b.y - a.y, l = Math.hypot(dx, dy) || 1;
-      const nx = -dy / l, ny = dx / l, z = zRampe(p.s, L);
+      const nx = -dy / l, ny = dx / l, z = zRampe(p.s, L), hf = RAMPE.ep + flancRampe(p.s, z + RAMPE.ep);
       const hp = half + Math.max(0, (bouche.half - half) * (1 - p.s / bouche.evase));   // entonnoir de la bouche
       for (const [k, sg] of [[0, 1], [1, -1]]) {
         const x = p.x + nx * hp * sg, y = p.y + ny * hp * sg;
-        pos.push(x, y, -z, x, y, -(z + RAMPE.flanc));
+        pos.push(x, y, -z, x, y, -(z + hf));
         const v = k === 0 ? 0 : 1;                  // v = 0 : côté droit du sens de montée
         uv.push(p.s / L, v, p.s / L, v);
-        rails[k].push(new THREE.Vector3(x, y, -(z + RAMPE.flanc)));
+        rails[k].push(new THREE.Vector3(x, y, -(z + hf)));
       }
     });
     // sommets par point : [g bas, g haut, d bas, d haut]

@@ -379,10 +379,23 @@ def demi_rampe(p, s):
     return p["larg"] / 2 + max(0.0, (p["bouche"] - p["larg"]) / 2 * (1 - s / p["evase"]))
 
 
+def flanc_rampe(p, s, z):
+    """hauteur des flancs au-dessus du dessus du fond (z) à l'abscisse s : h_flanc, relevée jusqu'au « sommet »
+    (hauteur absolue au-dessus du plateau) entre s0 et s1, avec des raccords en cosinus"""
+    fh, h = p.get("flanc_haut"), p["h"]
+    if not fh:
+        return h
+    r = fh["raccord"]
+    if s <= fh["s0"] - r or s >= fh["s1"] + r:
+        return h
+    w = 1.0 if fh["s0"] <= s <= fh["s1"] else 0.5 - 0.5 * math.cos(math.pi * (1 - (fh["s0"] - s if s < fh["s0"] else s - fh["s1"]) / r))
+    return h + max(0.0, fh["sommet"] - z - h) * w
+
+
 def section_rampe(x, y, z, dx, dy, p, s=1e9):
     """profil en U (fond + 2 flancs) perpendiculaire à la direction (dx, dy) — repère table"""
     nx, ny = -dy, dx
-    hw, e, h = demi_rampe(p, s), p["ep"], p["h"]
+    hw, e, h = demi_rampe(p, s), p["ep"], flanc_rampe(p, s, z)
     prof = [(-hw - e, -e), (hw + e, -e), (hw + e, h), (hw, h), (hw, 0), (-hw, 0), (-hw, h), (-hw - e, h)]
     pts = [tv(x + nx * a, y + ny * a, z + b) for a, b in prof]
     return Part.makePolygon(pts + [pts[0]])

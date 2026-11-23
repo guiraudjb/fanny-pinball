@@ -103,8 +103,16 @@ const groupes = (membre, filtre) => (membre << 16) | filtre;
 
 // hauteur du fond de rampe à l'abscisse s (même profil que cao/modele.py et render3d.js)
 const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), larg: 39, ep: 3, flanc: 25,   // cao/cotes.py RAMPE
+  flancHaut: { s0: 120, s1: 360, raccord: 25, sommet: 103 },   // flancs relevés sous la vitre (cao/construire.py flanc_rampe)
   pas: 1.5 };   // mm : échantillonnage de la surface de collision (au pas de 6 mm du chemin, chaque facette des
                 // virages serrés, angle de 7°, était un petit choc qui coûtait jusqu'à 40 % de l'énergie de la bille)
+// hauteur des flancs au-dessus du dessus du fond (zf, hauteur de ce dessus) : comme cao/construire.py flanc_rampe
+function flancRampe(s, zf) {
+  const { s0, s1, raccord: r, sommet } = RAMPE.flancHaut, h = RAMPE.flanc;
+  if (s <= s0 - r || s >= s1 + r) return h;
+  const w = s >= s0 && s <= s1 ? 1 : 0.5 - 0.5 * Math.cos(Math.PI * (1 - (s < s0 ? s0 - s : s - s1) / r));
+  return h + Math.max(0, sommet - zf - h) * w;
+}
 function zRampe(s, L) {
   const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente;
   const desc = L * (2 / 3), s3 = L - desc;
@@ -362,15 +370,15 @@ export class Sim {
   // long du chemin lissé et du profil en long zRampe, au pas fin RAMPE.pas : une seule surface continue.
   construireRampe() {
     const E = GEO.rampEntries[0], path = rampPath(GEO.ramps.L, RAMPE.pas), L = path.length, pts = path.pts;
-    const e = RAMPE.ep, h = RAMPE.flanc;
+    const e = RAMPE.ep;
     const demi = (s) => RAMPE.larg / 2 + Math.max(0, (2 * E.half - RAMPE.larg) / 2 * (1 - s / E.evase));
     const v = [], idx = [];
     pts.forEach((p, i) => {
       const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
       const l = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / l, ny = (b.x - a.x) / l;
-      const hw = demi(p.s), z = zRampe(p.s, L);
+      const hw = demi(p.s), z = zRampe(p.s, L), hf = flancRampe(p.s, z + e);
       // comme la CAO : dessous du fond à zRampe, dessus du fond à zRampe + ep
-      for (const [u, w] of [[-hw - e, 0], [hw + e, 0], [hw + e, h + e], [hw, h + e], [hw, e], [-hw, e], [-hw, h + e], [-hw - e, h + e]]) {
+      for (const [u, w] of [[-hw - e, 0], [hw + e, 0], [hw + e, hf + e], [hw, hf + e], [hw, e], [-hw, e], [-hw, hf + e], [-hw - e, hf + e]]) {
         v.push((p.x + nx * u) * MM, (p.y + ny * u) * MM, -(z + w) * MM);
       }
     });

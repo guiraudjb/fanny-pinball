@@ -9,3 +9,5 @@ cao/sortie/*.FCBak
 __pycache__/
 pi2/target/
 rust3d/target/
+natif/target/
+natif/donnees/.GLTFExporter.js

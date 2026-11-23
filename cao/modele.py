@@ -528,7 +528,8 @@ for i, pt in enumerate(PATTES):
           hw=_hw_rampe, matiere="alu 3 mm plié (ou PETG 4 mm)")
 S_IR = L_RAMPE - 120
 piece(id="rampe", nom="Rampe (tronçons PETG, barrière IR en sortie)", type="rampe", pts3d=RAMPE_3D, s_ir=S_IR,
-      larg=V(RAMPE["larg_int"]), ep=V(RAMPE["ep"]), h=V(RAMPE["h_flanc"]), bouche=2 * r0["half"], evase=r0["evase"])
+      larg=V(RAMPE["larg_int"]), ep=V(RAMPE["ep"]), h=V(RAMPE["h_flanc"]), bouche=2 * r0["half"], evase=r0["evase"],
+      flanc_haut=V(RAMPE["flanc_haut"]))
 # Languette d'entrée : plan incliné collé au plateau devant la bouche, qui rattrape l'épaisseur du fond de rampe
 # (sans elle, la marche de 3 mm fait sauter la bille) ; le fond continue à la même pente.
 piece(id="languette_rampe", nom="Languette d'entrée de rampe", type="languette", M=(r0["M"]["x"], r0["M"]["y"]),

@@ -45,14 +45,17 @@ const auCercle = (p) => Math.hypot(p.x - GEO.saucer.x, p.y - GEO.saucer.y) < 20;
 const auLanceur = (p) => p.x > GEO.playRight + 2 && p.y > GEO.plunger.top - 140;
 
 // suit une bille jusqu'à sa perte, son arrêt ou la fin du temps ; renvoie l'issue
+// Bloquée = immobile 3 s à moins de 1 mm près : au sommet d'un poteau rond (équilibre instable), une bille posée
+// à 3 mm du centre met plus d'une seconde à prendre 1 cm/s avant de rouler ; ce n'est pas un blocage.
 function suivre(bille, duree = DUREE) {
-  let immobile = 0;
+  let immobile = 0, ici = null;
   for (let t = 0; t < duree; t += DT) {
     sim.step(DT);
     if (bille.retiree) return { issue: 'perdue', t };
     if (bille.plugin.fp.mode === 'saucer') return { issue: 'cercle', t };
-    if (bille.vitesse < 0.01) immobile += DT; else immobile = 0;
-    if (immobile > 1000) {
+    const q = bille.position;
+    if (bille.vitesse < 0.01 && (!ici || Math.hypot(q.x - ici.x, q.y - ici.y) < 1)) { ici ||= q; immobile += DT; } else { immobile = 0; ici = null; }
+    if (immobile > 3000) {
       const p = bille.position;
       if (auLanceur(p)) return { issue: 'lanceur', t };
       return { issue: 'bloquee', t, x: +p.x.toFixed(1), y: +p.y.toFixed(1), h: +bille.hauteur.toFixed(1) };
@@ -114,14 +117,14 @@ if (!arg('sans-rampe')) {
     sim.setRoulement(bille, vImg(v) * dx, vImg(v) * dy);   // bille qui roule, comme au sortir d'une palette
     let hMax = 0, sortie = false;
     let r = null;
-    for (let t = 0, immobile = 0; t < 6000; t += DT) {
+    for (let t = 0, immobile = 0; t < 9000; t += DT) {
       sim.step(DT);
       if (bille.retiree) { r = { issue: 'perdue' }; break; }
       if (bille.plugin.fp.mode === 'saucer') { r = { issue: 'cercle' }; break; }
       hMax = Math.max(hMax, bille.hauteur);
       if (bille.hauteur > 105 - 2 * BALL_R - 1) sortie = true;
       if (bille.vitesse < 0.01) immobile += DT; else immobile = 0;
-      if (immobile > 1000) { const p = bille.position; r = { issue: auLanceur(p) ? 'lanceur' : 'bloquee', x: +p.x.toFixed(1), y: +p.y.toFixed(1), h: +bille.hauteur.toFixed(1) }; break; }
+      if (immobile > 3000) { const p = bille.position; r = { issue: auLanceur(p) ? 'lanceur' : 'bloquee', x: +p.x.toFixed(1), y: +p.y.toFixed(1), h: +bille.hauteur.toFixed(1) }; break; }
     }
     r = r || { issue: 'en jeu' };
     const fait = contacts.includes('ramp');
