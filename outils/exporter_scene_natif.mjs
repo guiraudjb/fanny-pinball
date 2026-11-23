@@ -73,7 +73,7 @@ const n = await evaluer(`
   for (let i = 0; i < 120 && !r3.machine; i++) await att(500);
   if (r3.setHabillage) await r3.setHabillage(${JSON.stringify(HABILLAGE)});
   await att(3000);
-  const THREE = r3.constructor.THREE;
+  const THREE = await import('/vendor/three.module.min.js');
   // plateau repeint en haute définition (lampes éteintes, comme dans le jeu)
   const fr = r3.floorR, s = ${PX_MM}, W = fr.canvas.width / fr.scale, H = fr.canvas.height / fr.scale;
   const cv = document.createElement('canvas'); cv.width = Math.round(W * s); cv.height = Math.round(H * s);
@@ -95,9 +95,28 @@ const n = await evaluer(`
   r3.plunger.name = 'dyn_tige_lanceur';
   r3.lanceur.forEach((m, i) => { m.name = 'dyn_lanceur_' + i; });
   for (const [k, b] of Object.entries(r3.boutons)) b.name = 'bouton_' + k;
-  for (const g of r3.lampGlows) { g.mat.name = 'lampe_' + g.name; g.mat.emissiveIntensity = 0; g.sp.visible = false; }
+  // intensité d'émission à 1 à l'export (la couleur est gardée) : la version native allume et éteint elle-même
+  for (const g of r3.lampGlows) { g.mat.name = 'lampe_' + g.name; g.mat.emissiveIntensity = 1; g.sp.visible = false; }
+  r3.bumpers.forEach((b) => { for (const m of [b.topMat, b.sideMat, b.bodyMat, b.bulbMat]) m.emissiveIntensity = 1; b.sp.visible = false; });
+  r3.slings.forEach((band) => { band.material.emissive.setHex(0xffd23f); band.material.emissiveIntensity = 1; if (band.userData.sp) band.userData.sp.visible = false; });
   r3.balls.forEach((m) => { m.visible = false; });
+  // panneaux lumineux de la salle : vus seulement par la caméra de la carte d'environnement (calque 1), pas par le joueur
+  r3.scene.traverse((o) => { if (o.isMesh && o.layers.mask === 2) o.visible = false; });
   r3.rampMat.name = 'rampe_fond'; r3.rampFlank.name = 'rampe_flanc';
+  r3.tilt.name = 'inclinaison'; r3.table.name = 'table';     // repère de la table (mm) : billes et palettes s'y placent
+  // caméras du jeu web (paysage 16:9 et portrait 9:16), dans les extras de la scène glTF
+  const cams = [], vus = new Set();
+  for (const [asp, format] of [[16 / 9, 'paysage'], [9 / 16, 'portrait']]) {
+    r3.camera.aspect = asp; r3.camera.updateProjectionMatrix();
+    for (let k = 0; k < 16; k++) {
+      const nom = r3.cycleCamera();
+      if (vus.has(format + nom)) continue;
+      vus.add(format + nom);
+      r3.camera.updateMatrixWorld(true);
+      cams.push({ nom, format, matrice: Array.from(r3.camera.matrixWorld.elements), fov: r3.camera.fov, near: r3.camera.near, far: r3.camera.far });
+    }
+  }
+  r3.scene.userData = { cameras: cams, pente_deg: r3.sim.penteDeg, lanceur_axe: r3.lanceurAxe ? r3.lanceurAxe.toArray() : [0, 1, 0] };
   const { GLTFExporter } = await import('/__exporteur.js');
   const glb = await new GLTFExporter().parseAsync(r3.scene, { binary: true, maxTextureSize: 4096, onlyVisible: true });
   const u8 = new Uint8Array(glb);

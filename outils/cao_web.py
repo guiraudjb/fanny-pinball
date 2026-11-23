@@ -82,7 +82,14 @@ def lire_stl(p, table=True):
                 pos += [x, H - Y, -z] if table else [x, Y, z]   # repère du jeu, ou celui de la caisse
             f.append(index[cle])
         if len(set(f)) == 3:
-            tri.append(f)
+            # triangles d'aire nulle (sommets alignés, arrondis du STL au 0,1 mm) : rien à couvrir, mais leur
+            # normale indéfinie donne des contacts fantômes dans la physique (bille renvoyée plus vite qu'elle n'arrive)
+            a, b, c = (pos[3 * i:3 * i + 3] for i in f)
+            u = [b[k] - a[k] for k in range(3)]
+            w = [c[k] - a[k] for k in range(3)]
+            n = (u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0])
+            if (n[0] ** 2 + n[1] ** 2 + n[2] ** 2) ** 0.5 > 2e-3:     # double de l'aire, en mm²
+                tri.append(f)
     return pos, tri
 
 

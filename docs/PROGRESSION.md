@@ -249,6 +249,39 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   Une bille qui descend lentement le couloir de retour passe par-dessus la palette levée : avec une résistance au roulement de 0,012 ou une levée à −25°, le berceau remonte à 12/16. **Choix de l'utilisateur (23/11) : garder les cotes et le roulement réels sans retouche** ; c'est au modèle d'amortissement du caoutchouc de progresser.
 - **Robot** : réétalonné (sa mise en berceau donne une vitesse d'arrivée à la bille) ; 3 parties de 1,2 à 1,5 min, 19 000 à 25 000 points (avant : 2,3 à 3,2 min, 22 000 à 88 000), toutes les billes perdues entre les palettes. Node.js 22 installé sans sudo dans `~/aitools/node` pour les bancs.
 
+## Caoutchoucs, rampe, blocages et nouvelle version native (23/11)
+
+- **Modèle de caoutchouc** (`js/sim.js`, `caoutchouc()`) :
+  - **Premier contact** : la restitution dépend de la vitesse d'impact, e(v) = 1 − (1 − e1)·v^0,2. Elle vaut 0,8 pour les anneaux et 0,5 pour la palette à 1 m/s ; elle est plus forte au choc lent et plus faible au choc vif.
+  - **Contact maintenu** : perte par hystérésis égale à 0,05 × l'impulsion normale.
+  - **Normale** : elle est ramenée dans le plan du plateau, ce qui supprime les rebonds en l'air de la bille sur les caoutchoucs.
+  - **Bumpers et lance-pierres** : leur coup s'ajoute au rebond physique.
+  - **Tourniquet** : l'énergie qui lance la plaque est prise à la bille.
+- **Gestes** (banc `outils/gestes.mjs`) :
+
+  | Geste | Résultat |
+  | :--- | :---: |
+  | Berceau | 16/16 |
+  | Tirs | 2,1 à 3,4 m/s |
+  | Rebond mort | 3/24 |
+  | Passes G→D | 5/30 |
+  | Passes D→G | 1/30 |
+  | Drop catch | 6/54 |
+
+  Le banc sous-estime les passes et le drop catch, parce que le joueur simulé ne corrige pas son geste.
+- **Rampe** : elle commence par une montée droite, suivie d'un S de deux arcs de 70 mm.
+  - Le fond est un maillage lisse calculé, et les tolérances du solveur sont corrigées (`lengthUnit` 1, erreur admise 0,001). Avant, une unité plus petite faisait freiner la bille sur les arêtes internes.
+  - Les flancs montent jusqu'à 103 mm, sous la vitre (105 mm), entre s = 120 et 360 mm, avec des raccords en cosinus. C'est là que la bille sortait du canal.
+  - La CAO suit : un seul loft réglé pour le gabarit (la fusion échouait sans le dire et laissait du plastique dans le canal) et 9 pattes de 80 mm au plus.
+  - Banc `outils/essai_rampe.mjs` : la rampe est faite à partir d'environ 1,8 m/s en tir centré, et de 2,4 m/s pour toutes les entrées. En dessous de 1,6 m/s, la bille redescend.
+- **Points de blocage** (`outils/blocages.mjs`) :
+  - Le plateau entier a été balayé au pas de 25 mm, avec plusieurs vitesses de départ. Il ne reste aucun vrai piège : les poteaux ne donnent que des équilibres instables.
+  - Pour éviter les faux blocages, le critère est maintenant une bille immobile 3 s à 1 mm près.
+- **Version native réécrite** (`natif/`, voir son README) :
+  - Le monde physique est exporté de la version web (`outils/exporter_natif.mjs` → `monde.json`), et la physique de `js/sim.js` est portée sur rapier3d : palettes motorisées, caoutchoucs, bobines, tourniquet.
+  - Les règles sont portées ligne à ligne.
+  - La scène 3D de la version web est exportée en glTF avec l'habillage de la caisse et le plateau repeint à 3,2 px/mm (`outils/exporter_scene_natif.mjs`). Elle est rendue en OpenGL 3.3 avec mipmaps et filtrage anisotrope.
+
 ## Reste à faire
 
 | Sujet | Détail |
@@ -260,9 +293,9 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Réplique : impression | Imprimer une pièce test (poteau, guide) pour valider inserts et tolérances, puis la série |
 | Caisse | Débiter et assembler la caisse et le fronton (planches 08, 09, 11) |
 | Son sur la réplique | Le DFPlayer ne joue qu'une piste à la fois : priorité à la voix, ou second DFPlayer sur Serial2 |
-| Réalisme : berceau | Amortissement du caoutchouc de palette au choc lent (le berceau depuis le couloir de retour échoue 12 fois sur 16 avec les cotes réelles) ; mesurer si possible la résistance au roulement réelle |
-| Réalisme : bumpers, lance-pierres, lanceur | Impulsions qui s'ajoutent à la vitesse de la bille au lieu de la remplacer ; lanceur par tige à ressort |
-| Réalisme : rampe et tourniquet | Retirer les aides (frottement 0,04 « sans freiner », pas de résistance au roulement sur la rampe) ; tourniquet qui freine la bille |
+| Réalisme : roulement | Mesurer si possible la résistance au roulement réelle |
+| Réalisme : lanceur | Lanceur par tige à ressort |
+| Réalisme : rampe | Pas encore de résistance au roulement sur la rampe (le frein de roulement ne s'applique qu'au plateau) |
 | Réalisme : aides invisibles | Secousse automatique d'une bille immobile 1,5 s (`frameChecks`) ; plafond de vitesse 6 m/s |
-| Portage Rust | Palette motorisée à porter ; rampe sur rail avec bonus ×1,08 ; horloge qui retarde de 4 % (`time_ms += 2` pour des pas de 2,083 ms) |
+| Version native | Afficheurs du fronton (aujourd'hui dans le titre de la fenêtre) ; caméras pilotables (tour, lilliputien) ; ombres |
 | Plateau | Allongé à 1263 mm par Gemini (standard : 1067 mm) : à rediscuter avec la caisse |

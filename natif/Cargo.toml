@@ -1,0 +1,23 @@
+[package]
+name = "fanny-pinball"
+version = "0.2.0"
+edition = "2021"
+description = "Fanny Pinball, version native : physique Rapier identique à la version web, scène 3D exportée du jeu web"
+license = "MIT"
+
+[dependencies]
+rapier3d = "0.22"
+nalgebra = "0.33"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+gltf = { version = "1.4", features = ["import", "extras", "names", "KHR_materials_emissive_strength", "KHR_lights_punctual", "KHR_materials_unlit", "KHR_materials_transmission"] }
+sdl2 = { version = "0.37", features = ["mixer"] }
+gl = "0.14"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.dev]
+opt-level = 2

@@ -11,3 +11,4 @@ pi2/target/
 rust3d/target/
 natif/target/
 natif/donnees/.GLTFExporter.js
+natif/donnees/scene.glb
