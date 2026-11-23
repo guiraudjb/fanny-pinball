@@ -61,7 +61,8 @@ Ce sont les mêmes touches que la version web et que le contrôleur Pro Micro (`
 | 5 | pièce |
 | Espace / Haut | bourrage frontal |
 | Ctrl gauche / Ctrl droit | bourrage latéral |
-| C | caméra suivante (caméras du jeu web, en paysage ou en portrait selon la fenêtre) |
+| C | caméra suivante (caméras du jeu web, en paysage ou en portrait selon la fenêtre) ; quitte l'orbite |
+| Souris : glisser / molette | caméra orbitale autour de la machine / zoom |
 | P | pause |
 | M | couper le son |
 | F / F11 | plein écran |

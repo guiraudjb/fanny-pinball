@@ -312,7 +312,9 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   - La rampe se fait depuis la palette droite, avec `le` entre 35 et 36,5 mm : une fenêtre étroite, comme sur une vraie machine.
   - Depuis la palette gauche, elle est inaccessible, ce qui est normal puisque l'entrée regarde la palette droite.
   - Parties du robot : 1,3 à 2 minutes, 17 000 à 71 000 points, presque toutes les billes perdues entre les palettes.
-- **Version native, afficheurs** : le score et l'info s'allument maintenant sur le fronton, avec la police 7 segments du jeu web. Ils ne passent plus seulement par le titre de la fenêtre.
+- **Version native, afficheurs et caméra** :
+  - Le score et l'info s'allument maintenant sur le fronton, avec la police 7 segments du jeu web. Ils ne passent plus seulement par le titre de la fenêtre.
+  - Caméra orbitale à la souris : glisser pour tourner autour de la machine, molette pour zoomer. Pour les essais sans écran, l'option `--orbite lacet,tangage,distance` la place directement.
 - **Lanceur à ressort** :
   - Avant : la vitesse suivait une loi linéaire, avec 30 % de la vitesse nominale même à peine tiré.
   - Maintenant, elle suit l'énergie d'un ressort précomprimé, qui rend k·(x₀·x + x²/2), avec x₀ = 20 mm (HYP). La vitesse vaut v ∝ √E : 25 % à 10 % de course, 66 % à mi-course, 110 % à fond (inchangé).
@@ -341,5 +343,5 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Réalisme : lanceur | Précharge du ressort (20 mm, HYP) à mesurer sur un ressort de lanceur réel |
 | Réalisme : rampe | Bille qui touche la vitre dans le S serré (R70) à 2,4–2,8 m/s : élargir le virage ou ajouter une lèvre sur le flanc extérieur |
 | Robot | Réflexes de sauvetage à revoir : il perd presque toutes ses billes entre les palettes |
-| Version native | Caméras pilotables (tour, lilliputien) ; ombres |
+| Version native | Vue lilliputien ; ombres |
 | Plateau | Allongé à 1263 mm par Gemini (standard : 1067 mm) : à rediscuter avec la caisse |
