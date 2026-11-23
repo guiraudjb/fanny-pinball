@@ -10,6 +10,77 @@ use std::ffi::CString;
 
 pub struct Texture { id: GLuint }
 
+/// Panneau des afficheurs du fronton (texture « afficheurs » de la scène, exportée éteinte) : les segments allumés
+/// sont redessinés sur une copie du fond, avec la même géométrie que js/segfont.js drawSegDisplay
+pub struct Afficheurs { tex: GLuint, w: u32, h: u32, fond: Vec<u8>, score: [f32; 4], info: [f32; 4], texte: String }
+
+/// police 7 segments des TM1637 (js/segfont.js SEG) : bit0 = a … bit6 = g
+pub fn segments(c: char) -> u8 {
+    match c {
+        '-' => 0x40, '_' => 0x08, '=' => 0x48, '\'' => 0x02, '"' => 0x22,
+        '0' => 0x3f, '1' => 0x06, '2' => 0x5b, '3' => 0x4f, '4' => 0x66, '5' => 0x6d, '6' => 0x7d, '7' => 0x07, '8' => 0x7f, '9' => 0x6f,
+        'b' => 0x7c, 'c' => 0x58, 'd' => 0x5e, 'h' => 0x74, 'n' => 0x54, 'o' => 0x5c, 'r' => 0x50, 'u' => 0x1c,
+        _ => match c.to_ascii_uppercase() {
+            'A' => 0x77, 'B' => 0x7c, 'C' => 0x39, 'D' => 0x5e, 'E' => 0x79, 'F' => 0x71, 'G' => 0x3d, 'H' => 0x76, 'I' => 0x06,
+            'J' => 0x1e, 'K' => 0x75, 'L' => 0x38, 'M' => 0x37, 'N' => 0x54, 'O' => 0x3f, 'P' => 0x73, 'Q' => 0x67, 'R' => 0x50,
+            'S' => 0x6d, 'T' => 0x78, 'U' => 0x3e, 'V' => 0x1c, 'W' => 0x2a, 'X' => 0x76, 'Y' => 0x6e, 'Z' => 0x5b, _ => 0,
+        },
+    }
+}
+
+impl Afficheurs {
+    /// met à jour la texture si le texte a changé (score sur 8 caractères, info sur 4)
+    pub fn ecrire(&mut self, score: &str, info: &str) {
+        let texte = format!("{score}|{info}");
+        if texte == self.texte { return; }
+        self.texte = texte;
+        let mut px = self.fond.clone();
+        let (w, h) = (self.w as f32, self.h as f32);
+        for (txt, r, coul) in [(score, self.score, [255u8, 59, 31]), (info, self.info, [255, 176, 32])] {
+            let (rx, ry, cw, ch) = (r[0] * w, r[1] * h, r[2] * w, r[3] * h);
+            let car: Vec<char> = txt.chars().collect();
+            let n = car.len().max(1) as f32;
+            let pad = ch * 0.12;
+            let dw = (cw - pad * 2.0) / n;
+            let hh = ch - pad * 2.0;
+            let sw = (dw * 0.72).min(hh * 0.55);
+            let t = (sw * 0.17).max(2.0);
+            for (i, &c) in car.iter().enumerate() {
+                let bits = segments(c);
+                let x = rx + pad + i as f32 * dw + (dw - sw) / 2.0 + hh * 0.04;
+                let y = ry + pad;
+                let segs = [
+                    [x + t * 0.6, y, sw - t * 1.2, t],
+                    [x + sw - t, y + t * 0.6, t, hh / 2.0 - t * 0.9],
+                    [x + sw - t, y + hh / 2.0 + t * 0.3, t, hh / 2.0 - t * 0.9],
+                    [x + t * 0.6, y + hh - t, sw - t * 1.2, t],
+                    [x, y + hh / 2.0 + t * 0.3, t, hh / 2.0 - t * 0.9],
+                    [x, y + t * 0.6, t, hh / 2.0 - t * 0.9],
+                    [x + t * 0.6, y + hh / 2.0 - t / 2.0, sw - t * 1.2, t],
+                ];
+                for (k, q) in segs.iter().enumerate() {
+                    if bits & (1 << k) == 0 { continue; }
+                    let cy = q[1] + q[3] / 2.0;
+                    for py in q[1].floor().max(0.0) as i32..(q[1] + q[3]).ceil().min(h) as i32 {
+                        let dx = -0.08 * (py as f32 + 0.5 - cy);       // léger penché, comme le jeu web
+                        for pxx in (q[0] + dx).floor().max(0.0) as i32..(q[0] + q[2] + dx).ceil().min(w) as i32 {
+                            let o = (((self.h - 1 - py as u32) * self.w + pxx as u32) * 4) as usize;   // image exportée tête-bêche (flipY du canevas)
+                            px[o..o + 3].copy_from_slice(&coul);
+                            px[o + 3] = 255;
+                        }
+                    }
+                }
+            }
+        }
+        unsafe {
+            gl::BindTexture(gl::TEXTURE_2D, self.tex);
+            gl::PixelStorei(gl::UNPACK_ALIGNMENT, 1);
+            gl::TexSubImage2D(gl::TEXTURE_2D, 0, 0, 0, self.w as i32, self.h as i32, gl::RGBA, gl::UNSIGNED_BYTE, px.as_ptr() as *const _);
+            gl::GenerateMipmap(gl::TEXTURE_2D);
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Materiau {
     pub nom: String,
@@ -55,6 +126,7 @@ pub struct Scene {
     u: HashMap<&'static str, GLint>,
     bille: (GLuint, i32),
     blanc: GLuint,
+    pub afficheurs: Option<Afficheurs>,
 }
 
 const VS: &str = r#"#version 330 core
@@ -164,6 +236,7 @@ impl Scene {
         let aniso = aniso.min(16.0);
         // textures (images glTF décodées, converties en RGBA)
         let mut textures = vec![];
+        let mut pixels: Vec<(u32, u32, Vec<u8>)> = vec![];
         for im in &images {
             use gltf::image::Format::*;
             let px: Vec<u8> = match im.format {
@@ -174,6 +247,7 @@ impl Scene {
                 _ => vec![255; (im.width * im.height * 4) as usize],
             };
             textures.push(Texture { id: texture_rgba(im.width, im.height, &px, aniso) });
+            pixels.push((im.width, im.height, px));
         }
         let tex_image = |t: gltf::texture::Texture| t.source().index();
         let materiaux: Vec<Materiau> = doc.materials().map(|m| {
@@ -226,6 +300,7 @@ impl Scene {
         let sc = doc.default_scene().or_else(|| doc.scenes().next()).ok_or("scène vide")?;
         for n in sc.nodes() { ajouter(n, None, &mut noeuds); }
         let mut cameras = vec![];
+        let mut rects: Option<([f32; 4], [f32; 4])> = None;
         if let Some(x) = sc.extras() {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(x.get()) {
                 for c in v["cameras"].as_array().into_iter().flatten() {
@@ -234,6 +309,11 @@ impl Scene {
                         matrice: Matrix4::from_column_slice(&m), fov: c["fov"].as_f64().unwrap_or(34.0) as f32,
                         near: c["near"].as_f64().unwrap_or(10.0) as f32, far: c["far"].as_f64().unwrap_or(12000.0) as f32 });
                 }
+                let r4 = |a: &serde_json::Value| -> Option<[f32; 4]> {
+                    let a = a.as_array()?; if a.len() != 4 { return None; }
+                    Some([0, 1, 2, 3].map(|i| a[i].as_f64().unwrap_or(0.0) as f32))
+                };
+                if let (Some(sc), Some(inf)) = (r4(&v["afficheurs"]["score"]), r4(&v["afficheurs"]["info"])) { rects = Some((sc, inf)); }
             }
         }
         let noms = noeuds.iter().enumerate().filter(|(_, n)| !n.nom.is_empty()).map(|(i, n)| (n.nom.clone(), i)).collect();
@@ -252,7 +332,13 @@ impl Scene {
         };
         let blanc = texture_rgba(1, 1, &[255, 255, 255, 255], 1.0);
         let bille = unsafe { sphere(13.5, 48, 32) };
-        let mut s = Scene { textures, materiaux, maillages, noeuds, noms, mat_noms, cameras, programme, u, bille, blanc };
+        let afficheurs = rects.and_then(|(score, info)| {
+            let m: &Materiau = materiaux.iter().find(|m| m.nom == "afficheurs")?;
+            let t = m.tex?;
+            let (w, h, px) = pixels.swap_remove(t);
+            Some(Afficheurs { tex: textures[t].id, w, h, fond: px, score, info, texte: String::new() })
+        });
+        let mut s = Scene { textures, materiaux, maillages, noeuds, noms, mat_noms, cameras, programme, u, bille, blanc, afficheurs };
         s.mettre_a_jour();
         Ok(s)
     }

@@ -200,6 +200,7 @@ fn main() -> Result<(), String> {
         if let Some(a) = &tige { scene.noeuds[a.noeud].t = a.t0 + Vector3::new(0.0, kick, 0.0); }
         for a in &lanceur { scene.noeuds[a.noeud].t = a.t0 + axe_lanceur * kick; }
         scene.mettre_a_jour();
+        { let (sc, inf) = regles.display(); if let Some(a) = scene.afficheurs.as_mut() { a.ecrire(&sc, &inf); } }
 
         // ------------------------------------------------ dessin
         let (w, h) = fenetre.drawable_size();

@@ -312,6 +312,7 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   - La rampe se fait depuis la palette droite, avec `le` entre 35 et 36,5 mm : une fenêtre étroite, comme sur une vraie machine.
   - Depuis la palette gauche, elle est inaccessible, ce qui est normal puisque l'entrée regarde la palette droite.
   - Parties du robot : 1,3 à 2 minutes, 17 000 à 71 000 points, presque toutes les billes perdues entre les palettes.
+- **Version native, afficheurs** : le score et l'info s'allument maintenant sur le fronton, avec la police 7 segments du jeu web. Ils ne passent plus seulement par le titre de la fenêtre.
 - **Plafond de vitesse** : en trois parties du robot (lancers compris), le plafond de 6 m/s ne s'est jamais déclenché. Il est porté à 10 m/s et ne sert plus que de garde-fou numérique contre une divergence du solveur ; ce n'est plus une aide de jeu.
 - **Collision de la CAO** : les triangles d'aire nulle (sommets arrondis au 0,1 mm dans les STL) sont retirés à l'export (`outils/cao_web.py`).
 - **Résistance au roulement sur la rampe** : le même coefficient de 0,005 que sur le plateau s'applique quand la bille roule sur le fond de la rampe. Au tir centré, la rampe demande maintenant environ 2 m/s ; à 2,4 m/s, elle est faite pour toutes les entrées.
@@ -336,5 +337,5 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Réalisme : lanceur | Lanceur par tige à ressort |
 | Réalisme : rampe | Bille qui touche la vitre dans le S serré (R70) à 2,4–2,8 m/s : élargir le virage ou ajouter une lèvre sur le flanc extérieur |
 | Robot | Réflexes de sauvetage à revoir : il perd presque toutes ses billes entre les palettes |
-| Version native | Afficheurs du fronton (aujourd'hui dans le titre de la fenêtre) ; caméras pilotables (tour, lilliputien) ; ombres |
+| Version native | Caméras pilotables (tour, lilliputien) ; ombres |
 | Plateau | Allongé à 1263 mm par Gemini (standard : 1067 mm) : à rediscuter avec la caisse |

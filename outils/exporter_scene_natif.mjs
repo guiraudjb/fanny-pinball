@@ -102,6 +102,16 @@ const n = await evaluer(`
   r3.balls.forEach((m) => { m.visible = false; });
   // panneaux lumineux de la salle : vus seulement par la caméra de la carte d'environnement (calque 1), pas par le joueur
   r3.scene.traverse((o) => { if (o.isMesh && o.layers.mask === 2) o.visible = false; });
+  // panneau des afficheurs du fronton : exporté éteint (segments à peine visibles) ; la version native allume les
+  // segments elle-même (rectangles en fraction de la texture dans les extras de la scène)
+  let afficheurs = null;
+  if (r3.afficheurs) {
+    r3.drawAfficheurs({ score: '        ', info: '    ' });
+    r3.scene.traverse((o) => { if (o.isMesh && o.material && o.material.map === r3.afficheurs.tex) o.material.name = 'afficheurs'; });
+    const cw = r3.afficheurs.cv.width, ch = r3.afficheurs.cv.height;
+    const sw = cw - 2 * ch * 1.05, sh = ch * 0.42, x = (cw - sw) / 2, iw = sw * 0.45, ih = ch * 0.34;
+    afficheurs = { score: [x / cw, (ch * 0.08) / ch, sw / cw, sh / ch], info: [(x + sw - iw) / cw, 0.58, iw / cw, ih / ch], rapport: cw / ch };
+  }
   r3.rampMat.name = 'rampe_fond'; r3.rampFlank.name = 'rampe_flanc';
   r3.tilt.name = 'inclinaison'; r3.table.name = 'table';     // repère de la table (mm) : billes et palettes s'y placent
   // caméras du jeu web (paysage 16:9 et portrait 9:16), dans les extras de la scène glTF
@@ -116,7 +126,7 @@ const n = await evaluer(`
       cams.push({ nom, format, matrice: Array.from(r3.camera.matrixWorld.elements), fov: r3.camera.fov, near: r3.camera.near, far: r3.camera.far });
     }
   }
-  r3.scene.userData = { cameras: cams, pente_deg: r3.sim.penteDeg, lanceur_axe: r3.lanceurAxe ? r3.lanceurAxe.toArray() : [0, 1, 0] };
+  r3.scene.userData = { cameras: cams, pente_deg: r3.sim.penteDeg, lanceur_axe: r3.lanceurAxe ? r3.lanceurAxe.toArray() : [0, 1, 0], afficheurs };
   const { GLTFExporter } = await import('/__exporteur.js');
   const glb = await new GLTFExporter().parseAsync(r3.scene, { binary: true, maxTextureSize: 4096, onlyVisible: true });
   const u8 = new Uint8Array(glb);
