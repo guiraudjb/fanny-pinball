@@ -96,7 +96,7 @@ pub struct Materiau {
     pub sans_eclairage: bool,
 }
 
-struct Primitive { vao: GLuint, n: i32, mat: usize }
+struct Primitive { vao: GLuint, n: i32, mat: usize, salle: bool }
 
 pub struct Noeud {
     pub nom: String,
@@ -110,6 +110,7 @@ pub struct Noeud {
     maillage: Option<usize>,
     pub monde: Matrix4<f32>,
     fusionne: bool,          // pièce fixe opaque : dessinée dans le lot de son matériau (Scene::lots)
+    salle: bool,             // pièce de la salle (sous le nœud « salle ») : ne suit pas la machine, toujours éclairée
 }
 
 #[derive(Clone, Debug)]
@@ -129,6 +130,20 @@ pub struct Scene {
     bille: (GLuint, i32),
     blanc: GLuint,
     pub afficheurs: Option<Afficheurs>,
+    pub deplie: Option<Deplie>,
+}
+
+/// Données de la cinématique (extras de la scène) : machine dépliée dans la salle
+#[derive(Clone, Debug)]
+#[allow(dead_code)]
+pub struct Deplie {
+    pub fronton_plie: f32,          // angle du fronton rabattu (rad, autour de l'axe X des charnières)
+    pub h_sol: f32,                 // dessous de la caisse au-dessus du sol (mm) = longueur utile des pieds
+    pub largeur: f32,
+    pub longueur: f32,
+    pub haut: f32,                  // haut du fronton au-dessus du dessous de la caisse
+    pub machine_monde: Matrix4<f32>, // repère de la caisse → monde
+    pub salle: [f32; 6],            // x0, x1, y0, y1, sol, haut (repère de la caisse)
 }
 
 const VS: &str = r#"#version 330 core
@@ -142,13 +157,13 @@ void main(){ vec4 w = M * vec4(p,1.0); wp = w.xyz; wn = normalize(N * n); vuv = 
 const FS: &str = r#"#version 330 core
 in vec3 wp; in vec3 wn; in vec2 vuv; out vec4 frag;
 uniform sampler2D tex; uniform sampler2D etex; uniform vec4 couleur; uniform vec3 emission; uniform float metal, rugo, intens;
-uniform vec3 oeil; uniform int double_face; uniform int unlit;
+uniform vec3 oeil; uniform int double_face; uniform int unlit; uniform float tension;
 uniform vec3 Ldir[3]; uniform vec3 Lcol[3];
 vec3 ciel(vec3 d){ return mix(vec3(0.05,0.035,0.03), vec3(0.55,0.52,0.48), clamp(d.y*0.5+0.5,0.0,1.0)); }
 void main(){
   vec4 b = texture(tex, vuv) * couleur;
   if (b.a < 0.02) discard;
-  if (unlit == 1) { vec3 u = b.rgb / (1.0 + b.rgb * 0.25); frag = vec4(pow(u, vec3(1.0/2.2)), b.a); return; }
+  if (unlit == 1) { vec3 u = b.rgb * (0.05 + 0.95 * tension); u = u / (1.0 + u * 0.25); frag = vec4(pow(u, vec3(1.0/2.2)), b.a); return; }
   vec3 N = normalize(wn); vec3 V = normalize(oeil - wp);
   if (double_face == 1 && dot(N, V) < 0.0) N = -N;
   vec3 diff = b.rgb * (1.0 - metal);
@@ -162,7 +177,7 @@ void main(){
   }
   vec3 R = reflect(-V, N); float fr = pow(1.0 - max(dot(N, V), 0.0), 5.0);
   c += ciel(R) * mix(F0, vec3(1.0), fr) * (1.0 - r) * 0.8;
-  c += emission * texture(etex, vuv).rgb * intens;
+  c += emission * texture(etex, vuv).rgb * intens * tension;
   c = c / (1.0 + c * 0.25);
   frag = vec4(pow(c, vec3(1.0/2.2)), b.a);
 }"#;
@@ -309,7 +324,7 @@ impl Scene {
             let rq = UnitQuaternion::from_quaternion(Quaternion::new(r[3], r[0], r[1], r[2]));
             out.push(Noeud { nom: n.name().unwrap_or("").to_string(), parent, t: Vector3::from(t), r: rq, s: Vector3::from(s),
                 t0: Vector3::from(t), r0: rq, visible: true, maillage: n.mesh().map(|m| m.index()), monde: Matrix4::identity(),
-                fusionne: false });
+                fusionne: false, salle: false });
             let me = out.len() - 1;
             for c in n.children() { ajouter(c, Some(me), out); }
         }
@@ -318,6 +333,9 @@ impl Scene {
         // Fusion des pièces fixes : seuls les nœuds dyn_* (et leurs enfants) bougent ; les autres pièces opaques sont
         // regroupées par matériau, déjà placées dans le repère du monde. ~370 appels de dessin par image deviennent
         // ~120 : sur un petit processeur, c'est le nombre d'appels, plus que les pixels, qui coûte.
+        for i in 0..noeuds.len() {
+            noeuds[i].salle = noeuds[i].nom == "salle" || noeuds[i].parent.is_some_and(|p| noeuds[p].salle);
+        }
         let mut mondes = vec![Matrix4::<f32>::identity(); noeuds.len()];
         for i in 0..noeuds.len() {
             let n = &noeuds[i];
@@ -326,7 +344,8 @@ impl Scene {
         }
         let mobile = |i: usize| { let mut k = Some(i); while let Some(j) = k { if noeuds[j].nom.starts_with("dyn_") { return true; } k = noeuds[j].parent; } false };
         let opaque = |m: &Materiau| !(m.transparent || m.couleur[3] < 0.999);
-        let mut lots_bruts: Vec<(Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<[f32; 2]>, Vec<u32>)> = (0..materiaux.len()).map(|_| Default::default()).collect();
+        // lots par (matériau, salle) : indice 2 × matériau + salle
+        let mut lots_bruts: Vec<(Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<[f32; 2]>, Vec<u32>)> = (0..2 * materiaux.len()).map(|_| Default::default()).collect();
         let mut propre = vec![false; bruts.len()];   // maillage qui garde ses propres tampons (pièce mobile ou transparente)
         let mut fusion = vec![false; noeuds.len()];
         for i in 0..noeuds.len() {
@@ -336,7 +355,7 @@ impl Scene {
             let m = mondes[i];
             let n3: Matrix3<f32> = m.fixed_view::<3, 3>(0, 0).into_owned().try_inverse().unwrap_or_else(Matrix3::identity).transpose();
             for (pos, nor, uv, idx, mat) in &bruts[mi] {
-                let l = &mut lots_bruts[*mat];
+                let l = &mut lots_bruts[2 * *mat + noeuds[i].salle as usize];
                 let base = l.0.len() as u32;
                 l.0.extend(pos.iter().map(|p| { let q = m.transform_point(&Point3::new(p[0], p[1], p[2])); [q.x, q.y, q.z] }));
                 l.1.extend(nor.iter().map(|n| { let v = (n3 * Vector3::new(n[0], n[1], n[2])).try_normalize(1e-12).unwrap_or(Vector3::z()); [v.x, v.y, v.z] }));
@@ -346,12 +365,13 @@ impl Scene {
         }
         for (i, f) in fusion.into_iter().enumerate() { noeuds[i].fusionne = f; }
         let lots: Vec<Primitive> = lots_bruts.iter().enumerate().filter(|(_, l)| !l.3.is_empty())
-            .map(|(mat, l)| Primitive { vao: unsafe { vao(&l.0, &l.1, &l.2, &l.3) }, n: l.3.len() as i32, mat }).collect();
+            .map(|(k, l)| Primitive { vao: unsafe { vao(&l.0, &l.1, &l.2, &l.3) }, n: l.3.len() as i32, mat: k / 2, salle: k % 2 == 1 }).collect();
         let maillages: Vec<Vec<Primitive>> = bruts.iter().enumerate().map(|(mi, prims)| if !propre[mi] { vec![] } else {
-            prims.iter().map(|(pos, nor, uv, idx, mat)| Primitive { vao: unsafe { vao(pos, nor, uv, idx) }, n: idx.len() as i32, mat: *mat }).collect()
+            prims.iter().map(|(pos, nor, uv, idx, mat)| Primitive { vao: unsafe { vao(pos, nor, uv, idx) }, n: idx.len() as i32, mat: *mat, salle: false }).collect()
         }).collect();
         let mut cameras = vec![];
         let mut rects: Option<([f32; 4], [f32; 4])> = None;
+        let mut deplie: Option<Deplie> = None;
         if let Some(x) = sc.extras() {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(x.get()) {
                 for c in v["cameras"].as_array().into_iter().flatten() {
@@ -365,6 +385,17 @@ impl Scene {
                     Some([0, 1, 2, 3].map(|i| a[i].as_f64().unwrap_or(0.0) as f32))
                 };
                 if let (Some(sc), Some(inf)) = (r4(&v["afficheurs"]["score"]), r4(&v["afficheurs"]["info"])) { rects = Some((sc, inf)); }
+                let d = &v["deplie"];
+                if let (Some(m), Some(s)) = (d["machine_monde"].as_array(), d["salle"].as_object()) {
+                    let m: Vec<f32> = m.iter().map(|x| x.as_f64().unwrap_or(0.0) as f32).collect();
+                    let f = |k: &str| d[k].as_f64().unwrap_or(0.0) as f32;
+                    let b = |k: &str| s.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0) as f32;
+                    if m.len() == 16 {
+                        deplie = Some(Deplie { fronton_plie: f("fronton_plie"), h_sol: f("h_sol"), largeur: f("largeur"), longueur: f("longueur"),
+                            haut: f("haut"), machine_monde: Matrix4::from_column_slice(&m),
+                            salle: [b("x0"), b("x1"), b("y0"), b("y1"), b("sol"), b("haut")] });
+                    }
+                }
             }
         }
         let noms = noeuds.iter().enumerate().filter(|(_, n)| !n.nom.is_empty()).map(|(i, n)| (n.nom.clone(), i)).collect();
@@ -375,7 +406,7 @@ impl Scene {
             gl::AttachShader(p, shader(FS, gl::FRAGMENT_SHADER));
             gl::LinkProgram(p);
             let mut u = HashMap::new();
-            for k in ["M", "VP", "N", "tex", "etex", "couleur", "emission", "metal", "rugo", "intens", "oeil", "double_face", "unlit", "Ldir", "Lcol"] {
+            for k in ["M", "VP", "N", "tex", "etex", "couleur", "emission", "metal", "rugo", "intens", "oeil", "double_face", "unlit", "Ldir", "Lcol", "tension"] {
                 let c = CString::new(k).unwrap();
                 u.insert(k, gl::GetUniformLocation(p, c.as_ptr()));
             }
@@ -389,7 +420,7 @@ impl Scene {
             let (w, h, px) = pixels.swap_remove(t);
             Some(Afficheurs { tex: textures[t].id, w, h, fond: px, score, info, texte: String::new() })
         });
-        let mut s = Scene { textures, materiaux, maillages, lots, noeuds, noms, mat_noms, cameras, programme, u, bille, blanc, afficheurs };
+        let mut s = Scene { textures, materiaux, maillages, lots, noeuds, noms, mat_noms, cameras, programme, u, bille, blanc, afficheurs, deplie };
         s.mettre_a_jour();
         Ok(s)
     }
@@ -413,7 +444,10 @@ impl Scene {
     }
 
     /// dessine la scène ; billes : positions (x, y, z) en mm dans le repère de la table, et leur rotation
-    pub fn dessiner(&self, cam: &Camera, aspect: f32, billes: &[(Vector3<f32>, UnitQuaternion<f32>)], table: Option<usize>) {
+    /// machine : déplacement de la machine dans la salle (cinématique) ; tension : 0 machine éteinte, 1 sous tension
+    pub fn dessiner(&self, cam: &Camera, aspect: f32, billes: &[(Vector3<f32>, UnitQuaternion<f32>)], table: Option<usize>,
+                    machine: &Matrix4<f32>, tension: f32) {
+        let place = |i: usize| if self.noeuds[i].salle { self.noeuds[i].monde } else { machine * self.noeuds[i].monde };
         let vue = cam.matrice.try_inverse().unwrap_or_else(Matrix4::identity);
         let proj = Matrix4::new_perspective(aspect, cam.fov.to_radians(), cam.near, cam.far);
         let vp = proj * vue;
@@ -427,7 +461,7 @@ impl Scene {
             for p in &self.maillages[mi] {
                 let m = &self.materiaux[p.mat];
                 if m.transparent || m.couleur[3] < 0.999 {
-                    let c = n.monde.transform_point(&Point3::origin());
+                    let c = place(i).transform_point(&Point3::origin());
                     transp.push(((c - oeil).norm(), i, p));
                 } else { opaques.push((i, p)); }
             }
@@ -448,27 +482,37 @@ impl Scene {
             gl::DepthMask(gl::TRUE);
             gl::Disable(gl::BLEND);
             let id = Matrix4::identity();
-            for p in &self.lots { self.primitive(&id, p.vao, p.n, &self.materiaux[p.mat]); }
-            for (i, p) in opaques { self.primitive(&self.noeuds[i].monde, p.vao, p.n, &self.materiaux[p.mat]); }
+            for p in &self.lots {
+                let (m, t) = if p.salle { (&id, 1.0) } else { (machine, tension) };
+                self.primitive(m, p.vao, p.n, &self.materiaux[p.mat], t);
+            }
+            for (i, p) in opaques {
+                let t = if self.noeuds[i].salle { 1.0 } else { tension };
+                self.primitive(&place(i), p.vao, p.n, &self.materiaux[p.mat], t);
+            }
             // billes d'acier : repère de la table
             if let Some(t) = table {
                 let acier = Materiau { nom: "acier".into(), couleur: [0.86, 0.87, 0.9, 1.0], tex: None, metal: 1.0, rugosite: 0.12,
                     emission: [0.0; 3], emission_tex: None, intensite: 0.0, transparent: false, double_face: false, sans_eclairage: false };
                 for (p, q) in billes {
-                    let m = self.noeuds[t].monde * Matrix4::new_translation(p) * q.to_homogeneous();
-                    self.primitive(&m, self.bille.0, self.bille.1, &acier);
+                    let m = machine * self.noeuds[t].monde * Matrix4::new_translation(p) * q.to_homogeneous();
+                    self.primitive(&m, self.bille.0, self.bille.1, &acier, 1.0);
                 }
             }
             gl::Enable(gl::BLEND);
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
             gl::DepthMask(gl::FALSE);
-            for (_, i, p) in transp { self.primitive(&self.noeuds[i].monde, p.vao, p.n, &self.materiaux[p.mat]); }
+            for (_, i, p) in transp {
+                let t = if self.noeuds[i].salle { 1.0 } else { tension };
+                self.primitive(&place(i), p.vao, p.n, &self.materiaux[p.mat], t);
+            }
             gl::DepthMask(gl::TRUE);
             gl::Disable(gl::BLEND);
         }
     }
 
-    unsafe fn primitive(&self, m: &Matrix4<f32>, vao: GLuint, n: i32, mat: &Materiau) {
+    unsafe fn primitive(&self, m: &Matrix4<f32>, vao: GLuint, n: i32, mat: &Materiau, tension: f32) {
+        gl::Uniform1f(self.u["tension"], tension);
         let n3: Matrix3<f32> = m.fixed_view::<3, 3>(0, 0).into_owned().try_inverse().unwrap_or_else(Matrix3::identity).transpose();
         gl::UniformMatrix4fv(self.u["M"], 1, gl::FALSE, m.as_ptr());
         gl::UniformMatrix3fv(self.u["N"], 1, gl::FALSE, n3.as_ptr());
@@ -513,39 +557,70 @@ unsafe fn sphere(r: f32, nlon: u32, nlat: u32) -> (GLuint, i32) {
 #[allow(dead_code)]
 pub fn v4(x: f32, y: f32, z: f32) -> Vector4<f32> { Vector4::new(x, y, z, 1.0) }
 
-/// Image calculée en définition réduite (machine modeste) : rendu dans un tampon hors écran, puis agrandi à l'écran
-/// avec filtrage linéaire (glBlitFramebuffer).
+/// Image calculée hors écran : définition réglable (agrandie à l'écran avec filtrage linéaire) et anticrénelage
+/// multiéchantillon réglable sans recréer la fenêtre (tampon multiéchantillon résolu, puis agrandi).
 #[derive(Default)]
-pub struct Cible { fbo: GLuint, couleur: GLuint, profondeur: GLuint, w: u32, h: u32 }
+pub struct Cible { fbo: GLuint, rb: [GLuint; 2], resolu: GLuint, rb_resolu: GLuint, w: u32, h: u32, ech: i32 }
 
 impl Cible {
-    pub unsafe fn preparer(&mut self, w: u32, h: u32) {
-        if self.fbo == 0 || self.w != w || self.h != h {
-            if self.fbo != 0 {
-                gl::DeleteFramebuffers(1, &self.fbo);
-                gl::DeleteRenderbuffers(1, &self.couleur);
-                gl::DeleteRenderbuffers(1, &self.profondeur);
-            }
-            gl::GenFramebuffers(1, &mut self.fbo);
-            gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
-            gl::GenRenderbuffers(1, &mut self.couleur);
-            gl::BindRenderbuffer(gl::RENDERBUFFER, self.couleur);
-            gl::RenderbufferStorage(gl::RENDERBUFFER, gl::RGBA8, w as i32, h as i32);
-            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::RENDERBUFFER, self.couleur);
-            gl::GenRenderbuffers(1, &mut self.profondeur);
-            gl::BindRenderbuffer(gl::RENDERBUFFER, self.profondeur);
-            gl::RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH_COMPONENT24, w as i32, h as i32);
-            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::RENDERBUFFER, self.profondeur);
-            self.w = w;
-            self.h = h;
+    unsafe fn liberer(&mut self) {
+        if self.fbo != 0 {
+            gl::DeleteFramebuffers(1, &self.fbo);
+            gl::DeleteRenderbuffers(2, self.rb.as_ptr());
         }
-        gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
+        if self.resolu != 0 {
+            gl::DeleteFramebuffers(1, &self.resolu);
+            gl::DeleteRenderbuffers(1, &self.rb_resolu);
+        }
+        *self = Cible::default();
     }
 
+    pub unsafe fn preparer(&mut self, w: u32, h: u32, echantillons: i32) {
+        let mut max = 0;
+        gl::GetIntegerv(gl::MAX_SAMPLES, &mut max);
+        let ech = echantillons.min(max).max(0);
+        if self.fbo == 0 || self.w != w || self.h != h || self.ech != ech {
+            self.liberer();
+            let tampon = |fbo: &mut GLuint, rb: &mut [GLuint], n: i32| {
+                gl::GenFramebuffers(1, fbo);
+                gl::BindFramebuffer(gl::FRAMEBUFFER, *fbo);
+                gl::GenRenderbuffers(rb.len() as i32, rb.as_mut_ptr());
+                for (k, (fmt, att)) in [(gl::RGBA8, gl::COLOR_ATTACHMENT0), (gl::DEPTH_COMPONENT24, gl::DEPTH_ATTACHMENT)].iter().enumerate().take(rb.len()) {
+                    gl::BindRenderbuffer(gl::RENDERBUFFER, rb[k]);
+                    if n > 0 { gl::RenderbufferStorageMultisample(gl::RENDERBUFFER, n, *fmt, w as i32, h as i32); }
+                    else { gl::RenderbufferStorage(gl::RENDERBUFFER, *fmt, w as i32, h as i32); }
+                    gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, *att, gl::RENDERBUFFER, rb[k]);
+                }
+            };
+            let mut rb = [0; 2];
+            tampon(&mut self.fbo, &mut rb, ech);
+            self.rb = rb;
+            if ech > 0 {
+                let mut r = [0; 1];
+                tampon(&mut self.resolu, &mut r, 0);
+                self.rb_resolu = r[0];
+            }
+            self.w = w;
+            self.h = h;
+            self.ech = ech;
+        }
+        gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
+        if ech > 0 { gl::Enable(gl::MULTISAMPLE); }
+    }
+
+    /// recopie l'image à l'écran (w × h), après résolution de l'anticrénelage
     pub unsafe fn afficher(&self, w: u32, h: u32) {
-        gl::BindFramebuffer(gl::READ_FRAMEBUFFER, self.fbo);
+        let mut src = self.fbo;
+        if self.ech > 0 {
+            gl::BindFramebuffer(gl::READ_FRAMEBUFFER, self.fbo);
+            gl::BindFramebuffer(gl::DRAW_FRAMEBUFFER, self.resolu);
+            gl::BlitFramebuffer(0, 0, self.w as i32, self.h as i32, 0, 0, self.w as i32, self.h as i32, gl::COLOR_BUFFER_BIT, gl::NEAREST);
+            src = self.resolu;
+        }
+        gl::BindFramebuffer(gl::READ_FRAMEBUFFER, src);
         gl::BindFramebuffer(gl::DRAW_FRAMEBUFFER, 0);
-        gl::BlitFramebuffer(0, 0, self.w as i32, self.h as i32, 0, 0, w as i32, h as i32, gl::COLOR_BUFFER_BIT, gl::LINEAR);
+        let filtre = if self.w == w && self.h == h { gl::NEAREST } else { gl::LINEAR };
+        gl::BlitFramebuffer(0, 0, self.w as i32, self.h as i32, 0, 0, w as i32, h as i32, gl::COLOR_BUFFER_BIT, filtre);
         gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
     }
 }

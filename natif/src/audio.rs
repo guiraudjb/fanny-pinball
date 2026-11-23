@@ -21,6 +21,8 @@ pub struct Audio {
     next_sfx_ch: i32,
     pub muted: bool,
     enabled: bool,
+    vol_effets: f32,   // 0 à 1 (réglages)
+    vol_musique: f32,
 }
 
 impl Audio {
@@ -34,6 +36,8 @@ impl Audio {
             next_sfx_ch: 1,
             muted: false,
             enabled: false,
+            vol_effets: 0.8,
+            vol_musique: 0.6,
         };
 
         if let Err(e) = mixer::open_audio(44_100, AUDIO_S16LSB, DEFAULT_CHANNELS, 1024) {
@@ -120,9 +124,30 @@ impl Audio {
         };
         if let Some(m) = track {
             let _ = m.play(-1);
-            Music::set_volume(if in_game { 34 } else { 42 });
             self.current_music = target;
+            self.appliquer_volumes();
         }
+    }
+
+    /// volumes des réglages, de 0 à 10
+    pub fn set_volumes(&mut self, effets: u8, musique: u8) {
+        self.vol_effets = effets.min(10) as f32 / 10.0;
+        self.vol_musique = musique.min(10) as f32 / 10.0;
+        self.appliquer_volumes();
+    }
+
+    fn appliquer_volumes(&self) {
+        if !self.enabled { return; }
+        Channel(0).set_volume((118.0 * self.vol_effets) as i32);
+        for ch in 1..16 { Channel(ch).set_volume((96.0 * self.vol_effets) as i32); }
+        let base = if self.current_music == 2 { 50.0 } else { 62.0 };
+        Music::set_volume((base * self.vol_musique) as i32);
+    }
+
+    /// coupe la musique (cinématique, mise sous tension)
+    pub fn arreter_musique(&mut self) {
+        if self.enabled { Music::halt(); }
+        self.current_music = 0;
     }
 
     pub fn toggle_mute(&mut self) -> bool {

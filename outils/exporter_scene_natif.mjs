@@ -112,6 +112,37 @@ const n = await evaluer(`
     const sw = cw - 2 * ch * 1.05, sh = ch * 0.42, x = (cw - sw) / 2, iw = sw * 0.45, ih = ch * 0.34;
     afficheurs = { score: [x / cw, (ch * 0.08) / ch, sw / cw, sh / ch], info: [(x + sw - iw) / cw, 0.58, iw / cw, ih / ch], rapport: cw / ch };
   }
+  // salle, fronton basculant et pieds articulés (menus et cinématique de la version native)
+  let deplie = null;
+  if (r3.machine && r3.fronton) {
+    const M = r3.machine, mb = r3.machineBox;
+    for (const m of [...M.children]) if (m.isMesh && m.geometry.parameters?.width === 6000) M.remove(m);   // sol uni : la salle a le sien
+    r3.fronton.pivot.name = 'dyn_fronton';
+    // chaque pied et sa quincaillerie pivotent autour de l'arête basse de la caisse, au milieu du pied
+    const pieds = {};
+    for (const m of [...M.children]) {
+      const k = /^(pied|quincaillerie)_(A[VR][GD])$/.exec(m.name || '');
+      if (k) (pieds[k[2]] ||= []).push(m);
+    }
+    for (const [cote, ms] of Object.entries(pieds)) {
+      const pied = ms.find((m) => m.name.startsWith('pied_')) || ms[0];
+      pied.geometry.computeBoundingBox();
+      const b = pied.geometry.boundingBox, cx = (b.min.x + b.max.x) / 2, cy = (b.min.y + b.max.y) / 2;
+      const pv = new THREE.Group();
+      pv.name = 'dyn_pied_' + cote;
+      pv.position.set(cx, cy, 0);
+      M.add(pv);
+      for (const m of ms) { M.remove(m); m.position.x -= cx; m.position.y -= cy; pv.add(m); }
+    }
+    const { construireSalle } = await import('/js/salle.js');
+    const salle = await construireSalle(THREE, { L: mb.x1 - 70, P: mb.y1, hSol: -mb.z0 });
+    r3.scene.updateMatrixWorld(true);
+    salle.groupe.matrixAutoUpdate = false;
+    salle.groupe.matrix.copy(M.matrixWorld);
+    r3.scene.add(salle.groupe);
+    deplie = { fronton_plie: r3.fronton.plie, h_sol: -mb.z0, largeur: mb.x1 - 70, longueur: mb.y1, haut: mb.z1,
+      machine_monde: Array.from(M.matrixWorld.elements), salle: salle.bornes };
+  }
   r3.rampMat.name = 'rampe_fond'; r3.rampFlank.name = 'rampe_flanc';
   r3.tilt.name = 'inclinaison'; r3.table.name = 'table';     // repère de la table (mm) : billes et palettes s'y placent
   // caméras du jeu web (paysage 16:9 et portrait 9:16), dans les extras de la scène glTF
@@ -126,7 +157,7 @@ const n = await evaluer(`
       cams.push({ nom, format, matrice: Array.from(r3.camera.matrixWorld.elements), fov: r3.camera.fov, near: r3.camera.near, far: r3.camera.far });
     }
   }
-  r3.scene.userData = { cameras: cams, pente_deg: r3.sim.penteDeg, lanceur_axe: r3.lanceurAxe ? r3.lanceurAxe.toArray() : [0, 1, 0], afficheurs };
+  r3.scene.userData = { cameras: cams, pente_deg: r3.sim.penteDeg, lanceur_axe: r3.lanceurAxe ? r3.lanceurAxe.toArray() : [0, 1, 0], afficheurs, deplie };
   const { GLTFExporter } = await import('/__exporteur.js');
   const glb = await new GLTFExporter().parseAsync(r3.scene, { binary: true, maxTextureSize: 4096, onlyVisible: true });
   const u8 = new Uint8Array(glb);

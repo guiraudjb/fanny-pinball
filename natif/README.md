@@ -86,6 +86,27 @@ physique et de rendu dans la console). La physique reste à 480 Hz dans tous les
 et elle ne coûte que 2 à 4 ms par image. Les pièces fixes opaques sont fusionnées par matériau au chargement (environ
 370 appels de dessin par image deviennent environ 120).
 
+## Déroulé du jeu
+
+1. **Menu principal** (`src/ecrans.rs`) : Partie libre, Réglages, Quitter. Derrière, la machine est posée au sol, pieds
+   repliés et fronton rabattu, dans un café provençal (`js/salle.js`, exporté avec la scène) : tomettes, murs ocre et
+   lambris lavande, fenêtres ouvertes sur les champs de lavande et le Ventoux, comptoir en zinc, table de pétanque, olivier,
+   affiches de Fanny, guirlande de guinguette. La caméra flâne lentement autour de la machine.
+2. **Réglages**, enregistrés dans `~/.config/fanny-pinball/reglages.json` et appliqués aussitôt :
+   - affichage fenêtré ou plein écran ;
+   - définition (taille de la fenêtre, ou définition de l'image calculée en plein écran, agrandie ensuite à l'écran) ;
+   - niveau de détail : Bas (scène légère, image à 75 %, anisotrope 4×), Moyen (anisotrope 8×), Élevé (MSAA 4×, anisotrope 16×) ;
+   - volume des effets et volume de la musique (0 à 100).
+3. **Partie libre** : tableau des 10 meilleurs scores (`~/.config/fanny-pinball/scores.json`), puis Commencer ou Retour.
+4. **Cinématique** (Entrée pour passer, jouée une fois par session) : les pieds se déplient et soulèvent la caisse,
+   le fronton se relève, puis la machine se met sous tension (tubes et ampoules qui hésitent, relais, jingle) et la
+   caméra rejoint la vue de jeu.
+5. **Choix de la vue** : ← → passent d'une caméra à l'autre en direct, Entrée lance la partie.
+6. **Fin de partie** : score, puis saisie des trois initiales aux palettes si le score entre au tableau.
+
+Options d'essai : `--ecran menu|reglages|libre|vues|jeu|pause|initiales|cinematique:t` (écran de départ),
+`--auto` (partie automatique sans menus), `--capture f.ppm --apres ms`.
+
 ## Commandes
 
 Ce sont les mêmes touches que la version web et que le contrôleur Pro Micro (`controleur/fanny_pincab`).
@@ -100,10 +121,12 @@ Ce sont les mêmes touches que la version web et que le contrôleur Pro Micro (`
 | Ctrl gauche / Ctrl droit | bourrage latéral |
 | C | caméra suivante (caméras du jeu web, en paysage ou en portrait selon la fenêtre) ; quitte l'orbite |
 | Souris : glisser / molette | caméra orbitale autour de la machine / zoom |
-| P | pause |
+| P | gel de la physique (essai) |
 | M | couper le son |
-| F / F11 | plein écran |
+| F11 | plein écran |
 | + / − | pente du plateau |
-| Échap | quitter |
+| Échap | menu de pause (reprendre, changer de vue, abandonner) |
+
+Dans les menus : ↑ ↓ ou les palettes pour choisir, ← → pour modifier, Entrée, S ou Espace pour valider, Échap pour revenir.
 
 Le score et l'afficheur d'informations s'allument sur le fronton. Ils utilisent la même police 7 segments que les TM1637 de la réplique et que le jeu web (`js/segfont.js`). Le titre de la fenêtre les reprend aussi, avec la caméra et la cadence d'images.

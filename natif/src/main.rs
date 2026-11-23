@@ -1,21 +1,32 @@
-// Fanny Pinball, version native (Rust) : même physique que la version web (monde exporté), mêmes règles,
-// scène 3D exportée du jeu web avec l'habillage de la caisse. Commandes identiques à la version web et au
-// contrôleur Pro Micro (controleur/fanny_pincab) :
+// Fanny Pinball, version native (Rust) : même physique que la version web (monde exporté), mêmes règles, scène 3D
+// exportée du jeu web avec l'habillage de la caisse, dans un café provençal (js/salle.js).
+//
+// Déroulé : menu principal (partie libre, réglages) → partie libre et tableau des meilleurs scores → cinématique
+// (la machine, posée au sol, fronton rabattu, se déplie sur ses pieds puis se met sous tension) → choix de la vue →
+// partie → fin de partie et saisie des initiales.
+//
+// Commandes de jeu identiques à la version web et au contrôleur Pro Micro (controleur/fanny_pincab) :
 //   Maj gauche / Maj droite : palettes ; Bas (maintenir puis relâcher) : lanceur ; S ou Entrée : départ ; 5 : pièce
-//   Espace / Haut : bourrage frontal ; Ctrl gauche / droit : bourrage latéral ; P : pause ; F / F11 : plein écran
-//   C : caméra suivante ; M : son coupé ; + / − : pente du plateau ; Échap : quitter
+//   Espace / Haut : bourrage frontal ; Ctrl gauche / droit : bourrage latéral ; Échap : pause ; F11 : plein écran
+//   C : caméra suivante ; M : son coupé ; + / − : pente du plateau
+// Dans les menus : ↑ ↓ ou palettes pour choisir, ← → pour modifier, Entrée ou départ pour valider, Échap pour revenir.
 
 mod audio;
+mod ecrans;
 mod physique;
+mod reglages;
 mod regles;
 mod rendu;
+mod ui;
 
-use nalgebra::{UnitQuaternion, Vector3};
+use nalgebra::{Matrix4, Point3, UnitQuaternion, Vector3, Vector4};
+use reglages::{Detail, Reglages, Tableau};
 use sdl2::keyboard::Scancode;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 const TIRAGE_S: f64 = 0.9;
+const FIN_CINEMATIQUE: f64 = 10.6;
 
 fn racine() -> PathBuf {
     // donnees/ à côté de l'exécutable, sinon dans le dossier du crate (cargo run)
@@ -26,98 +37,331 @@ fn racine() -> PathBuf {
     PathBuf::from(".")
 }
 
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Ecran { Menu, Reglages, Libre, Cinematique, Vues, Jeu, Pause, FinPartie, Initiales }
+
 struct Anim { noeud: usize, t0: Vector3<f32>, r0: UnitQuaternion<f32> }
+
+/// pièces animées de la scène (recalculées quand la scène est rechargée)
+struct Pieces {
+    palettes: Vec<(char, Option<Anim>)>,
+    cibles: Vec<Option<Anim>>,
+    anneaux: Vec<Option<Anim>>,
+    chapeaux: Vec<Option<Anim>>,
+    tourniquet: Option<Anim>,
+    tige: Option<Anim>,
+    lanceur: Vec<Anim>,
+    fronton: Option<Anim>,
+    pieds: Vec<(Anim, f32)>,       // pied et sens de repli (gauche : +1, droite : −1, autour de l'axe Y de la caisse)
+    table: Option<usize>,
+    lampes_mats: Vec<String>,
+}
+
+fn pieces(scene: &rendu::Scene, nb_cibles: usize) -> Pieces {
+    let anim = |nom: &str| scene.noeud(nom).map(|i| Anim { noeud: i, t0: scene.noeuds[i].t0, r0: scene.noeuds[i].r0 });
+    Pieces {
+        palettes: vec![('L', anim("dyn_palette_L")), ('R', anim("dyn_palette_R"))],
+        cibles: (0..nb_cibles).map(|i| anim(&format!("dyn_cible_{i}"))).collect(),
+        anneaux: (0..3).map(|i| anim(&format!("dyn_bumper_anneau_{i}"))).collect(),
+        chapeaux: (0..3).map(|i| anim(&format!("dyn_bumper_chapeau_{i}"))).collect(),
+        tourniquet: anim("dyn_tourniquet"),
+        tige: anim("dyn_tige_lanceur"),
+        lanceur: (0..8).filter_map(|i| anim(&format!("dyn_lanceur_{i}"))).collect(),
+        fronton: anim("dyn_fronton"),
+        pieds: ["AVG", "ARG", "AVD", "ARD"].iter().filter_map(|c| anim(&format!("dyn_pied_{c}")).map(|a| (a, if c.ends_with('G') { 1.0 } else { -1.0 }))).collect(),
+        table: scene.noeud("table"),
+        lampes_mats: scene.materiaux.iter().filter(|m| m.nom.starts_with("lampe_")).map(|m| m.nom.clone()).collect(),
+    }
+}
+
+fn charger_scene(base: &Path, detail: Detail, aniso_force: Option<f32>) -> Result<rendu::Scene, String> {
+    let leger = base.join("donnees/scene_leger.glb");
+    let chemin = if detail.scene_legere() && leger.exists() { leger } else { base.join("donnees/scene.glb") };
+    rendu::Scene::charger(chemin.to_str().unwrap(), aniso_force.unwrap_or(detail.aniso()))
+        .map_err(|e| format!("{e}\n(scène absente : node outils/exporter_scene_natif.mjs)"))
+}
+
+fn lisse(t: f64, a: f64, b: f64) -> f32 {
+    let x = ((t - a) / (b - a)).clamp(0.0, 1.0);
+    (x * x * (3.0 - 2.0 * x)) as f32
+}
+
+/// cinématique, au temps t (s) : (pieds dépliés 0→1, fronton levé 0→1, tension 0→1)
+fn cinematique(t: f64) -> (f32, f32, f32) {
+    let pieds = lisse(t, 1.0, 3.6);
+    let fronton = lisse(t, 4.0, 6.2);
+    // mise sous tension : les tubes et les ampoules hésitent, comme à l'allumage d'une vraie machine
+    const CLIGNE: [f32; 18] = [0.0, 0.7, 0.05, 0.0, 0.9, 0.15, 0.0, 0.0, 0.55, 1.0, 0.3, 1.0, 1.0, 0.7, 1.0, 1.0, 1.0, 1.0];
+    let tension = if t < 6.8 { 0.0 } else { CLIGNE.get(((t - 6.8) * 13.0) as usize).copied().unwrap_or(1.0) };
+    (pieds, fronton, tension)
+}
+
+/// caméra orbitale dans le repère de la caisse (lacet depuis l'avant, tangage, distance), gardée dans la salle
+fn camera_orbite(d: &rendu::Deplie, lacet: f32, tangage: f32, dist: f32, cible_z: f32, fov: f32) -> rendu::Camera {
+    let c = Vector3::new(d.largeur / 2.0, d.longueur * 0.45, cible_z);
+    let mut o = c + Vector3::new(lacet.sin() * tangage.cos(), -lacet.cos() * tangage.cos(), tangage.sin()) * dist;
+    let s = d.salle;
+    o.x = o.x.clamp(s[0] + 250.0, s[1] - 250.0);
+    o.y = o.y.clamp(s[2] + 250.0, s[3] - 250.0);
+    o.z = o.z.clamp(s[4] + 300.0, s[5] - 250.0);
+    let m = d.machine_monde;
+    let p = |v: Vector3<f32>| { let q = m * Vector4::new(v.x, v.y, v.z, 1.0); Point3::new(q.x, q.y, q.z) };
+    let haut = (m * Vector4::new(0.0, 0.0, 1.0, 0.0)).xyz().normalize();
+    let vue = Matrix4::look_at_rh(&p(o), &p(c), &haut);
+    rendu::Camera { nom: "orbite".into(), format: "paysage".into(), matrice: vue.try_inverse().unwrap_or_else(Matrix4::identity),
+        fov, near: 20.0, far: 30000.0 }
+}
+
+/// mélange de deux caméras (position et orientation), u de 0 à 1
+fn camera_melange(a: &rendu::Camera, b: &rendu::Camera, u: f32) -> rendu::Camera {
+    let pos = |m: &Matrix4<f32>| Vector3::new(m[(0, 3)], m[(1, 3)], m[(2, 3)]);
+    let rot = |m: &Matrix4<f32>| UnitQuaternion::from_matrix(&m.fixed_view::<3, 3>(0, 0).into_owned());
+    let p = pos(&a.matrice).lerp(&pos(&b.matrice), u);
+    let r = rot(&a.matrice).slerp(&rot(&b.matrice), u);
+    let mut m = r.to_homogeneous();
+    m[(0, 3)] = p.x; m[(1, 3)] = p.y; m[(2, 3)] = p.z;
+    rendu::Camera { nom: b.nom.clone(), format: b.format.clone(), matrice: m, fov: a.fov + (b.fov - a.fov) * u,
+        near: a.near.min(b.near), far: a.far.max(b.far) }
+}
+
+fn liste_resolutions(video: &sdl2::VideoSubsystem) -> Vec<(u32, u32)> {
+    let mut v: Vec<(u32, u32)> = vec![];
+    if let Ok(m) = video.desktop_display_mode(0) { v.push((m.w as u32, m.h as u32)); }
+    for i in 0..video.num_display_modes(0).unwrap_or(0) {
+        if let Ok(m) = video.display_mode(0, i) {
+            let r = (m.w as u32, m.h as u32);
+            if r.0 >= 800 && r.1 >= 600 && !v.contains(&r) { v.push(r); }
+        }
+    }
+    for r in [(1280, 800), (1280, 720), (1024, 768)] { if !v.contains(&r) { v.push(r); } }
+    let ecran = v[0];
+    v[1..].sort_by(|a, b| (b.0 * b.1).cmp(&(a.0 * a.1)));
+    v.retain(|r| r.0 <= ecran.0 && r.1 <= ecran.1);
+    v
+}
 
 fn main() -> Result<(), String> {
     let base = racine();
     let mut sim = physique::Sim::charger(base.join("donnees/monde.json").to_str().unwrap())?;
-    let mut regles = regles::Regles::new(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7));
+    let graine = || std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7);
+    let mut regles = regles::Regles::new(graine());
+    let mut reg = Reglages::charger();
+    let mut tableau = Tableau::charger();
 
-    // réglages de rendu : --leger (machine modeste : sans anticrénelage, image calculée à 70 %, filtrage anisotrope 4×,
-    // scène aux textures allégées donnees/scene_leger.glb si elle existe), --echelle f, --msaa n, --profil
+    // options d'essai : --leger (détail bas), --echelle f, --msaa n, --profil, --plein-ecran ; --auto (partie
+    // automatique, sans menus), --capture fichier.ppm [--apres ms] [--camera n] [--orbite l,t,d] ;
+    // --ecran menu|reglages|libre|vues|jeu|cinematique:t (écran de départ, pour les captures)
     let args: Vec<String> = std::env::args().collect();
     let opt = |n: &str| args.iter().position(|a| a == n).and_then(|i| args.get(i + 1)).cloned();
-    let leger = args.iter().any(|a| a == "--leger");
-    let profil = args.iter().any(|a| a == "--profil");
-    let msaa: u8 = opt("--msaa").and_then(|v| v.parse().ok()).unwrap_or(if leger { 0 } else { 4 });
-    let echelle: f32 = opt("--echelle").and_then(|v| v.parse().ok()).unwrap_or(if leger { 0.7f32 } else { 1.0 }).clamp(0.25, 1.0);
-    let aniso_max: f32 = if leger { 4.0 } else { 16.0 };
+    let drapeau = |n: &str| args.iter().any(|a| a == n);
+    if drapeau("--leger") { reg.detail = Detail::Bas; }
+    if drapeau("--plein-ecran") { reg.plein_ecran = true; }
+    let profil = drapeau("--profil");
+    let msaa_force: Option<i32> = opt("--msaa").and_then(|v| v.parse().ok());
+    let echelle_force: Option<f32> = opt("--echelle").and_then(|v| v.parse().ok());
+    let auto = drapeau("--auto");
+    let capture = opt("--capture");
+    let apres: f64 = opt("--apres").and_then(|v| v.parse().ok()).unwrap_or(3000.0);
 
     let sdl = sdl2::init()?;
     let video = sdl.video()?;
     let gla = video.gl_attr();
     gla.set_context_profile(sdl2::video::GLProfile::Core);
     gla.set_context_version(3, 3);
-    if msaa > 1 { gla.set_multisample_buffers(1); gla.set_multisample_samples(msaa); }
     gla.set_framebuffer_srgb_compatible(false);
-    let mut fenetre = video.window("Fanny Pinball", 1280, 800).opengl().resizable().position_centered().build().map_err(|e| e.to_string())?;
+    let resolutions = liste_resolutions(&video);
+    let (fw, fh) = if reg.plein_ecran { (1280, 800) } else { reg.resolution };
+    let mut fenetre = video.window("Fanny Pinball", fw, fh).opengl().resizable().position_centered().build().map_err(|e| e.to_string())?;
     let _ctx = fenetre.gl_create_context()?;
     gl::load_with(|s| video.gl_get_proc_address(s) as *const _);
     let _ = video.gl_set_swap_interval(if profil { 0 } else { 1 });   // --profil : sans synchro verticale, coût réel
-    unsafe { gl::Enable(gl::MULTISAMPLE); }
+    let appliquer_affichage = |f: &mut sdl2::video::Window, r: &Reglages| {
+        if r.plein_ecran { let _ = f.set_fullscreen(sdl2::video::FullscreenType::Desktop); }
+        else {
+            let _ = f.set_fullscreen(sdl2::video::FullscreenType::Off);
+            let _ = f.set_size(r.resolution.0, r.resolution.1);
+            f.set_position(sdl2::video::WindowPos::Centered, sdl2::video::WindowPos::Centered);
+        }
+    };
+    appliquer_affichage(&mut fenetre, &reg);
 
-    let chemin_leger = base.join("donnees/scene_leger.glb");
-    let chemin_scene = if leger && chemin_leger.exists() { chemin_leger } else { base.join("donnees/scene.glb") };
-    let mut scene = rendu::Scene::charger(chemin_scene.to_str().unwrap(), aniso_max)
-        .map_err(|e| format!("{e}\n(scène absente : node outils/exporter_scene_natif.mjs)"))?;
+    let mut ui = ui::Ui::new(&base.join("donnees/polices"))?;
+    let aniso_force = if drapeau("--leger") { Some(4.0) } else { None };
+    let mut scene = charger_scene(&base, reg.detail, aniso_force)?;
+    let mut detail_charge = reg.detail;
+    let mut pc = pieces(&scene, sim.drops_up.len());
     let mut son = audio::Audio::init(&base.join("../assets"));
     if !base.join("../assets/sons").exists() { son = audio::Audio::init(&base.join("assets")); }
+    son.set_volumes(reg.volume_effets, reg.volume_musique);
 
-    // pièces animées
-    let anim = |scene: &rendu::Scene, nom: &str| scene.noeud(nom).map(|i| Anim { noeud: i, t0: scene.noeuds[i].t0, r0: scene.noeuds[i].r0 });
-    let palettes: Vec<(char, Option<Anim>)> = vec![('L', anim(&scene, "dyn_palette_L")), ('R', anim(&scene, "dyn_palette_R"))];
-    let cibles: Vec<Option<Anim>> = (0..sim.drops_up.len()).map(|i| anim(&scene, &format!("dyn_cible_{i}"))).collect();
-    let anneaux: Vec<Option<Anim>> = (0..3).map(|i| anim(&scene, &format!("dyn_bumper_anneau_{i}"))).collect();
-    let chapeaux: Vec<Option<Anim>> = (0..3).map(|i| anim(&scene, &format!("dyn_bumper_chapeau_{i}"))).collect();
-    let tourniquet = anim(&scene, "dyn_tourniquet");
-    let tige = anim(&scene, "dyn_tige_lanceur");
-    let lanceur: Vec<Anim> = (0..8).filter_map(|i| anim(&scene, &format!("dyn_lanceur_{i}"))).collect();
-    let table = scene.noeud("table");
-    let axe_lanceur = Vector3::new(0.0, 1.0, 0.0);
-    let lampes_mats: Vec<(String, f32)> = scene.materiaux.iter().filter(|m| m.nom.starts_with("lampe_")).map(|m| (m.nom.clone(), m.intensite)).collect();
+    // caméras « paysage » du jeu (choix de la vue)
+    let noms_vues = |scene: &rendu::Scene| -> Vec<String> { scene.cameras.iter().filter(|c| c.format == "paysage").map(|c| c.nom.clone()).collect() };
+    let mut vues = noms_vues(&scene);
+    let mut vue_sel = vues.iter().position(|n| *n == reg.vue).or_else(|| vues.iter().position(|n| n == "joueur")).unwrap_or(0);
 
-    // caméra de départ : « joueur » (vue debout devant la machine), comme la version web
-    let mut cam_idx = scene.cameras.iter().filter(|c| c.format == "paysage").position(|c| c.nom == "joueur").unwrap_or(0);
-    let mut pause = false;
-    // caméra orbitale (souris : glisser pour tourner, molette pour zoomer ; C revient aux caméras du jeu) :
-    // (lacet, tangage, distance) autour du centre du plateau
+    // écran de départ
+    let mut ecran = if auto { Ecran::Jeu } else { Ecran::Menu };
+    let mut t_cine0 = 0.0f64;            // horloge de la cinématique (s)
+    if let Some(e) = opt("--ecran") {
+        ecran = match e.split(':').next().unwrap_or("") {
+            "reglages" => Ecran::Reglages, "libre" => Ecran::Libre, "vues" => Ecran::Vues, "jeu" => Ecran::Jeu,
+            "cinematique" => { t_cine0 = e.split(':').nth(1).and_then(|v| v.parse().ok()).unwrap_or(0.0); Ecran::Cinematique }
+            "pause" => Ecran::Pause, "initiales" => Ecran::Initiales, "fin" => Ecran::FinPartie, _ => Ecran::Menu,
+        };
+    }
+    // état de la machine : dépliée et sous tension dès qu'on a vu la cinématique (ou en partie directe)
+    let deplie_depart = matches!(ecran, Ecran::Jeu | Ecran::Vues | Ecran::Pause | Ecran::FinPartie | Ecran::Initiales);
+    let mut machine = if deplie_depart { (1.0f32, 1.0f32, 1.0f32) } else { (0.0, 0.0, 0.0) };   // pieds, fronton, tension
+    let mut sel = 0usize;                // bouton en surbrillance de l'écran courant
+    let mut nouveau_rang: Option<usize> = None;
+    let mut lettres = [0usize; 3];
+    let mut pos_lettre = 0usize;
+    let mut score_fin = 0u64;
+    let mut t_ecran = Instant::now();    // entrée dans l'écran courant
+    let mut en_partie = false;
+    let mut cine_prec = -1.0f64;
+    let cam_jeu: Option<usize> = opt("--camera").and_then(|v| v.parse().ok());
+
     let mut orbite: Option<(f32, f32, f32)> = None;
+    if let Some(o) = opt("--orbite") {
+        let v: Vec<f32> = o.split(',').filter_map(|x| x.parse().ok()).collect();
+        if v.len() == 3 { orbite = Some((v[0], v[1], v[2])); }
+    }
     let mut glisse = false;
-    let mut plein = args.iter().any(|a| a == "--plein-ecran");
-    if plein { let _ = fenetre.set_fullscreen(sdl2::video::FullscreenType::Desktop); }
+    let mut pause_physique = false;
     let mut tirage_debut: Option<Instant> = None;
     let mut ev = sdl.event_pump()?;
     let mut avant = Instant::now();
     let t_depart = Instant::now();
     let mut fps = (0u32, Instant::now(), 0.0f32);
-    // essais sans joueur : --auto (départ puis tir), --capture fichier.ppm [--apres ms] [--camera n] [--orbite l,t,d]
-    let auto = args.iter().any(|a| a == "--auto");
-    let capture = opt("--capture");
-    let apres: f64 = opt("--apres").and_then(|v| v.parse().ok()).unwrap_or(3000.0);
-    if let Some(c) = opt("--camera").and_then(|v| v.parse().ok()) { cam_idx = c; }
-    if let Some(o) = opt("--orbite") {      // --orbite lacet,tangage,distance (rad, rad, mm)
-        let v: Vec<f32> = o.split(',').filter_map(|x| x.parse().ok()).collect();
-        if v.len() == 3 { orbite = Some((v[0], v[1], v[2])); }
-    }
     let mut etape_auto = 0;
-
-    // centre du plateau dans le repère de la scène (cible de la caméra orbitale)
-    let centre: Vector3<f32> = table.map(|t| {
-        let p = scene.noeuds[t].monde * rendu::v4(sim.w / 2.0, sim.h / 2.0, 0.0);
-        Vector3::new(p.x, p.y, p.z)
-    }).unwrap_or_else(Vector3::zeros);
-    let mut cam_courante = nalgebra::Matrix4::<f32>::identity();
     let mut saccades = (0u32, 0u32, 0.0f64);           // images après 3 s, images de plus de 20 ms, pire image (ms)
-    let mut cible = rendu::Cible::default();          // image réduite (--echelle < 1), agrandie à l'écran
+    let mut cible = rendu::Cible::default();
     let mut mesure = (0.0f64, 0.0f64, 0u32, Instant::now(), 0.0f64);   // --profil : ms de physique, ms de rendu, images
+    let mut cam_courante = Matrix4::<f32>::identity();
+
+    // nouvelle partie : physique et règles remises à zéro
+    let nouvelle_partie = |sim: &mut physique::Sim, regles: &mut regles::Regles| -> Result<(), String> {
+        *sim = physique::Sim::charger(base.join("donnees/monde.json").to_str().unwrap())?;
+        *regles = regles::Regles::new(graine());
+        Ok(())
+    };
 
     'jeu: loop {
+        // ------------------------------------------------ événements
+        let mut aller: Option<Ecran> = None;
+        let mut regl_change = false;
         for e in ev.poll_iter() {
             use sdl2::event::Event;
+            let menu = !matches!(ecran, Ecran::Jeu);
             match e {
                 Event::Quit { .. } => break 'jeu,
+                Event::KeyDown { scancode: Some(Scancode::F11), repeat: false, .. } => {
+                    reg.plein_ecran = !reg.plein_ecran;
+                    appliquer_affichage(&mut fenetre, &reg);
+                    reg.enregistrer();
+                }
+                Event::KeyDown { scancode: Some(sc), repeat, .. } if menu => {
+                    let haut = matches!(sc, Scancode::Up | Scancode::LShift);
+                    let bas = matches!(sc, Scancode::Down | Scancode::RShift);
+                    let gauche = matches!(sc, Scancode::Left);
+                    let droite = matches!(sc, Scancode::Right);
+                    let ok = matches!(sc, Scancode::Return | Scancode::KpEnter | Scancode::S | Scancode::Space);
+                    let retour = matches!(sc, Scancode::Escape | Scancode::Backspace);
+                    if repeat && !(haut || bas || gauche || droite) { continue; }
+                    let bip = |son: &mut audio::Audio| son.play(regles::snd::LANE);
+                    match ecran {
+                        Ecran::Menu => {
+                            if haut { sel = (sel + 2) % 3; bip(&mut son); }
+                            if bas { sel = (sel + 1) % 3; bip(&mut son); }
+                            if retour && sc == Scancode::Escape { break 'jeu; }
+                            if ok {
+                                son.play(regles::snd::STANDUP);
+                                match sel { 0 => aller = Some(Ecran::Libre), 1 => aller = Some(Ecran::Reglages), _ => break 'jeu }
+                            }
+                        }
+                        Ecran::Reglages => {
+                            if haut { sel = (sel + ecrans::NB_REGLAGES - 1) % ecrans::NB_REGLAGES; bip(&mut son); }
+                            if bas { sel = (sel + 1) % ecrans::NB_REGLAGES; bip(&mut son); }
+                            let d = if gauche { -1 } else if droite || (ok && sel < 5) { 1 } else { 0 };
+                            if d != 0 {
+                                match sel {
+                                    0 => { reg.plein_ecran = !reg.plein_ecran; appliquer_affichage(&mut fenetre, &reg); }
+                                    1 => {
+                                        let i = resolutions.iter().position(|r| *r == reg.resolution).unwrap_or(0) as i32;
+                                        // la liste va de la plus grande à la plus petite : → agrandit
+                                        reg.resolution = resolutions[(i - d).clamp(0, resolutions.len() as i32 - 1) as usize];
+                                        if !reg.plein_ecran { appliquer_affichage(&mut fenetre, &reg); }
+                                    }
+                                    2 => reg.detail = reg.detail.suivant(d),
+                                    3 => { reg.volume_effets = (reg.volume_effets as i32 + d).clamp(0, 10) as u8; son.set_volumes(reg.volume_effets, reg.volume_musique); son.play(regles::snd::BUMPER); }
+                                    4 => { reg.volume_musique = (reg.volume_musique as i32 + d).clamp(0, 10) as u8; son.set_volumes(reg.volume_effets, reg.volume_musique); }
+                                    _ => {}
+                                }
+                                regl_change = true;
+                            }
+                            if retour || (ok && sel == 5) { aller = Some(Ecran::Menu); }
+                        }
+                        Ecran::Libre => {
+                            if haut || bas { sel = 1 - sel.min(1); bip(&mut son); }
+                            if retour { aller = Some(Ecran::Menu); }
+                            if ok {
+                                son.play(regles::snd::STANDUP);
+                                aller = Some(if sel == 1 { Ecran::Menu } else if machine.2 < 1.0 { Ecran::Cinematique } else { Ecran::Vues });
+                            }
+                        }
+                        Ecran::Cinematique => { if ok || retour { t_cine0 = FIN_CINEMATIQUE; } }
+                        Ecran::Vues => {
+                            let n = vues.len().max(1);
+                            if gauche || haut { vue_sel = (vue_sel + n - 1) % n; bip(&mut son); }
+                            if droite || bas { vue_sel = (vue_sel + 1) % n; bip(&mut son); }
+                            if retour { aller = Some(Ecran::Libre); }
+                            if ok {
+                                reg.vue = vues.get(vue_sel).cloned().unwrap_or_default();
+                                reg.enregistrer();
+                                if !en_partie {
+                                    nouvelle_partie(&mut sim, &mut regles)?;
+                                    regles.on_switch(regles::sw::START, true);
+                                    en_partie = true;
+                                }
+                                aller = Some(Ecran::Jeu);
+                            }
+                        }
+                        Ecran::Pause => {
+                            if haut { sel = (sel + 2) % 3; bip(&mut son); }
+                            if bas { sel = (sel + 1) % 3; bip(&mut son); }
+                            if retour { aller = Some(Ecran::Jeu); }
+                            if ok {
+                                match sel {
+                                    0 => aller = Some(Ecran::Jeu),
+                                    1 => aller = Some(Ecran::Vues),
+                                    _ => { en_partie = false; nouvelle_partie(&mut sim, &mut regles)?; aller = Some(Ecran::Libre); }
+                                }
+                            }
+                        }
+                        Ecran::FinPartie => { if ok && t_ecran.elapsed().as_secs_f32() > 1.0 { t_ecran = Instant::now() - std::time::Duration::from_secs(10); } }
+                        Ecran::Initiales => {
+                            let n = ecrans::ALPHABET.len();
+                            if gauche || haut { lettres[pos_lettre] = (lettres[pos_lettre] + n - 1) % n; bip(&mut son); }
+                            if droite || bas { lettres[pos_lettre] = (lettres[pos_lettre] + 1) % n; bip(&mut son); }
+                            if sc == Scancode::Backspace && pos_lettre > 0 { pos_lettre -= 1; }
+                            if ok {
+                                son.play(regles::snd::STANDUP);
+                                if pos_lettre < 2 { pos_lettre += 1; lettres[pos_lettre] = lettres[pos_lettre - 1]; }
+                                else {
+                                    let nom: String = lettres.iter().map(|&i| ecrans::ALPHABET[i]).collect();
+                                    nouveau_rang = tableau.ajouter(nom.trim_end(), score_fin);
+                                    son.play(regles::snd::V_RECORD);
+                                    aller = Some(Ecran::Libre);
+                                }
+                            }
+                        }
+                        Ecran::Jeu => {}
+                    }
+                }
+                // ------------------------------------------------ partie en cours
                 Event::KeyDown { scancode: Some(sc), repeat: false, .. } => match sc {
-                    Scancode::Escape => break 'jeu,
+                    Scancode::Escape => { aller = Some(Ecran::Pause); }
                     Scancode::LShift | Scancode::Z | Scancode::Left => { sim.held[0] = true; regles.on_switch(regles::sw::FLIP_L, true); son.play(regles::snd::FLIP); }
                     Scancode::RShift | Scancode::Slash | Scancode::Right => { sim.held[1] = true; regles.on_switch(regles::sw::FLIP_R, true); son.play(regles::snd::FLIP); }
                     Scancode::Down => { if tirage_debut.is_none() { tirage_debut = Some(Instant::now()); } }
@@ -126,29 +370,16 @@ fn main() -> Result<(), String> {
                     Scancode::Space | Scancode::Up => { if sim.nudge(0.0) { son.play(regles::snd::NUDGE); } }
                     Scancode::LCtrl => { if sim.nudge(-1.0) { son.play(regles::snd::NUDGE); } }
                     Scancode::RCtrl => { if sim.nudge(1.0) { son.play(regles::snd::NUDGE); } }
-                    Scancode::P => pause = !pause,
+                    Scancode::P => pause_physique = !pause_physique,
                     Scancode::M => { son.toggle_mute(); }
-                    Scancode::C => { if orbite.take().is_none() && !scene.cameras.is_empty() { cam_idx = (cam_idx + 1) % scene.cameras.len(); } }
+                    Scancode::C => {
+                        if orbite.take().is_none() && !vues.is_empty() { vue_sel = (vue_sel + 1) % vues.len(); reg.vue = vues[vue_sel].clone(); }
+                    }
                     Scancode::Equals | Scancode::KpPlus => { let d = sim.pente_deg + 0.5; sim.set_pente(d); }
                     Scancode::Minus | Scancode::KpMinus => { let d = sim.pente_deg - 0.5; sim.set_pente(d); }
-                    Scancode::F | Scancode::F11 => {
-                        plein = !plein;
-                        let _ = fenetre.set_fullscreen(if plein { sdl2::video::FullscreenType::Desktop } else { sdl2::video::FullscreenType::Off });
-                    }
                     _ => {}
                 },
-                Event::MouseButtonDown { mouse_btn: sdl2::mouse::MouseButton::Left, .. } => glisse = true,
-                Event::MouseButtonUp { mouse_btn: sdl2::mouse::MouseButton::Left, .. } => glisse = false,
-                Event::MouseMotion { xrel, yrel, .. } if glisse => {
-                    let o = orbite.get_or_insert(orbite_depuis(&cam_courante, centre));
-                    o.0 -= xrel as f32 * 0.005;
-                    o.1 = (o.1 + yrel as f32 * 0.005).clamp(0.05, 1.5);
-                }
-                Event::MouseWheel { y, .. } => {
-                    let o = orbite.get_or_insert(orbite_depuis(&cam_courante, centre));
-                    o.2 = (o.2 * 0.9f32.powi(y)).clamp(250.0, 6000.0);
-                }
-                Event::KeyUp { scancode: Some(sc), .. } => match sc {
+                Event::KeyUp { scancode: Some(sc), .. } if ecran == Ecran::Jeu => match sc {
                     Scancode::LShift | Scancode::Z | Scancode::Left => { sim.held[0] = false; regles.on_switch(regles::sw::FLIP_L, false); }
                     Scancode::RShift | Scancode::Slash | Scancode::Right => { sim.held[1] = false; regles.on_switch(regles::sw::FLIP_R, false); }
                     Scancode::Down => if let Some(t) = tirage_debut.take() {
@@ -159,12 +390,43 @@ fn main() -> Result<(), String> {
                     },
                     _ => {}
                 },
+                Event::MouseButtonDown { mouse_btn: sdl2::mouse::MouseButton::Left, .. } if ecran == Ecran::Jeu => glisse = true,
+                Event::MouseButtonUp { mouse_btn: sdl2::mouse::MouseButton::Left, .. } => glisse = false,
+                Event::MouseMotion { xrel, yrel, .. } if glisse => {
+                    let o = orbite.get_or_insert(orbite_depuis(&cam_courante));
+                    o.0 -= xrel as f32 * 0.005;
+                    o.1 = (o.1 + yrel as f32 * 0.005).clamp(0.05, 1.5);
+                }
+                Event::MouseWheel { y, .. } if ecran == Ecran::Jeu => {
+                    let o = orbite.get_or_insert(orbite_depuis(&cam_courante));
+                    o.2 = (o.2 * 0.9f32.powi(y)).clamp(250.0, 4000.0);
+                }
                 _ => {}
             }
         }
+        if regl_change { reg.enregistrer(); }
+        // changement d'écran
+        if let Some(e) = aller {
+            if e == Ecran::Menu && ecran == Ecran::Reglages && reg.detail != detail_charge {
+                // niveau de détail changé : la scène est rechargée (textures allégées ou non)
+                draw_chargement(&mut ui, &mut fenetre);
+                scene = charger_scene(&base, reg.detail, None)?;
+                detail_charge = reg.detail;
+                pc = pieces(&scene, sim.drops_up.len());
+                vues = noms_vues(&scene);
+                vue_sel = vue_sel.min(vues.len().saturating_sub(1));
+            }
+            if e == Ecran::Cinematique { t_cine0 = 0.0; cine_prec = -1.0; son.arreter_musique(); }
+            if e == Ecran::Libre && ecran != Ecran::Initiales { nouveau_rang = None; }
+            if e == Ecran::Jeu || e == Ecran::Pause { sim.held = [false, false]; }
+            sel = 0;
+            ecran = e;
+            t_ecran = Instant::now();
+        }
+
         let ecoule = t_depart.elapsed().as_secs_f64() * 1000.0;
         if auto {
-            if etape_auto == 0 && ecoule > 300.0 { regles.on_switch(regles::sw::START, true); etape_auto = 1; }
+            if etape_auto == 0 && ecoule > 300.0 { regles.on_switch(regles::sw::START, true); en_partie = true; etape_auto = 1; }
             if etape_auto == 1 && ecoule > 1200.0 { tirage_debut = Some(Instant::now()); etape_auto = 2; }
             if etape_auto == 2 && ecoule > 2100.0 {
                 tirage_debut = None; sim.tirage = 0.0; sim.force = 1.1; regles.on_switch(regles::sw::LAUNCH, true); etape_auto = 3;
@@ -175,30 +437,61 @@ fn main() -> Result<(), String> {
         avant = Instant::now();
         if let Some(t) = tirage_debut { sim.tirage = (t.elapsed().as_secs_f64() / TIRAGE_S).min(1.0) as f32; }
 
+        // ------------------------------------------------ cinématique : machine qui se déplie et s'allume
+        if ecran == Ecran::Cinematique {
+            t_cine0 += (dt / 1000.0).min(0.1);
+            let t = t_cine0;
+            machine = cinematique(t);
+            // bruitages : verrouillage des pieds, du fronton, relais de mise sous tension, jingle
+            for (seuil, s) in [(1.0, regles::snd::CLAC), (3.6, regles::snd::CLAC), (6.2, regles::snd::DROP), (6.8, regles::snd::CLAC), (8.1, regles::snd::START)] {
+                if cine_prec < seuil && t >= seuil { son.play(s); }
+            }
+            cine_prec = t;
+            if t >= FIN_CINEMATIQUE { machine = (1.0, 1.0, 1.0); ecran = Ecran::Vues; t_ecran = Instant::now(); sel = 0; }
+        }
+
+        // ------------------------------------------------ physique et règles
         let t_phys = Instant::now();
-        if !pause {
+        let jeu_actif = matches!(ecran, Ecran::Jeu) && !pause_physique;
+        if jeu_actif {
             sim.step(dt);
             for (id, ferme) in std::mem::take(&mut sim.contacts) { regles.on_switch(&id, ferme); }
-            regles.tick(sim.time);
-        } else {
-            regles.tick(sim.time);
         }
+        if machine.2 > 0.5 { regles.tick(if jeu_actif { sim.time } else { regles_temps(&regles, dt) }); }
         let sorties = std::mem::take(&mut regles.sorties);
         for b in sorties.bobines { sim.coil(b); }
-        for s in sorties.sons { son.play(s); }
-        son.set_music(regles.mode == regles::Mode::Play);
+        if machine.2 > 0.5 { for s in sorties.sons { son.play(s); } }
+        if machine.2 >= 1.0 && ecran != Ecran::Cinematique { son.set_music(regles.mode == regles::Mode::Play && ecran == Ecran::Jeu); }
         mesure.0 += t_phys.elapsed().as_secs_f64() * 1000.0;
+
+        // fin de partie : score, puis initiales si le score entre au tableau
+        if en_partie && ecran == Ecran::Jeu && matches!(regles.mode, regles::Mode::Over | regles::Mode::Attract) && !auto {
+            en_partie = false;
+            score_fin = regles.last_score;
+            ecran = Ecran::FinPartie;
+            t_ecran = Instant::now();
+        }
+        if ecran == Ecran::FinPartie && t_ecran.elapsed().as_secs_f32() > 4.0 {
+            if let Some(r) = tableau.rang(score_fin) {
+                nouveau_rang = Some(r);
+                lettres = [0; 3];
+                pos_lettre = 0;
+                ecran = Ecran::Initiales;
+            } else {
+                nouveau_rang = None;
+                ecran = Ecran::Libre;
+            }
+            t_ecran = Instant::now();
+            sel = 0;
+        }
 
         // ------------------------------------------------ animation de la scène
         let now = sim.time;
         let age = |k: &str| now - sim.flash.get(k).copied().unwrap_or(-1e9);
-        for (c, a) in &palettes {
-            if let Some(a) = a {
-                let n = &mut scene.noeuds[a.noeud];
-                n.r = a.r0 * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), sim.angle_palette(*c));
-            }
+        for (c, a) in &pc.palettes {
+            if let Some(a) = a { scene.noeuds[a.noeud].r = a.r0 * UnitQuaternion::from_axis_angle(&Vector3::z_axis(), sim.angle_palette(*c)); }
         }
-        for (i, a) in cibles.iter().enumerate() {
+        for (i, a) in pc.cibles.iter().enumerate() {
             if let Some(a) = a {
                 let n = &mut scene.noeuds[a.noeud];
                 let bas = !sim.drops_up[i];
@@ -209,9 +502,9 @@ fn main() -> Result<(), String> {
         for i in 0..3 {
             let ag = age(&format!("bumper{i}"));
             let stroke = if ag < 26.0 { (ag / 26.0 * std::f64::consts::FRAC_PI_2).sin() }
-                else if ag < 145.0 { let u = (ag - 26.0) / 119.0; (-u * 4.2).exp() * (u * std::f64::consts::PI * 1.35).cos() * (1.0 - u) } else { 0.0 } as f64;
-            if let Some(a) = &anneaux[i] { scene.noeuds[a.noeud].t = a.t0 + Vector3::new(0.0, 0.0, (stroke * 10.5) as f32); }
-            if let Some(a) = &chapeaux[i] {
+                else if ag < 145.0 { let u = (ag - 26.0) / 119.0; (-u * 4.2).exp() * (u * std::f64::consts::PI * 1.35).cos() * (1.0 - u) } else { 0.0 };
+            if let Some(a) = &pc.anneaux[i] { scene.noeuds[a.noeud].t = a.t0 + Vector3::new(0.0, 0.0, (stroke * 10.5) as f32); }
+            if let Some(a) = &pc.chapeaux[i] {
                 let z = if ag < 90.0 { 0.7 * (std::f64::consts::PI * ag / 90.0).sin() } else { 0.0 };
                 scene.noeuds[a.noeud].t = a.t0 + Vector3::new(0.0, 0.0, z as f32);
             }
@@ -226,7 +519,7 @@ fn main() -> Result<(), String> {
         }
         let lampes = regles.lamps();
         let clign = (t_depart.elapsed().as_millis() / 220) % 2 == 0;
-        for (nom, _) in &lampes_mats {
+        for nom in &pc.lampes_mats {
             let st = lampes.iter().find(|(k, _)| format!("lampe_{k}") == *nom).map_or(0, |e| e.1);
             let allume = st == 1 || (st == 2 && clign);
             if let Some(m) = scene.mat(nom) { m.intensite = if allume { 1.55 } else { 0.0 }; }
@@ -236,46 +529,100 @@ fn main() -> Result<(), String> {
             let allume = lampes.iter().any(|(k, v)| *k == format!("cible{i}") && *v > 0);
             if let Some(m) = scene.mat(&format!("emis_cible_gauche_{i}")) { m.intensite = if hit { 0.9 } else if allume { 0.5 } else { 0.0 }; }
         }
-        if let Some(a) = &tourniquet { scene.noeuds[a.noeud].r = a.r0 * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), sim.spinner.angle); }
+        if let Some(a) = &pc.tourniquet { scene.noeuds[a.noeud].r = a.r0 * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), sim.spinner.angle); }
         let kick = (if age("plunger") < 60.0 { -6.0 } else { 0.0 }) + sim.tirage * physique::COURSE_LANCEUR;
-        if let Some(a) = &tige { scene.noeuds[a.noeud].t = a.t0 + Vector3::new(0.0, kick, 0.0); }
-        for a in &lanceur { scene.noeuds[a.noeud].t = a.t0 + axe_lanceur * kick; }
+        if let Some(a) = &pc.tige { scene.noeuds[a.noeud].t = a.t0 + Vector3::new(0.0, kick, 0.0); }
+        for a in &pc.lanceur { scene.noeuds[a.noeud].t = a.t0 + Vector3::new(0.0, 1.0, 0.0) * kick; }
+        // machine : pieds, fronton, hauteur de la caisse (les pieds la soulèvent, leur bout restant au sol)
+        let (pieds_u, fronton_u, tension) = machine;
+        let angle_pied = (1.0 - pieds_u) * std::f32::consts::FRAC_PI_2;
+        for (a, sens) in &pc.pieds { scene.noeuds[a.noeud].r = a.r0 * UnitQuaternion::from_axis_angle(&Vector3::y_axis(), sens * angle_pied); }
+        let mut m_machine = Matrix4::<f32>::identity();
+        if let Some(d) = &scene.deplie {
+            if let Some(a) = &pc.fronton { scene.noeuds[a.noeud].r = a.r0 * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), d.fronton_plie * (1.0 - fronton_u)); }
+            let haut = (d.machine_monde * Vector4::new(0.0, 0.0, 1.0, 0.0)).xyz();
+            m_machine = Matrix4::new_translation(&(haut * -(d.h_sol * (1.0 - angle_pied.cos()))));
+        }
         scene.mettre_a_jour();
-        { let (sc, inf) = regles.display(); if let Some(a) = scene.afficheurs.as_mut() { a.ecrire(&sc, &inf); } }
+        {
+            let (sc, inf) = if tension >= 0.5 { regles.display() } else { ("        ".into(), "    ".into()) };
+            if let Some(a) = scene.afficheurs.as_mut() { a.ecrire(&sc, &inf); }
+        }
 
-        // ------------------------------------------------ dessin
+        // ------------------------------------------------ caméra
         let (w, h) = fenetre.drawable_size();
         let aspect = w as f32 / h.max(1) as f32;
         let format = if aspect >= 1.0 { "paysage" } else { "portrait" };
         let cams: Vec<&rendu::Camera> = scene.cameras.iter().filter(|c| c.format == format).collect();
         let defaut = rendu::Camera { nom: "défaut".into(), format: format.into(),
-            matrice: nalgebra::Matrix4::look_at_rh(&nalgebra::Point3::new(0.0, 1500.0, 1400.0), &nalgebra::Point3::origin(), &Vector3::y()).try_inverse().unwrap(),
+            matrice: Matrix4::look_at_rh(&Point3::new(0.0, 1500.0, 1400.0), &Point3::origin(), &Vector3::y()).try_inverse().unwrap(),
             fov: 34.0, near: 10.0, far: 12000.0 };
-        let fixe = if cams.is_empty() { &defaut } else { cams[cam_idx % cams.len()] };
-        let orb;
-        let cam = if let Some((lacet, tangage, d)) = orbite {
-            let oeil = centre + Vector3::new(lacet.sin() * tangage.cos(), tangage.sin(), lacet.cos() * tangage.cos()) * d;
-            orb = rendu::Camera { nom: "orbite".into(), format: format.into(),
-                matrice: nalgebra::Matrix4::look_at_rh(&nalgebra::Point3::from(oeil), &nalgebra::Point3::from(centre), &Vector3::y()).try_inverse().unwrap(),
-                fov: fixe.fov, near: 10.0, far: 20000.0 };
-            &orb
-        } else { fixe };
+        let idx_jeu = cam_jeu.unwrap_or_else(|| cams.iter().position(|c| vues.get(vue_sel) == Some(&c.nom)).unwrap_or(0));
+        let fixe: rendu::Camera = if cams.is_empty() { defaut.clone() } else { cams[idx_jeu % cams.len()].clone() };
+        let horloge = t_depart.elapsed().as_secs_f32();
+        let cam: rendu::Camera = match (&scene.deplie, ecran) {
+            (_, Ecran::Jeu | Ecran::Pause) if orbite.is_some() => {
+                let (lacet, tangage, d) = orbite.unwrap();
+                let centre = centre_plateau(&scene, pc.table, &sim);
+                let oeil = centre + Vector3::new(lacet.sin() * tangage.cos(), tangage.sin(), lacet.cos() * tangage.cos()) * d;
+                rendu::Camera { nom: "orbite".into(), format: format.into(),
+                    matrice: Matrix4::look_at_rh(&Point3::from(oeil), &Point3::from(centre), &Vector3::y()).try_inverse().unwrap(),
+                    fov: fixe.fov, near: 10.0, far: 30000.0 }
+            }
+            (Some(d), Ecran::Menu | Ecran::Reglages | Ecran::Libre | Ecran::Initiales | Ecran::FinPartie) if !matches!(ecran, Ecran::FinPartie) => {
+                // menus : la caméra flâne autour de la machine, dans la salle
+                let lacet = -0.55 + 0.45 * (horloge * 0.06).sin();
+                camera_orbite(d, lacet, 0.30, 2500.0, 250.0 * pieds_u - 150.0, 40.0)
+            }
+            (Some(d), Ecran::Cinematique) => {
+                let t = t_cine0 as f32;
+                let u = (t / 8.2).min(1.0);
+                let o = camera_orbite(d, -1.05 + 0.75 * u, 0.36 - 0.12 * u, 2900.0 - 900.0 * u, -200.0 + 450.0 * pieds_u, 40.0);
+                camera_melange(&o, &fixe, lisse(t as f64, 8.2, 10.4))
+            }
+            _ => fixe.clone(),
+        };
         cam_courante = cam.matrice;
         let billes: Vec<(Vector3<f32>, UnitQuaternion<f32>)> = (0..sim.billes.len()).filter(|&i| !sim.billes[i].retiree).map(|i| {
             let (x, y) = sim.position(i);
             let hz = if sim.billes[i].mode == physique::ModeBille::Saucer { -7.0 } else { sim.hauteur(i).min(200.0) };
             (Vector3::new(x, y, -(sim.ball_r + hz)), sim.rotation(i))
         }).collect();
+
+        // ------------------------------------------------ dessin : scène hors écran (définition et anticrénelage
+        // réglables), agrandie à l'écran, puis l'interface à la définition de l'écran
         let t_rendu = Instant::now();
-        let (rw, rh) = if echelle < 1.0 { ((w as f32 * echelle) as u32, (h as f32 * echelle) as u32) } else { (w, h) };
+        let echelle = echelle_force.unwrap_or(if reg.detail == Detail::Bas { 0.75 } else { 1.0 }).clamp(0.25, 1.0);
+        let (mut rw, mut rh) = (w, h);
+        if reg.plein_ecran && echelle_force.is_none() { rw = reg.resolution.0.min(w); rh = reg.resolution.1.min(h); }
+        rw = ((rw as f32 * echelle) as u32).max(1);
+        rh = ((rh as f32 * echelle) as u32).max(1);
+        let msaa = msaa_force.unwrap_or(reg.detail.msaa());
         unsafe {
-            if echelle < 1.0 { cible.preparer(rw, rh); }
+            cible.preparer(rw, rh, msaa);
             gl::Viewport(0, 0, rw as i32, rh as i32);
             gl::ClearColor(0.09, 0.05, 0.027, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
-        scene.dessiner(cam, aspect, &billes, table);
-        if echelle < 1.0 { unsafe { cible.afficher(w, h); } }
+        scene.dessiner(&cam, aspect, &billes, pc.table, &m_machine, tension);
+        unsafe {
+            cible.afficher(w, h);
+            gl::Viewport(0, 0, w as i32, h as i32);
+        }
+        ui.debut(w, h);
+        let te = t_ecran.elapsed().as_secs_f64();
+        match ecran {
+            Ecran::Menu => ecrans::menu_principal(&mut ui, sel),
+            Ecran::Reglages => ecrans::reglages(&mut ui, &reg, sel, &resolutions),
+            Ecran::Libre => ecrans::libre(&mut ui, &tableau, sel, nouveau_rang),
+            Ecran::Cinematique => ecrans::cinematique(&mut ui, t_cine0),
+            Ecran::Vues => ecrans::vues(&mut ui, &vues, vue_sel),
+            Ecran::Pause => ecrans::pause(&mut ui, sel),
+            Ecran::FinPartie => ecrans::fin_partie(&mut ui, score_fin, tableau.rang(score_fin).is_some()),
+            Ecran::Initiales => ecrans::initiales(&mut ui, &lettres, pos_lettre, score_fin, nouveau_rang.unwrap_or(0), te),
+            Ecran::Jeu => {}
+        }
+        ui.dessiner();
         if profil {
             mesure.4 += t_rendu.elapsed().as_secs_f64() * 1000.0;
             unsafe { gl::Finish(); }
@@ -298,29 +645,52 @@ fn main() -> Result<(), String> {
             for y in (0..h as usize).rev() { out.extend_from_slice(&px[y * w as usize * 3..(y + 1) * w as usize * 3]); }
             std::fs::write(f, out).map_err(|e| e.to_string())?;
             let (sc, inf) = regles.display();
-            println!("capture {f} ({w}×{h}), caméra {}, billes {}, afficheur [{sc}] [{inf}], {:.0} i/s, {} images dont {} de plus de 20 ms (pire {:.1} ms)",
+            println!("capture {f} ({w}×{h}), écran {ecran:?}, caméra {}, billes {}, afficheur [{sc}] [{inf}], {:.0} i/s, {} images dont {} de plus de 20 ms (pire {:.1} ms)",
                 cam.nom, billes.len(), fps.2, saccades.0, saccades.1, saccades.2);
             break 'jeu;
         }
         fenetre.gl_swap_window();
 
-        // afficheurs dans le titre de la fenêtre (en attendant leur rendu sur le fronton)
         fps.0 += 1;
         if fps.1.elapsed().as_secs_f32() >= 0.25 {
             fps.2 = fps.0 as f32 / fps.1.elapsed().as_secs_f32();
             fps.0 = 0;
             fps.1 = Instant::now();
             let (s, i) = regles.display();
-            let _ = fenetre.set_title(&format!("Fanny Pinball  [{s}] [{i}]  — {} — {:.0} i/s{}", cam.nom, fps.2, if pause { " — PAUSE" } else { "" }));
+            let _ = fenetre.set_title(&format!("Fanny Pinball  [{s}] [{i}]  — {:.0} i/s", fps.2));
         }
     }
+    reg.enregistrer();
     Ok(())
 }
 
-/// orbite (lacet, tangage, distance) qui part de la caméra en cours
-fn orbite_depuis(m: &nalgebra::Matrix4<f32>, centre: Vector3<f32>) -> (f32, f32, f32) {
+/// temps des règles hors partie (mode attraction des lampes) : l'horloge de la physique n'avance pas dans les menus
+fn regles_temps(regles: &regles::Regles, dt: f64) -> f64 { regles.now + dt }
+
+fn centre_plateau(scene: &rendu::Scene, table: Option<usize>, sim: &physique::Sim) -> Vector3<f32> {
+    table.map(|t| {
+        let p = scene.noeuds[t].monde * rendu::v4(sim.w / 2.0, sim.h / 2.0, 0.0);
+        Vector3::new(p.x, p.y, p.z)
+    }).unwrap_or_else(Vector3::zeros)
+}
+
+fn draw_chargement(ui: &mut ui::Ui, fenetre: &mut sdl2::video::Window) {
+    let (w, h) = fenetre.drawable_size();
+    unsafe {
+        gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+        gl::Viewport(0, 0, w as i32, h as i32);
+        gl::ClearColor(0.05, 0.03, 0.02, 1.0);
+        gl::Clear(gl::COLOR_BUFFER_BIT);
+    }
+    ui.debut(w, h);
+    ecrans::chargement(ui, "Chargement…");
+    ui.dessiner();
+    fenetre.gl_swap_window();
+}
+
+/// orbite (lacet, tangage, distance) qui part de la caméra en cours, autour du centre de la salle de jeu
+fn orbite_depuis(m: &Matrix4<f32>) -> (f32, f32, f32) {
     let oeil = Vector3::new(m[(0, 3)], m[(1, 3)], m[(2, 3)]);
-    let d = oeil - centre;
-    let l = d.norm().max(1.0);
-    ((d.x).atan2(d.z), (d.y / l).clamp(-1.0, 1.0).asin().clamp(0.05, 1.5), l)
+    let l = oeil.norm().max(1.0);
+    ((oeil.x).atan2(oeil.z), (oeil.y / l).clamp(-1.0, 1.0).asin().clamp(0.05, 1.5), l.min(4000.0))
 }

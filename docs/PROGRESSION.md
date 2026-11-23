@@ -371,6 +371,18 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Version native | Vue lilliputien ; ombres |
 | Plateau | Allongé à 1263 mm par Gemini (standard : 1067 mm) : à rediscuter avec la caisse |
 
+## 23/11 nuit — version native : un vrai jeu
+
+- **Menus** (`natif/src/ui.rs`, `ecrans.rs`, `reglages.rs`) : interface dessinée en un seul appel (rectangles arrondis en
+  champ de distance, texte fontdue en Lobster et Baloo 2, licences OFL), menu principal, réglages enregistrés (affichage,
+  définition, détail, volumes séparés effets et musique), partie libre avec tableau des 10 meilleurs scores, pause,
+  fin de partie et saisie des initiales.
+- **Salle** (`js/salle.js`) : café provençal exporté avec la scène native, dans la thématique du plateau.
+- **Cinématique** : pieds articulés (`dyn_pied_*`, pivot au haut du pied), caisse soulevée de h_sol·(1 − cos a),
+  fronton rabattu puis relevé (`dyn_fronton`), mise sous tension par un uniforme `tension` (émissifs et afficheurs éteints,
+  puis clignotement d'allumage), caméra qui rejoint la vue choisie.
+- Coût : sur la machine modeste, la scène légère avec la salle reste vers 100 i/s sans synchro (physique 1,5 à 2 ms, rendu 8 ms).
+
 ## 23/11 soir — caoutchouc de palette, capot de rampe, machine modeste
 
 - **Caoutchouc de palette** : c'était une corde ronde de 4 mm ; c'est maintenant une bande plate de 1/2" (12,7 mm) de large, comme les caoutchoucs Bally/Williams/Stern (anneau de 1-1/2" ID ; 3/8" chez Gottlieb). Seul le rendu change : la physique utilisait déjà une paroi pleine hauteur.
