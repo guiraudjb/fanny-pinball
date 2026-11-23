@@ -16,7 +16,7 @@ let graine = 5;
 Math.random = () => ((graine = (graine * 1664525 + 1013904223) >>> 0) / 2 ** 32);
 globalThis.window = { Matter: require(path.join(RACINE, 'vendor/matter.min.js')), crypto: globalThis.crypto, performance: globalThis.performance };
 const { creerSim } = await import(path.join(RACINE, 'js/sim.js'));
-const { GEO } = await import(path.join(RACINE, 'js/table.js'));
+const { GEO, CX } = await import(path.join(RACINE, 'js/table.js'));
 const b = readFileSync(path.join(RACINE, 'assets/cao/collision.glb'));
 const contacts = [];
 const sim = await creerSim((id) => contacts.push(id), { glb: b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) });
@@ -42,6 +42,13 @@ function berceau(side) {
     for (let k = 0; k < 210; k++) sim.step(1000 / 60);
     if (!bl.retiree && bl.vitesse <= 0.05) return bl;
   }
+  // repli : bille posée dans le creux du berceau (position d'équilibre relevée au banc, palette tenue)
+  sim.clear(); contacts.length = 0;
+  sim.held = { L: false, R: false }; sim.held[side] = true;
+  for (let k = 0; k < 10; k++) sim.step(1000 / 60);
+  const bl = sim.makeBall(side === 'R' ? 2 * CX - 156.7 : 156.7, 1052);
+  for (let k = 0; k < 120; k++) sim.step(1000 / 60);
+  if (!bl.retiree && bl.vitesse <= 0.05) return bl;
   return null;
 }
 // familles de cibles du robot (js/robot.js cibleVoulue)

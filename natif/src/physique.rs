@@ -24,7 +24,7 @@ const SPINNER_I: f32 = 2.5e-6;
 const V_MAX: f32 = 10.0; // m/s : garde-fou numérique, jamais atteint en jeu (js/sim.js)
 const ROULEMENT: f32 = 0.005;
 /// frottement de pivotement au plateau (rad/s²), comme js/sim.js PIVOTEMENT
-const PIVOTEMENT: f32 = 13.0;
+const PIVOTEMENT: f32 = 4.0;
 /// ressort du lanceur précomprimé de 20 mm (js/sim.js PRECHARGE) : force (part de launchV) pour un tirage 0..1
 pub fn force_lanceur(p: f32) -> f32 {
     let (x0, xm) = (20.0f32, COURSE_LANCEUR);
@@ -566,7 +566,8 @@ v_avant: None, contacts_caout: HashSet::new(), retiree: false,
         let avant = std::mem::take(&mut self.billes[i].contacts_caout);
         let mut maintenant = HashSet::new();
         let v0 = self.billes[i].v_avant.unwrap();
-        let mut impulsions: Vec<(Vector<f32>, Option<(usize, Point<f32>, Vector<f32>)>)> = vec![];
+        // (normale, impulsion normale, vitesse de la surface, frottement, palette)
+        let mut impulsions: Vec<(Vector<f32>, f32, Vector<f32>, f32, Option<(usize, Point<f32>)>)> = vec![];
         let mut pertes: Vec<(Vector<f32>, f32, Option<(usize, Point<f32>)>)> = vec![];
         let corps = self.billes[i].corps;
         for pair in self.narrow.contact_pairs_with(hb) {
@@ -597,7 +598,8 @@ v_avant: None, contacts_caout: HashSet::new(), retiree: false,
                         let dv = e * -vn0 - vn1;
                         if dv > 0.0 {
                             let j = dv / inv_m;
-                            impulsions.push((n * (j / MASSE), pal.map(|k| (k, pt, -n * j))));
+                            let mu = self.colliders[autre].friction();
+                            impulsions.push((n, j, s1, mu, pal.map(|k| (k, pt))));
                         }
                     }
                 } else {
@@ -611,11 +613,30 @@ v_avant: None, contacts_caout: HashSet::new(), retiree: false,
                 }
             }
         }
-        for (dv, pal) in impulsions {
+        for (n, j, s1, mu, pal) in impulsions {
+            let r = self.ball_r * MM;
             let c = &mut self.bodies[corps];
-            let v = *c.linvel();
-            c.set_linvel(v + dv, true);
-            if let Some((k, pt, j)) = pal { self.bodies[self.palettes[k].corps].apply_impulse_at_point(vector![j.x, j.y, 0.0], pt, true); }
+            let v = *c.linvel() + n * (j / MASSE);
+            c.set_linvel(v, true);
+            // frottement qui accompagne l'impulsion normale (js/sim.js) : jusqu'à μ·J contre le glissement du point de
+            // contact, au plus jusqu'au roulement sans glissement (2/7·m·u)
+            let w = *c.angvel();
+            let bras = -n * r;
+            let u = v - s1 + w.cross(&bras);
+            let ut = u - n * u.dot(&n);
+            let lu = ut.norm();
+            let mut f = Vector::zeros();
+            if lu > 1e-5 {
+                let jt = (mu * j).min(2.0 / 7.0 * MASSE * lu);
+                f = -ut * (jt / lu);
+                let inertie = 0.4 * MASSE * r * r;
+                c.set_linvel(v + f / MASSE, true);
+                c.set_angvel(w + bras.cross(&f) / inertie, true);
+            }
+            if let Some((k, pt)) = pal {
+                let jj = -n * j - f;
+                self.bodies[self.palettes[k].corps].apply_impulse_at_point(vector![jj.x, jj.y, 0.0], pt, true);
+            }
         }
         for (dvt, dv, pal) in pertes {
             let c = &mut self.bodies[corps];

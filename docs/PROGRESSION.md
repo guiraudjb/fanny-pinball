@@ -291,20 +291,22 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 
     Le point restant est une bille posée pile au sommet du poteau haut du lance-pierres droit (2 départs sur 1 286). C'est un équilibre instable, et un bourrage la libère.
 - **Frottement de pivotement** :
-  - Constat : la prédiction corrigée a fait tomber le berceau de 16/16 à 0/16. Le 16/16 venait du freinage fantôme à 2 cm. Avec les vrais contacts, une bille qui frappe la palette en biais prend une rotation autour de la verticale, que Rapier ne freine jamais. Cette rotation la poussait le long de la palette levée, par-dessus la pointe.
-  - Correction : un frottement de pivotement au plateau est ajouté (`PIVOTEMENT`, 13 rad/s²). Il vient de μ 0,2 et d'une tache de contact d'environ 0,5 mm ; cette valeur est une estimation, pas une mesure.
-  - Banc des gestes :
+  - Constat : la prédiction corrigée a fait tomber le berceau de 16/16 à 0/16. Le 16/16 venait du freinage fantôme à 2 cm. Avec les vrais contacts, une bille qui frappe la palette en biais prend une rotation autour de la verticale, que Rapier ne freine jamais.
+  - Correction : un frottement de pivotement au plateau est ajouté (`PIVOTEMENT`), avec un couple (3π/16)·μ·N·a. La tache de Hertz d'une bille de 80 g sur le vernis d'un contre-plaqué donne a ≈ 0,15 à 0,2 mm, et μ ≈ 0,2 à 0,3, soit 2 à 5 rad/s². On retient **4 rad/s²**, une estimation et non une mesure.
+  - Une première valeur de 13 rad/s², fondée sur a = 0,5 mm sans le facteur 3π/16, était surestimée. Elle donnait un berceau à 8/16, mais bloquait la rotation au contact des poteaux.
+  - Effet sur le berceau :
 
-    | Geste | Résultat |
-    | :--- | :---: |
-    | Berceau, palette tenue | 8/16 |
-    | Tirs | 2,1 à 2,6 m/s |
-    | Rebond mort | 5/24 |
-    | Passes G→D | 5/30 |
-    | Passes D→G | 3/30 |
-    | Drop catch | 10/54 |
+    | Pivotement | Berceau, palette tenue | Réception chronométrée |
+    | :---: | :---: | :---: |
+    | 4 rad/s² (retenu) | 4/16 | 3/12 |
+    | 4 rad/s² + frottement d'impact (ci-dessous) | 6/16 | 4/12 |
+    | 13 rad/s² | 8/16 | 6/12 |
 
-  - Nouvel essai au banc : la réception depuis le couloir de retour (palette levée au passage de la bille).
+- **Frottement pendant l'impact sur un caoutchouc** :
+  - Défaut : au premier contact, le modèle ajoutait l'impulsion de rebond J le long de la normale, sans le frottement qui va avec.
+  - Correction : une impulsion tangentielle d'au plus μ·J est maintenant appliquée au point de contact. Elle s'oppose à son glissement (vitesse et rotation de la bille, vitesse de la palette) et va au plus jusqu'au roulement sans glissement (2/7·m·u). Elle agit sur la bille (vitesse et rotation) et, par réaction, sur la palette. Même correction dans la version native.
+  - Question ouverte : sur une vraie machine, la bille venue du couloir de retour se prend facilement en berceau. Ici, elle passe encore la pointe de la palette levée dès qu'elle y arrive à plus d'environ 0,25 m/s le long de la palette (20 mm de dénivelé). C'est à mesurer, plutôt qu'à compenser par un réglage.
+  - Le banc des gestes a une nouvelle épreuve, la réception depuis le couloir de retour : palette levée au passage de la bille. L'étalonnage du robot pose la bille dans le berceau quand elle ne s'y arrête pas d'elle-même.
 - **Recherche de bille au lieu de la secousse invisible** :
   - Avant : une bille immobile depuis 1,5 s recevait une vitesse sans aucune cause physique.
   - Maintenant, comme sur une vraie machine, après 8 s d'immobilité les bobines pulsent. Seul le bumper ou le lance-pierres que la bille touche la frappe. Ailleurs, c'est au joueur de bourrer la caisse.
@@ -342,6 +344,7 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Réalisme : roulement | Mesurer si possible la résistance au roulement réelle |
 | Réalisme : lanceur | Précharge du ressort (20 mm, HYP) à mesurer sur un ressort de lanceur réel |
 | Réalisme : rampe | Bille qui touche la vitre dans le S serré (R70) à 2,4–2,8 m/s : élargir le virage ou ajouter une lèvre sur le flanc extérieur |
+| Réalisme : berceau depuis le couloir de retour | Encore difficile (6/16) avec les valeurs physiques : chercher la dissipation qui manque à l'impact oblique sur la palette levée |
 | Robot | Réflexes de sauvetage à revoir : il perd presque toutes ses billes entre les palettes |
 | Version native | Vue lilliputien ; ombres |
 | Plateau | Allongé à 1263 mm par Gemini (standard : 1067 mm) : à rediscuter avec la caisse |

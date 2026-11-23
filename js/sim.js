@@ -33,10 +33,10 @@ const V_MAX = 10.0;                       // m/s : garde-fou numérique (solveur
 // (m/s²) tant qu'elle avance : 0,005 correspond au roulement d'une bille d'acier sur un plateau verni.
 const ROULEMENT = 0.005;
 // Frottement de pivotement (Rapier n'en a pas) : la rotation de la bille autour de la normale au plateau est freinée
-// par la tache de contact. Couple μ·N·a avec μ 0,2 et a ≈ 0,5 mm (acier sur plateau verni, estimation) :
-// décélération μ·g·a / (2/5·r²) ≈ 13 rad/s². Sans lui, la rotation prise en frappant un caoutchouc en biais
-// n'était jamais freinée et poussait la bille le long de la palette, par-dessus sa pointe.
-const PIVOTEMENT = 13;
+// par la tache de contact, couple (3π/16)·μ·N·a. Tache de Hertz d'une bille de 80 g sur le vernis d'un contre-plaqué
+// (E* ≈ 1 à 3 GPa) : a ≈ 0,15 à 0,2 mm ; μ ≈ 0,2 à 0,3 → 2 à 5 rad/s², on prend 4 (estimation, pas une mesure).
+// Sans lui, la rotation prise en frappant un caoutchouc en biais n'est jamais freinée.
+const PIVOTEMENT = 4;
 const RECHERCHE_MS = 8000;                // recherche de bille : bobines pulsées après 8 s sans mouvement
 const FLIP_UP = 45;                       // rad/s : palette cinématique (ancien modèle, option motorisee: false)
 const FLIP_DOWN = 20;
@@ -756,6 +756,20 @@ export class Sim {
               const J = dv / invM;
               b.body.setLinvel({ x: v1.x + (J / MASSE) * n.x, y: v1.y + (J / MASSE) * n.y, z: v1.z + (J / MASSE) * n.z }, true);
               if (pal) pal.body.applyImpulseAtPoint({ x: -J * n.x, y: -J * n.y, z: 0 }, pt, true);
+              // frottement qui accompagne cette impulsion normale : jusqu'à μ·J opposé au glissement du point de
+              // contact (vitesse + rotation), au plus jusqu'au roulement sans glissement (2/7·m·u pour une sphère)
+              const r = BALL_R * MM, w = b.body.angvel(), vb = b.body.linvel();
+              const ux = vb.x - s1.x + (w.y * -r * n.z - w.z * -r * n.y), uy = vb.y - s1.y + (w.z * -r * n.x - w.x * -r * n.z);
+              const uz = vb.z - s1.z + (w.x * -r * n.y - w.y * -r * n.x), un = ux * n.x + uy * n.y + uz * n.z;
+              const tx = ux - un * n.x, ty = uy - un * n.y, tz = uz - un * n.z, lu = Math.hypot(tx, ty, tz);
+              if (lu > 1e-5) {
+                const Jt = Math.min(autre.friction() * J, (2 / 7) * MASSE * lu);
+                const fx = (-Jt * tx) / lu, fy = (-Jt * ty) / lu, fz = (-Jt * tz) / lu;    // impulsion au point de contact
+                const I = 0.4 * MASSE * r * r, cx = -r * n.x, cy = -r * n.y, cz = -r * n.z;  // centre → contact
+                b.body.setLinvel({ x: vb.x + fx / MASSE, y: vb.y + fy / MASSE, z: vb.z + fz / MASSE }, true);
+                b.body.setAngvel({ x: w.x + (cy * fz - cz * fy) / I, y: w.y + (cz * fx - cx * fz) / I, z: w.z + (cx * fy - cy * fx) / I }, true);
+                if (pal) pal.body.applyImpulseAtPoint({ x: -fx, y: -fy, z: 0 }, pt, true);
+              }
             }
           }
         } else {
