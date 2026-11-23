@@ -257,6 +257,7 @@ export class Sim {
   // corps Matter (gabarit) → collider fixe ; role : informations pour les contacts
   ajouter(b, h0, h1, matiere, role) {
     const parts = b.parts.length > 1 ? b.parts.slice(1) : [b];
+    if (h0 === 0 && !b.isSensor) h0 = -3;   // pied enfoncé de 3 mm dans le plateau : pas d'arête au ras du plateau (voir ANNEAUX)
     for (const p of parts) {
       const desc = b.circleRadius ? this.cylindre(b.position.x, b.position.y, b.circleRadius, h0, h1)
         : this.prisme(p.vertices.map((v) => [v.x, v.y]), h0, h1);
@@ -657,8 +658,11 @@ export class Sim {
       this.world.contactPair(b.collider, autre, (m, flipped) => {
         if (m.numSolverContacts() === 0) return;
         maintenant.add(autre.handle);
-        const n0 = m.normal(), s = flipped ? 1 : -1;                  // normale vers la bille
-        const n = { x: n0.x * s, y: n0.y * s, z: n0.z * s };
+        // normale vers la bille, ramenée dans le plan du plateau : anneaux et palettes sont des parois verticales,
+        // mais le solveur donne parfois une normale inclinée de 15° (contact prédit sous le centre de la bille) et
+        // le rebond calculé la faisait sauter de 3 cm
+        const n0 = m.normal(), s = flipped ? 1 : -1, ln = Math.hypot(n0.x, n0.y) || 1;
+        const n = { x: (n0.x * s) / ln, y: (n0.y * s) / ln, z: 0 };
         const pt = m.solverContactPoint(0);
         const pal = k.type === 'palette' ? this.palettes.find((p) => p.body === k.body) : null;
         // vitesse de la surface au point de contact (palette en rotation autour de z), avant et après le pas

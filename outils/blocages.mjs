@@ -6,7 +6,8 @@
 //  2. Rampe : la bille est envoyée dans l'entrée de la rampe de 0,5 à 4 m/s, décalée et inclinée ; on classe
 //     l'issue (rampe faite, redescendue, arrêtée sur la rampe, sortie de la table).
 //
-//   node outils/blocages.mjs [--pas 12] [--duree 8000] [--json sortie.json]
+//   node outils/blocages.mjs [--pas 12] [--duree 8000] [--variantes 5] [--json sortie.json]
+//   (--variantes 1 : bille posée immobile seulement ; --sans-plateau / --sans-rampe : une seule des deux parties)
 import { createRequire } from 'module';
 import { readFileSync, writeFileSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -65,10 +66,10 @@ function nouvelle() { sim.clear(); sim.held = { L: false, R: false }; sim.power 
 const res = { plateau: [], rampe: [] };
 
 // 1. grille du plateau
-{
+if (!arg('sans-plateau')) {
   const t0 = Date.now();
   let n = 0;
-  const dirs = [null, [0, -1], [1, 0], [-1, 0], [0, 1]];
+  const dirs = [null, [0, -1], [1, 0], [-1, 0], [0, 1]].slice(0, Number(arg('variantes', 5)));
   for (let y = PAS / 2; y < H; y += PAS) for (let x = PAS / 2; x < W; x += PAS) {
     nouvelle();
     if (!libre(x, y) || auLanceur({ x, y })) continue;
@@ -101,7 +102,7 @@ console.log(`billes encore en jeu après ${DUREE / 1000} s : ${enJeu.length}`);
 for (const r of enJeu.slice(0, 15)) console.log(`  départ ${JSON.stringify(r.depart)} v ${JSON.stringify(r.v)} → (${r.x}, ${r.y}) h ${r.h}`);
 
 // 2. rampe : entrée M, axe u (vers le haut de la rampe), v en travers
-{
+if (!arg('sans-rampe')) {
   const E = GEO.rampEntries[0];
   const bilan = {};
   for (const v of [0.5, 0.8, 1.0, 1.2, 1.4, 1.6, 1.8, 2.0, 2.4, 2.8, 3.2, 4.0]) for (const dec of [-12, -6, 0, 6, 12]) for (const ang of [-15, 0, 15]) {
