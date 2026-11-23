@@ -32,7 +32,9 @@ function sousTablier(x, y) {
   return y > bord - 4;
 }
 const Z_CAOUT = BALL_R;                    // les caoutchoucs sont à hauteur du centre de la bille (cao/cotes.py)
-const CORDE_PALETTE = 4;                   // section du caoutchouc de palette ; sa face extérieure = contour de rebond
+// caoutchouc de palette 3" (Bally/Williams/Stern) : bande plate de 1/2" de large (12,7 mm, debout sur la tranche de
+// la palette), épaisseur ≈ 5/32" ; sa face extérieure = contour de rebond (cao/cotes.py)
+const CAOUT_PALETTE = { ep: 4, h: 12.7, arrondi: 0.8 };
 const DROP = { l: 22.5, e: 8.1, h: 33, r: 6, lumiere: [23.5, 9] };   // lame de cible tombante (cao/cotes.py, CIBLES)
 
 // contour d'une palette (repère de la palette au repos, comme flipperBody de table.js), rayons ra au pivot, rb à la pointe
@@ -49,6 +51,19 @@ function corde(pts, rayon, z, material, seg = 120) {
   const courbe = new THREE.CatmullRomCurve3(pts.map(([x, y]) => new THREE.Vector3(x, y, -z)), true, 'centripetal');
   const m = new THREE.Mesh(new THREE.TubeGeometry(courbe, seg, rayon, 10, true), material);
   m.castShadow = true;
+  return m;
+}
+
+// bande de caoutchouc plate entre deux contours fermés (extérieur, intérieur), haute de h et centrée à la hauteur z,
+// aux arêtes arrondies de r (l'arrondi reste dans les contours : la face extérieure tombe sur le contour exact)
+function bande(ext, int, h, z, r, material) {
+  const shape = new THREE.Shape(ext.map(([x, y]) => new THREE.Vector2(x, y)));
+  shape.holes.push(new THREE.Path(int.map(([x, y]) => new THREE.Vector2(x, y))));
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: h - 2 * r, bevelEnabled: true, bevelThickness: r, bevelSize: r,
+    bevelSegments: 3, curveSegments: 8 });
+  geo.translate(0, 0, -z - h / 2 + r);
+  const m = new THREE.Mesh(geo, material);
+  m.castShadow = true; m.receiveShadow = true;
   return m;
 }
 
@@ -682,11 +697,12 @@ export class Renderer3D {
     // flippers : contour du corps Matter.js autour de l'axe, tourné à chaque image
     this.flippers = T.flippers.map((fl) => {
       const { px, py } = fl.def;
-      // palette : corps en plastique dans le contour réduit de la corde, caoutchouc rouge tendu dans sa gorge ;
+      // palette : corps en plastique dans le contour réduit du caoutchouc, bande rouge tendue dans sa gorge ;
       // la face extérieure du caoutchouc est le contour de rebond du jeu
-      const f = fl.def, c = CORDE_PALETTE;
-      const m = extrude(contourPalette(f, f.r1 - c + 0.6, f.r2 - c + 0.6), 21, this.mat.flipper, 2);
-      m.add(corde(contourPalette(f, f.r1 - c / 2, f.r2 - c / 2), c / 2, Z_CAOUT, this.mat.redRubber, 90));
+      const f = fl.def, { ep, h, arrondi } = CAOUT_PALETTE;
+      const m = extrude(contourPalette(f, f.r1 - ep + 0.6, f.r2 - ep + 0.6), 21, this.mat.flipper, 2);
+      m.add(bande(contourPalette(f, f.r1 - arrondi, f.r2 - arrondi), contourPalette(f, f.r1 - ep + arrondi, f.r2 - ep + arrondi),
+        h, Z_CAOUT, arrondi, this.mat.redRubber));
       m.position.set(px, py, 0);
       const axe = cylinder(5, 24, this.mat.chrome, 0, 0, 2);
       m.add(axe);
