@@ -513,7 +513,11 @@ for i, (x, y, z, s) in enumerate(RAMPE_3D):
         d, bord = bord_exterieur(x, y, -dy * sg, dx * sg)
         if d is not None:
             choix.append((d, bord, (-dy * sg, dx * sg)))
+    if not choix:      # traversée du plateau (le S après la montée) : pas de bord à portée, la patte suivante portera
+        continue
     d, bord, n = min(choix)
+    if d > 80:         # bord trop loin (patte de plus de 8 cm) : la suivante portera
+        continue
     if z < 40 and d > _hw_rampe + 10:
         continue
     supports.append((x, y, z, s)); s_next = s + V(RAMPE["pas_supports"])

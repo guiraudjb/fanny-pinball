@@ -45,7 +45,7 @@ CATEGORIES_COLLISION = [
     ("plastique", ["arche", "guide_retour_*", "separateur_retour_*", "deflecteur_*", "guide_tour_*", "guide_bonus_*",
                    "piece_bouchon", "bloc_fanny", "mur_cibles", "cible_pointer", "cible_tirer", "cible_bouchon"]),
     ("acrylique", ["plastique_*"]),
-    ("rampe", ["rampe_troncon_*"]),
+    ("rampe", ["rampe"]),              # rampe entière : une seule surface, sans jointure entre tronçons
     ("metal", ["patte_rampe_*", "languette_rampe"]),
 ]
 CATEGORIES_CAISSE = [

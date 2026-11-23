@@ -251,8 +251,24 @@ function buildRamp() {
   const xL = 26, xR = PLAY_R - 24, yArc = 160 + YT;          // axe de la rampe : 26 mm du mur gauche, 24 mm du mur droit
   const ecx = (xL + xR) / 2, erx = (xR - xL) / 2, ery = yArc - (36 + YT);
   // la rampe part de la bouche M (comme dans la CAO) ; le capteur, à 14 mm du fond du couloir, y prend la bille
-  const pts = [[e.M.x, e.M.y], [e.T.x - e.u.x * 14, e.T.y - e.u.y * 14], [e.T.x + e.u.x * 30, e.T.y + e.u.y * 30],
-    [e.T.x + e.u.x * 30 - 34, e.T.y + e.u.y * 30 - 40], [xL + 8, 232 + YT], [xL, yArc + 20]];
+  // la montée reste droite jusqu'à s ≈ 135 (après son sommet, où la bille rapide décolle), puis rejoint le mur
+  // gauche par un S de deux arcs de rayon 70 mm : un virage serré au sommet (rayon 18 à 50 mm) jetait la bille contre
+  // le flanc extérieur, où elle perdait la moitié de son énergie ou sortait de la rampe
+  const at = (k) => [e.T.x + e.u.x * k, e.T.y + e.u.y * k];
+  const pts = [[e.M.x, e.M.y], at(-14), at(30), at(50)];
+  const virage = (droite) => {                               // arc droit R, droite, arc gauche R jusqu'au cap nord
+    const out = []; let [x, y] = at(50), th = Math.atan2(e.u.y, e.u.x);
+    const R = 70, cap = (-160 * Math.PI) / 180, ds = 1;
+    const pas = () => { x += Math.cos(th) * ds; y += Math.sin(th) * ds; out.push([x, y]); };
+    while (th > cap) { th = Math.max(cap, th - ds / R); pas(); }
+    for (let l = 0; l < droite; l += ds) pas();
+    while (th < -Math.PI / 2) { th = Math.min(-Math.PI / 2, th + ds / R); pas(); }
+    return out;
+  };
+  let lo = 0, hi = 200;                                       // longueur de la droite : le S finit sur l'axe x = xL
+  for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2, q = virage(m); if (q[q.length - 1][0] > xL) lo = m; else hi = m; }
+  virage(lo).forEach((q, k, a) => { if (k % 4 === 3 || k === a.length - 1) pts.push(q); });
+  if (pts[pts.length - 1][1] > yArc + 25) pts.push([xL, yArc + 20]);
   for (let i = 0; i <= 24; i++) {                          // arrondi du haut, de gauche à droite
     const a = Math.PI + (Math.PI * i) / 24;
     pts.push([ecx + erx * Math.cos(a), yArc + ery * Math.sin(a)]);

@@ -75,7 +75,7 @@ const res = { plateau: [], rampe: [] };
     for (const d of dirs) {
       nouvelle();
       const bille = sim.makeBall(x, y);
-      if (d) sim.setVitesse(bille, vImg(0.4) * d[0], vImg(0.4) * d[1]);
+      if (d) sim.setRoulement(bille, vImg(0.4) * d[0], vImg(0.4) * d[1]);
       const r = suivre(bille);
       n++;
       if (r.issue === 'bloquee' || r.issue === 'en jeu') res.plateau.push({ depart: [x, y], v: d, ...r });
@@ -110,7 +110,7 @@ for (const r of enJeu.slice(0, 15)) console.log(`  départ ${JSON.stringify(r.de
     const a = (ang * Math.PI) / 180;
     const dx = E.u.x * Math.cos(a) + E.v.x * Math.sin(a), dy = E.u.y * Math.cos(a) + E.v.y * Math.sin(a);
     const bille = sim.makeBall(x0, y0);
-    sim.setVitesse(bille, vImg(v) * dx, vImg(v) * dy);
+    sim.setRoulement(bille, vImg(v) * dx, vImg(v) * dy);   // bille qui roule, comme au sortir d'une palette
     let hMax = 0, sortie = false;
     let r = null;
     for (let t = 0, immobile = 0; t < 6000; t += DT) {

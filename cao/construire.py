@@ -399,15 +399,29 @@ def gabarit_rampe(p, jeu, garde=lambda q: q[0] > 350 and q[1] > 330):
         dx, dy = M.unit((b[0] - a[0], b[1] - a[1])); nx, ny = -dy, dx
         pts = [tv(x + nx * u, y + ny * u, z + w) for u, w in ((-hw, -jeu), (hw, -jeu), (hw, 200), (-hw, 200))]
         fils.append(Part.makePolygon(pts + [pts[0]]))
-    solide = None
-    for w1, w2 in zip(fils, fils[1:]):
-        lo = Part.makeLoft([w1, w2], True, True)
-        solide = lo if solide is None else solide.fuse(lo)
-    return solide
+    # un seul lissage réglé par toutes les sections : fusionner les lissages deux à deux échouait sans bruit sur
+    # les longues parties droites (faces coplanaires) et le gabarit perdait la montée de la rampe
+    return Part.makeLoft(fils, True, True)
+
+
+def point_rampe(pts3d, s):
+    """point du chemin de la rampe à l'abscisse s (interpolation linéaire entre les points échantillonnés)"""
+    for a, b in zip(pts3d, pts3d[1:]):
+        if a[3] <= s <= b[3]:
+            t = (s - a[3]) / (b[3] - a[3]) if b[3] > a[3] else 0.0
+            return tuple(a[i] + (b[i] - a[i]) * t for i in range(3)) + (s,)
+    return pts3d[0] if s < pts3d[0][3] else pts3d[-1]
 
 
 def construire_rampe(p, s_min=None, s_max=None):
-    pts = [q for q in p["pts3d"] if (s_min is None or q[3] >= s_min - 1e-6) and (s_max is None or q[3] <= s_max + 1e-6)]
+    # sections exactement aux bornes du tronçon : deux tronçons voisins partagent la même section (sans elles, il
+    # manquait entre eux un pas d'échantillonnage du chemin, soit un trou de 3 à 8 mm dans le fond de la rampe)
+    q3 = p["pts3d"]
+    pts = [q for q in q3 if (s_min is None or q[3] > s_min + 1.0) and (s_max is None or q[3] < s_max - 1.0)]   # 1 mm : pas de section dégénérée
+    if s_min is not None:
+        pts.insert(0, point_rampe(q3, s_min))
+    if s_max is not None:
+        pts.append(point_rampe(q3, s_max))
     fils = []
     for i, (x, y, z, s) in enumerate(pts):
         a = pts[max(0, i - 1)]; b = pts[min(len(pts) - 1, i + 1)]
@@ -807,7 +821,33 @@ def contour_xy(shape, z=1.0):
     return polys
 
 
+def exporter_rampe(doc, rapport):
+    """rampe en tronçons imprimables (STL) et rampe entière d'un seul tenant (rampe.stl : surface de collision du
+    jeu, sans jointure entre tronçons)"""
+    rp = next(p for p in M.PIECES if p["id"] == "rampe")
+    entiere = doc.getObject("rampe")
+    if entiere is None:
+        entiere = doc.addObject("Part::Feature", "rampe"); entiere.Shape = construire_rampe(rp)
+    Mesh.export([entiere], os.path.join(OUT, "pieces", "rampe.stl"))
+    tmax = M.V(M.RAMPE["troncon_max"]); s0, k = 0.0, 1
+    while s0 < M.L_RAMPE - 1:
+        s1 = min(M.L_RAMPE, s0 + tmax)
+        try:
+            t = construire_rampe(rp, s0, s1)
+            o = doc.addObject("Part::Feature", f"rampe_troncon_{k}"); o.Shape = t
+            Mesh.export([o], os.path.join(OUT, "pieces", f"rampe_troncon_{k}.stl"))
+            rapport.append((f"rampe_troncon_{k}", "ok", round(t.Volume / 1000, 1)))
+        except Exception as e:
+            rapport.append((f"rampe_troncon_{k}", f"ÉCHEC {e}", 0))
+        s0, k = s1, k + 1
+
+
 def main():
+    if "--rampe" in sys.argv:          # seulement la rampe (tronçons et pièce entière), sans l'assemblage
+        doc, rapport = App.newDocument("Rampe"), []
+        exporter_rampe(doc, rapport)
+        print("ok", rapport)
+        return
     doc = App.newDocument("FannyPinball")
     rapport, contours, rendu = [], {}, {"bois": [], "imprime": [], "achat": [], "metal": [], "verre": [], "dessous": []}
     pl = plac_plateau()
@@ -842,19 +882,7 @@ def main():
             rapport.append((p["id"], f"ÉCHEC {e}", 0))
             traceback.print_exc()
 
-    # rampe en tronçons imprimables
-    rp = next(p for p in M.PIECES if p["id"] == "rampe")
-    tmax = M.V(M.RAMPE["troncon_max"]); s0, k = 0.0, 1
-    while s0 < M.L_RAMPE - 1:
-        s1 = min(M.L_RAMPE, s0 + tmax)
-        try:
-            t = construire_rampe(rp, s0, s1)
-            o = doc.addObject("Part::Feature", f"rampe_troncon_{k}"); o.Shape = t
-            Mesh.export([o], os.path.join(OUT, "pieces", f"rampe_troncon_{k}.stl"))
-            rapport.append((f"rampe_troncon_{k}", "ok", round(t.Volume / 1000, 1)))
-        except Exception as e:
-            rapport.append((f"rampe_troncon_{k}", f"ÉCHEC {e}", 0))
-        s0, k = s1, k + 1
+    exporter_rampe(doc, rapport)
 
     caisse = construire_caisse()
     for nom, s in caisse.items():

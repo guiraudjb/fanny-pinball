@@ -27,6 +27,7 @@ const G = 9.81;
 const H_PAROI = 32;                       // mm, hauteur des parois et blocs (cao/cotes.py PLATEAU.h_paroi)
 const H_VITRE = 105;                      // mm, dessous de la vitre
 const MASSE = 0.080;                      // kg, bille de 1-1/16"
+const SPINNER_I = 2.5e-6;                  // kg·m² : plaque du tourniquet autour de son axe
 const V_MAX = 6.0;                        // m/s
 // Résistance au roulement (Rapier n'en a pas) : la bille roulant au contact du plateau perd ROULEMENT × g
 // (m/s²) tant qu'elle avance : 0,005 correspond au roulement d'une bille d'acier sur un plateau verni.
@@ -65,11 +66,14 @@ const rebondCaoutchouc = (v, e1) => Math.max(0, 1 - (1 - e1) * Math.pow(v, 0.2))
 export const REGLAGES = { MATIERES: null, CAOUTCHOUC, PALETTE };
 const LAUNCH_V = 2.50;
 const COURSE_LANCEUR = 50;               // mm : course du lanceur à ressort tiré à fond                    // m/s : suit l'arrondi du haut et retombe sur les bumpers
-const BUMPER_V = 1.25;                    // m/s, coup du bumper
-const SLING_V = 1.05;                     // m/s, coup du lance-pierre
-// Coup du lance-pierre : penché vers le bas et dispersé, comme un vrai : sans cela, la bille trouvait une
-// orbite stable d'un lance-pierre à l'autre et n'en sortait plus.
-const SLING_TUNE = { kick: SLING_V, bias: 0.2, jitter: 6, spread: 0.12, keep: 0.5 };
+// Bumper et lance-pierre : une pièce mobile (anneau tiré vers le bas, bras du lance-pierre) frappe la bille. Le rebond
+// de la bille est calculé par la physique ; le coup ajoute à sa vitesse normale ce que donne la pièce qui avance :
+// une bille arrêtée repart à BUMPER_V / SLING_V, une bille qui arrive vite repart plus vite. La vitesse le long de
+// la surface est conservée. Seule la force de la bobine varie un peu d'un coup à l'autre (± DISPERSION_BOBINE).
+const BUMPER_V = 1.25;                    // m/s donnés à une bille arrêtée — HYP
+const SLING_V = 1.05;                     // m/s — HYP
+const DISPERSION_BOBINE = 0.05;
+const SLING_TUNE = { kick: SLING_V };
 const NUDGE_V = 0.27;                     // m/s, élan vers le haut donné par un coup de caisse
 const TILT_BOB = 2.4;                     // amplitude du pendule qui ferme le contact TILT
 const BOB_TAU = 1500;                     // amortissement du pendule (ms)
@@ -82,7 +86,8 @@ const MATIERES = {
   verre: [0.3, 0.05],
   plastique: [0.55, 0.15],   // guides et carcasses imprimés
   acrylique: [0.5, 0.12],
-  rampe: [0.22, 0.04],       // PVC lisse : peu de frottement et de rebond pour monter et parcourir la rampe sans freiner
+  rampe: [0.22, 0.25],       // PETG imprimé sur acier (μ ≈ 0,2 à 0,3 — HYP) : la bille roule sans glisser ; avec 0,04 elle
+                             // patinait en montée et dissipait l'énergie de sa rotation
   metal: [0.45, 0.1],
   caoutchouc: [0.8, 0.7],    // anneaux, lance-pierres
   palette: [0.5, 0.6],       // caoutchouc de palette : un rebond mort doit amortir la bille, pas la relancer
@@ -97,7 +102,9 @@ const GR = { WALL: 0x0001, GATE: 0x0002, BALL: 0x0004, PAL: 0x0008 };   // PAL :
 const groupes = (membre, filtre) => (membre << 16) | filtre;
 
 // hauteur du fond de rampe à l'abscisse s (même profil que cao/modele.py et render3d.js)
-const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180) };
+const RAMPE = { z: 48, zFin: 34, pente: Math.tan((25 * Math.PI) / 180), larg: 39, ep: 3, flanc: 25,   // cao/cotes.py RAMPE
+  pas: 1.5 };   // mm : échantillonnage de la surface de collision (au pas de 6 mm du chemin, chaque facette des
+                // virages serrés, angle de 7°, était un petit choc qui coûtait jusqu'à 40 % de l'énergie de la bille)
 function zRampe(s, L) {
   const p0 = 3 / 30, s1 = 20, s2 = (RAMPE.z + (RAMPE.pente - p0) * s1) / RAMPE.pente;
   const desc = L * (2 / 3), s3 = L - desc;
@@ -204,9 +211,12 @@ export class Sim {
     this.world = new R.World({ x: 0, y: G * Math.sin(this.pente), z: G * Math.cos(this.pente) });
     this.world.timestep = DT_MS / 1000;
     this.world.integrationParameters.numSolverIterations = 8;
-    // échelle des objets : sans elle Rapier tolère 5 mm d'interpénétration (réglé pour des objets d'un mètre),
-    // et la bille qui aborde une pente en ressortait projetée vers la vitre
-    this.world.integrationParameters.lengthUnit = 0.01;
+    // Interpénétration tolérée : 1 mm. Par défaut, Rapier en tolère 5 (réglé pour des objets d'un mètre) et la bille
+    // qui aborde une pente en ressortait projetée vers la vitre. On ne descend pas plus bas : en dessous de 1 mm
+    // (ou avec une petite lengthUnit), l'option FIX_INTERNAL_EDGES des maillages freine la bille qui roule le long
+    // d'une surface en facettes — sur la rampe, elle n'avançait plus qu'au quart de sa vitesse.
+    this.world.integrationParameters.lengthUnit = 1;
+    this.world.integrationParameters.normalizedAllowedLinearError = 0.001;
     this.events = new R.EventQueue(true);
     this.construire(surfaces);
   }
@@ -270,6 +280,7 @@ export class Sim {
     // surfaces passives de la CAO (maillages)
     const contours = [];
     for (const s of surfaces) {
+      if (s.categorie === 'rampe') continue;                    // rampe : surface lisse construite plus bas
       const v = new Float32Array(s.pos.length);
       for (let i = 0; i < v.length; i++) v[i] = s.pos[i] * MM;
       // FIX_INTERNAL_EDGES : sans lui, les arêtes entre deux facettes d'une même pièce (pied de rampe, cintrages)
@@ -313,6 +324,7 @@ export class Sim {
         .setTranslation(cx * MM, cy * MM, -16 * MM).setRotation({ x: 0, y: 0, z: Math.sin(a / 2), w: Math.cos(a / 2) }), 'metal');
       w.createCollider(desc.setCollisionGroups(groupes(GR.GATE, GR.BALL)));
     }
+    this.construireRampe();
     // barrière infrarouge en sortie de rampe (contact RAMPE), à hauteur de la bille sur la rampe
     const path = this.ramps.L, L = path.length, sIR = L - 120;
     const p = path.pts.reduce((m, q) => (Math.abs(q.s - sIR) < Math.abs(m.s - sIR) ? q : m));
@@ -345,10 +357,39 @@ export class Sim {
     });
   }
 
+  // Rampe : profil en U de la CAO (cao/construire.py section_rampe : fond, deux flancs, épaisseur ep) balayé le
+  // long du chemin lissé et du profil en long zRampe, au pas fin RAMPE.pas : une seule surface continue.
+  construireRampe() {
+    const E = GEO.rampEntries[0], path = rampPath(GEO.ramps.L, RAMPE.pas), L = path.length, pts = path.pts;
+    const e = RAMPE.ep, h = RAMPE.flanc;
+    const demi = (s) => RAMPE.larg / 2 + Math.max(0, (2 * E.half - RAMPE.larg) / 2 * (1 - s / E.evase));
+    const v = [], idx = [];
+    pts.forEach((p, i) => {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+      const l = Math.hypot(b.x - a.x, b.y - a.y) || 1, nx = -(b.y - a.y) / l, ny = (b.x - a.x) / l;
+      const hw = demi(p.s), z = zRampe(p.s, L);
+      // comme la CAO : dessous du fond à zRampe, dessus du fond à zRampe + ep
+      for (const [u, w] of [[-hw - e, 0], [hw + e, 0], [hw + e, h + e], [hw, h + e], [hw, e], [-hw, e], [-hw, h + e], [-hw - e, h + e]]) {
+        v.push((p.x + nx * u) * MM, (p.y + ny * u) * MM, -(z + w) * MM);
+      }
+    });
+    const n = 8;
+    for (let i = 0; i + 1 < pts.length; i++) for (let k = 0; k < n; k++) {
+      const a = i * n + k, b = i * n + ((k + 1) % n), c = a + n, d = b + n;
+      idx.push(a, d, b, a, c, d);   // faces orientées vers l'extérieur du profil (FIX_INTERNAL_EDGES l'exige)
+    }
+    const c = this.world.createCollider(this.matiere(R.ColliderDesc.trimesh(new Float32Array(v), new Uint32Array(idx),
+      R.TriMeshFlags.FIX_INTERNAL_EDGES), 'rampe'));
+    this.info.set(c.handle, { type: 'surface', nom: 'rampe' });
+
+  }
+
   // ---------------------------------------------------------------- billes
   makeBall(x, y) {
     const body = this.world.createRigidBody(R.RigidBodyDesc.dynamic()
-      .setTranslation(x * MM, y * MM, -(BALL_R + 0.05) * MM).setCcdEnabled(true)
+      .setTranslation(x * MM, y * MM, -(BALL_R + 0.05) * MM)
+      .setCcdEnabled(true)
+      .setCanSleep(false)   // une bille ne « s'endort » jamais : endormie au sommet de l'arche, elle y restait bloquée
       .setLinearDamping(0.02).setAngularDamping(0.05));
     const r = BALL_R * MM;
     const desc = R.ColliderDesc.ball(r).setDensity(MASSE / ((4 / 3) * Math.PI * r ** 3))
@@ -366,6 +407,13 @@ export class Sim {
   setVitesse(b, vx, vy, vz = null) {
     const v = b.body.linvel();
     b.body.setLinvel({ x: v2si(vx), y: v2si(vy), z: vz ?? v.z }, true);
+  }
+
+  // vitesse de roulement sans glissement sur le plateau (bille d'essai lancée « comme si elle roulait déjà »)
+  setRoulement(b, vx, vy) {
+    this.setVitesse(b, vx, vy, 0);
+    const r = BALL_R * MM;
+    b.body.setAngvel({ x: v2si(vy) / r, y: -v2si(vx) / r, z: 0 }, true);
   }
 
   removeBall(b, forget) {
@@ -450,8 +498,8 @@ export class Sim {
         const dx0 = x - c.x, dy0 = y - c.y, l0 = Math.hypot(dx0, dy0) || 1;
         this.flashDir[`bumper${r.idx}`] = { x: dx0 / l0, y: dy0 / l0 };
         this.post.push(() => {
-          const dx = x - c.x, dy = y - c.y, l = Math.hypot(dx, dy) || 1;
-          b.body.setLinvel({ x: (dx / l) * BUMPER_V, y: (dy / l) * BUMPER_V, z: 0 }, true);
+          const p = b.position, dx = p.x - c.x, dy = p.y - c.y, l = Math.hypot(dx, dy) || 1;
+          this.frapper(b, dx / l, dy / l, BUMPER_V);
         });
         this.onSwitch(SW.BUMPERS[r.idx]);
         break;
@@ -462,17 +510,7 @@ export class Sim {
         if (side < BALL_R * 0.5) break; // choc sur le dos du triangle : pas de tir
         if (!this.power || !this.debounce(`sling${idx}`, 200)) break;
         this.flash[`sling${idx}`] = this.time;
-        this.post.push(() => {
-          const v = b.body.linvel();
-          const tx = -n.y, ty = n.x, vt = v.x * tx + v.y * ty;
-          // perpendiculaire à la face, un peu penché vers le bas (bias) et dispersé (jitter°, ±spread)
-          const k = this.slingTune;
-          let dx = n.x, dy = n.y + k.bias;
-          const a = ((Math.random() * 2 - 1) * k.jitter * Math.PI) / 180;
-          [dx, dy] = [dx * Math.cos(a) - dy * Math.sin(a), dx * Math.sin(a) + dy * Math.cos(a)];
-          const l = Math.hypot(dx, dy), p = k.kick * (1 + (Math.random() * 2 - 1) * k.spread);
-          b.body.setLinvel({ x: (dx / l) * p + tx * vt * k.keep, y: (dy / l) * p + ty * vt * k.keep, z: 0 }, true);
-        });
+        this.post.push(() => this.frapper(b, n.x, n.y, this.slingTune.kick));
         this.onSwitch(SW.SLINGS[idx]);
         break;
       }
@@ -519,6 +557,16 @@ export class Sim {
         this.onSwitch(SW.RAMP);
         break;
     }
+  }
+
+  // coup d'une pièce mobile le long de la normale (nx, ny) : vitesse normale = rebond physique (s'il s'éloigne déjà)
+  // + vitesse donnée par la pièce ; composante tangentielle et verticale inchangées
+  frapper(b, nx, ny, kick) {
+    if (b.retiree) return;
+    const v = b.body.linvel(), vn = (v.x * nx + v.y * ny);
+    const k = kick * (1 + (Math.random() * 2 - 1) * DISPERSION_BOBINE);
+    const dv = Math.max(0, vn) + k - vn;
+    b.body.setLinvel({ x: v.x + nx * dv, y: v.y + ny * dv, z: v.z }, true);
   }
 
   // ---------------------------------------------------------------- boucle
@@ -699,7 +747,15 @@ export class Sim {
         if (Math.abs(vu) > 0.12) {
           fp.spinnerAt = this.time;
           const wHit = Math.max(-75, Math.min(75, vu * 30));
+          const w0 = s.omega;
           s.omega = Math.abs(wHit) > Math.abs(s.omega) ? wHit : Math.max(-85, Math.min(85, s.omega + wHit * 0.45));
+          // l'énergie donnée à la plaque est prise à la bille (plaque acier 40 × 25 × 1,5 mm, ≈ 12 g,
+          // I = m h² / 3 ≈ 2,5·10⁻⁶ kg·m² autour de son axe) : à 75 rad/s, 7 mJ, ≈ 4 % d'une bille à 2 m/s
+          const dE = 0.5 * SPINNER_I * (s.omega * s.omega - w0 * w0);
+          if (dE > 0) {
+            const v2 = v.x * v.x + v.y * v.y + v.z * v.z, k = Math.sqrt(Math.max(0, 1 - (2 * dE) / (MASSE * v2 || 1)));
+            b.body.setLinvel({ x: v.x * k, y: v.y * k, z: v.z * k }, true);
+          }
           this.flash.spinner = this.time;
         }
       }
