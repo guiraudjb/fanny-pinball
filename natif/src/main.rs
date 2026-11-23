@@ -264,15 +264,14 @@ fn main() -> Result<(), String> {
                 }
                 Event::KeyDown { scancode: Some(sc), repeat, .. } if menu => {
                     let haut = matches!(sc, Scancode::Up | Scancode::LShift);
-                    let bas = matches!(sc, Scancode::Down | Scancode::RShift);
+                    let bas = matches!(sc, Scancode::RShift);
                     let gauche = matches!(sc, Scancode::Left);
                     let droite = matches!(sc, Scancode::Right);
-                    let ok = matches!(sc, Scancode::Return | Scancode::KpEnter | Scancode::S);
-                    // manette à deux boutons (controleur/fanny_rp2040) : l'accord maintenu envoie Bas, qui ne doit pas
-                    // faire défiler le menu ; les palettes s'y annulent d'elles-mêmes (monter puis descendre)
+                    let ok = matches!(sc, Scancode::Return | Scancode::KpEnter | Scancode::S | Scancode::Down);
+                    // manette (controleur/fanny_rp2040) : palettes pour choisir, lanceur (Bas) pour valider ;
+                    // les deux palettes d'un accord s'annulent (monter puis descendre)
                     if sc == Scancode::LShift { maj_menu[0] = true; }
                     if sc == Scancode::RShift { maj_menu[1] = true; }
-                    if sc == Scancode::Down && maj_menu[0] && maj_menu[1] { continue; }
                     let retour = matches!(sc, Scancode::Escape | Scancode::Backspace);
                     if repeat && !(haut || bas || gauche || droite) { continue; }
                     let bip = |son: &mut audio::Audio| son.play(regles::snd::LANE);

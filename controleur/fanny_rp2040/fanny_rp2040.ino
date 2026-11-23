@@ -7,7 +7,7 @@
  *   bouton gauche seul ........................ Maj gauche  : palette gauche ; dans les menus, monter
  *   bouton droit seul ......................... Maj droite  : palette droite ; dans les menus, descendre
  *   les deux, appui bref (< 0,35 s) ........... Entrée      : départ de partie ; dans les menus, valider
- *   bouton de lanceur (facultatif, GP13) ...... Bas maintenu : tirer le lanceur, relâcher = lancer
+ *   bouton de lanceur (facultatif, GP14) ...... Bas maintenu : tirer le lanceur, relâcher = lancer
  *   les deux, maintenus ....................... Bas maintenu : tirer le lanceur ; relâcher un bouton = lancer
  *                                               (la force dépend de la durée, pleine puissance vers 1,25 s)
  *   les deux, maintenus 3 s ................... Échap       : pause en partie, retour dans les menus
@@ -19,8 +19,8 @@
  * Échap. Un double coup de palette bref envoie donc Entrée, sans effet en cours de partie.
  *
  * Câblage (aucune résistance : tirages internes) :
- *   GP14 ── bouton gauche ── GND        GP15 ── bouton droit ── GND
- *   GP13 ── bouton de lanceur ── GND (facultatif : sans lui, l'accord maintenu tire le lanceur)
+ *   GP13 ── bouton gauche ── GND        GP15 ── bouton droit ── GND
+ *   GP14 ── bouton de lanceur ── GND (facultatif : sans lui, l'accord maintenu tire le lanceur)
  *   GP4 ── SDA du GY-521                GP5 ── SCL du GY-521
  *   3V3 ── VCC du GY-521                GND ── GND du GY-521 (AD0 en l'air ou à GND : adresse 0x68)
  *
@@ -36,7 +36,7 @@
 #include <math.h>
 
 // ---------------------------------------------------------------------------- brochage
-const uint8_t PIN_G = 14, PIN_D = 15, PIN_LANCEUR = 13, PIN_SDA = 4, PIN_SCL = 5;   // GP13 : bouton de lanceur facultatif
+const uint8_t PIN_G = 13, PIN_D = 15, PIN_LANCEUR = 14, PIN_SDA = 4, PIN_SCL = 5;   // GP13 : bouton de lanceur facultatif
 
 // ---------------------------------------------------------------------------- accords
 const uint16_t REBOND_MS        = 5;     // anti-rebond des boutons

@@ -47,7 +47,7 @@ pub fn menu_principal(ui: &mut Ui, sel: usize) {
     titre(ui, "Pétanque World Tour");
     let k = ui.h / 1080.0;
     boutons(ui, ui.w / 2.0, 430.0 * k, 520.0 * k, &["Partie libre", "Réglages", "Quitter"], sel);
-    aide(ui, "↑ ↓ ou palettes : choisir   ·   Entrée ou Départ : valider   ·   Échap : quitter");
+    aide(ui, "Palettes : choisir   ·   Lanceur ou Entrée : valider   ·   Échap : quitter");
 }
 
 pub const NB_REGLAGES: usize = 6;
@@ -98,7 +98,7 @@ pub fn reglages(ui: &mut Ui, r: &Reglages, sel: usize, resolutions: &[(u32, u32)
             }
         }
     }
-    aide(ui, "↑ ↓ : choisir   ·   ← → : modifier   ·   Échap : retour (les réglages sont enregistrés)");
+    aide(ui, "Palettes : choisir   ·   Lanceur : changer la valeur (← → au clavier)   ·   Échap : retour");
 }
 
 /// tableau des meilleurs scores ; surligne le rang « nouveau »
@@ -132,7 +132,7 @@ pub fn libre(ui: &mut Ui, t: &Tableau, sel: usize, nouveau: Option<usize>) {
     tableau(ui, t, xt.max(30.0 * k), 210.0 * k, w, nouveau);
     let xb = (ui.w / 2.0 + 300.0 * k).min(ui.w - 270.0 * k);
     boutons(ui, xb, 420.0 * k, 480.0 * k, &["Commencer une partie", "Retour"], sel);
-    aide(ui, "Entrée ou Départ : valider   ·   Échap : retour");
+    aide(ui, "Palettes : choisir   ·   Lanceur ou Entrée : valider   ·   Échap : retour");
 }
 
 pub fn libelle_vue(nom: &str) -> &str {
@@ -159,7 +159,7 @@ pub fn vues(ui: &mut Ui, noms: &[String], sel: usize) {
     ui.texte(Police::Texte, 44.0 * k, ui.w / 2.0 - bw / 2.0 - 40.0 * k, y + bh * 0.7, JAUNE, Align::Centre, "‹");
     ui.texte(Police::Texte, 44.0 * k, ui.w / 2.0 + bw / 2.0 + 40.0 * k, y + bh * 0.7, JAUNE, Align::Centre, "›");
     ui.texte_ombre(Police::Texte, 24.0 * k, ui.w / 2.0, ui.h - 28.0 * k, GRIS, Align::Centre,
-        &format!("← → ou palettes : changer de vue ({}/{})   ·   Entrée ou Départ : lancer la partie   ·   Échap : retour", sel + 1, noms.len()));
+        &format!("← → ou palettes : changer de vue ({}/{})   ·   Lanceur ou Entrée : lancer la partie   ·   Échap : retour", sel + 1, noms.len()));
 }
 
 pub fn pause(ui: &mut Ui, sel: usize) {
@@ -197,7 +197,7 @@ pub fn initiales(ui: &mut Ui, lettres: &[usize; 3], pos: usize, score: u64, rang
         let c = ALPHABET[lettres[i]];
         ui.texte(Police::Texte, 130.0 * k, x + cw / 2.0, 430.0 * k + ch * 0.75, CREME, Align::Centre, &if c == ' ' { "_".to_string() } else { c.to_string() });
     }
-    aide(ui, "Palettes ou ← → : changer la lettre   ·   Départ ou Entrée : lettre suivante   ·   Retour arrière : lettre précédente");
+    aide(ui, "Palettes ou ← → : changer la lettre   ·   Lanceur ou Entrée : lettre suivante   ·   Retour arrière : lettre précédente");
 }
 
 pub fn chargement(ui: &mut Ui, texte: &str) {

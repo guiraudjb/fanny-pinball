@@ -2,16 +2,17 @@
 # MPU-6050. Même comportement que ../fanny_rp2040.ino (version Arduino). À copier en code.py sur le disque CIRCUITPY ;
 # nécessite lib/adafruit_hid (bundle Adafruit).
 #
-#   bouton gauche (GP14) ............ Maj gauche : palette gauche ; menus : monter
+#   bouton gauche (GP13) ............ Maj gauche : palette gauche ; menus : monter
 #   bouton droit (GP15) ............. Maj droite : palette droite ; menus : descendre
-#   bouton lanceur (GP13, facult.) .. Bas maintenu : tirer le lanceur, relâcher = lancer
+#   bouton lanceur (GP14, facult.) .. Bas maintenu : tirer le lanceur, relâcher = lancer
+# (broches réglables ci-dessous : BROCHE_GAUCHE, BROCHE_DROITE, BROCHE_LANCEUR)
 #   les deux, appui bref ............ Entrée : départ ; menus : valider
 #   les deux, maintenus ............. Bas maintenu : lanceur (relâcher un bouton = lancer)
 #   les deux, maintenus 3 s ......... Échap : pause ; menus : retour
 #   secousse (MPU-6050) ............. Espace / Ctrl gauche / Ctrl droit : bourrage frontal / latéral
 #
 # Câblage : boutons entre la broche et GND (tirages internes) ; GY-521 : SDA→GP4, SCL→GP5, VCC→3V3, GND→GND.
-# Console série (screen /dev/ttyACM0 115200) : + / - seuil, r recalibrer, d trace, k couper le clavier, ? état.
+# Console série (screen /dev/ttyACM0 115200) : + / - seuil, r recalibrer, d trace, k couper le clavier, t mode test (événements écrits, rien envoyé), ? état.
 
 import time
 import struct
@@ -52,9 +53,20 @@ while clavier is None:
     except OSError:
         time.sleep(0.5)           # l'hôte USB n'est pas encore prêt
 hid = True
+test = False                  # mode test (touche t) : rien n'est envoyé au PC, chaque événement est écrit sur la console
+NOMS = {K.LEFT_SHIFT: "Maj gauche", K.RIGHT_SHIFT: "Maj droite", K.DOWN_ARROW: "Bas", K.ESCAPE: "Echap",
+        K.ENTER: "Entree", K.SPACE: "Espace", K.LEFT_CONTROL: "Ctrl gauche", K.RIGHT_CONTROL: "Ctrl droit"}
+t0_test = 0
+
+
+def trace(action, k):
+    print("[TEST %6.2f s] %s %s" % ((ms() - t0_test) / 1000, action, NOMS.get(k, k)))
 
 
 def appuyer(k):
+    if test:
+        trace("appui  ", k)
+        return
     if hid:
         try:
             clavier.press(k)
@@ -63,6 +75,9 @@ def appuyer(k):
 
 
 def relacher(k):
+    if test:
+        trace("relache", k)
+        return
     try:
         clavier.release(k)
     except OSError:
@@ -70,6 +85,9 @@ def relacher(k):
 
 
 def taper(k):
+    if test:
+        trace("frappe ", k)
+        return
     appuyer(k)
     time.sleep(0.025)
     relacher(k)
@@ -94,7 +112,8 @@ class Bouton:
         return False
 
 
-bg, bd, bl = Bouton(board.GP14), Bouton(board.GP15), Bouton(board.GP13)
+BROCHE_GAUCHE, BROCHE_DROITE, BROCHE_LANCEUR = board.GP13, board.GP15, board.GP14
+bg, bd, bl = Bouton(BROCHE_GAUCHE), Bouton(BROCHE_DROITE), Bouton(BROCHE_LANCEUR)
 
 # ---------------------------------------------------------------- MPU-6050 (sans bibliothèque)
 i2c, adresse = None, 0x68
@@ -192,20 +211,23 @@ lanceur = echap_envoye = False
 capture = debug = False
 derniere_lecture = temps_mort = fin_capture = fin_bourrage = dernier_log = 0
 pic_x = pic_y = 0.0
+sens = [0.0, 0.0]          # premier mouvement franc sur X et Y
 touche_bourrage = None
 
 
 def boutons(t):
     global maj_g, maj_d, t_appui_g, t_appui_d, dernier_appui, mode, t_accord, lanceur, echap_envoye
     cg, cd = bg.lire(t), bd.lire(t)
+    if cg or cd:
+        dernier_appui = t      # appui comme relâchement : le choc du bouton n'est pas un bourrage
     if cg and bg.etat:
-        t_appui_g = dernier_appui = t
+        t_appui_g = t
     if cd and bd.etat:
-        t_appui_d = dernier_appui = t
+        t_appui_d = t
     # bouton de lanceur : Bas tant qu'il est enfoncé (l'accord ne relâche Bas que s'il l'a envoyé)
     if bl.lire(t):
+        dernier_appui = t
         if bl.etat:
-            dernier_appui = t
             if not lanceur:
                 appuyer(K.DOWN_ARROW)
         elif not lanceur:
@@ -253,8 +275,8 @@ def bourrer(x, y, t):
         relacher(touche_bourrage)
     appuyer(k)
     touche_bourrage, fin_bourrage, temps_mort = k, t + IMPULSION_MS, t + TEMPS_MORT_MS
-    if debug:
-        print("[BOURRAGE]", nom)
+    if debug or test:
+        print("[BOURRAGE] %s (X %+.2f g, Y %+.2f g ; premier mouvement X %+.2f, Y %+.2f)" % (nom, x, y, sens[0], sens[1]))
 
 
 def accelerometre(t):
@@ -286,27 +308,35 @@ def accelerometre(t):
     if t < temps_mort or t - dernier_appui < MASQUE_APPUI_MS:
         capture = False
         return
+    # l'axe vient du pic de la fenêtre ; le sens vient du PREMIER mouvement (l'arrêt d'une secousse à la main est
+    # plus brutal que son départ et donnerait le sens inverse)
     if not capture:
         if m >= seuil:
             capture, fin_capture, pic_x, pic_y = True, t + FENETRE_PIC_MS, dx, dy
+            sens[0] = dx if abs(dx) >= seuil * 0.5 else 0.0
+            sens[1] = dy if abs(dy) >= seuil * 0.5 else 0.0
     else:
         if abs(dx) > abs(pic_x):
             pic_x = dx
         if abs(dy) > abs(pic_y):
             pic_y = dy
+        if sens[0] == 0.0 and abs(dx) >= seuil * 0.5:
+            sens[0] = dx
+        if sens[1] == 0.0 and abs(dy) >= seuil * 0.5:
+            sens[1] = dy
         if t >= fin_capture:
             capture = False
-            bourrer(pic_x, pic_y, t)
+            bourrer(abs(pic_x) * (1 if sens[0] >= 0 else -1), abs(pic_y) * (1 if sens[1] >= 0 else -1), t)
 
 
 def etat():
     print("Fanny Pinball — manette RP2040-Zero (CircuitPython)")
     print("  MPU-6050 : %s (0x%02X), seuil %.2f g, clavier %s" % ("présent" if capteur else "ABSENT", adresse, seuil, "actif" if hid else "coupé"))
-    print("  + / - sensibilité, r recalibrer (manette immobile), d trace, k clavier, ? état")
+    print("  + / - sensibilité, r recalibrer (manette immobile), d trace, k clavier, t mode test, ? état")
 
 
 def serie():
-    global seuil, debug, hid
+    global seuil, debug, hid, test, t0_test
     while supervisor.runtime.serial_bytes_available:
         c = sys.stdin.read(1)
         if c in "+-":
@@ -323,6 +353,11 @@ def serie():
             if not hid:
                 clavier.release_all()
             print("clavier actif" if hid else "clavier coupé")
+        elif c == "t":
+            test = not test
+            t0_test = ms()
+            clavier.release_all()
+            print("MODE TEST : aucune touche envoyée au PC" if test else "mode test terminé : clavier actif")
         elif c == "?":
             etat()
 

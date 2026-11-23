@@ -128,7 +128,7 @@ Ce sont les mêmes touches que la version web et que le contrôleur Pro Micro (`
 | + / − | pente du plateau |
 | Échap | menu de pause (reprendre, changer de vue, abandonner) |
 
-Dans les menus : ↑ ↓ ou les palettes pour choisir, ← → pour modifier, Entrée ou S pour valider (dans les réglages,
+Dans les menus : les palettes (ou ↑) pour choisir, ← → pour modifier, le lanceur (Bas), Entrée ou S pour valider (dans les réglages,
 valider fait tourner la valeur), Échap pour revenir. Tout se joue aussi avec la manette à deux boutons
 `controleur/fanny_rp2040` (accords : voir son README).
 

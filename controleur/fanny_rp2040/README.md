@@ -18,8 +18,8 @@ on l'alimente directement par la broche 3V3.
                  RP2040-Zero
               ┌───────────────┐
   GY-521 SDA ─┤ GP4      GP15 ├─ bouton DROIT ── GND
-  GY-521 SCL ─┤ GP5      GP14 ├─ bouton GAUCHE ── GND
-  GY-521 VCC ─┤ 3V3      GP13 ├─ bouton LANCEUR ── GND   (facultatif)
+  GY-521 SCL ─┤ GP5      GP14 ├─ bouton LANCEUR ── GND   (facultatif)
+  GY-521 VCC ─┤ 3V3      GP13 ├─ bouton GAUCHE ── GND
   GY-521 GND ─┤ GND           │
               └───────[USB-C]─┘
 ```
@@ -33,7 +33,7 @@ Fixer le MPU-6050 à plat dans le boîtier, à peu près au centre. Les axes se 
 |---|---|---|---|
 | bouton gauche | Maj gauche | palette gauche | monter |
 | bouton droit | Maj droite | palette droite | descendre |
-| bouton de lanceur (GP13) | Bas, maintenu | tirer le lanceur, relâcher = lancer | descendre |
+| bouton de lanceur (GP14) | Bas, maintenu | tirer le lanceur, relâcher = lancer | **valider** |
 | les deux, appui bref (< 0,35 s) | Entrée | départ de partie | valider (dans les réglages : fait tourner la valeur) |
 | les deux, maintenus | Bas, maintenu | tirer le lanceur, relâcher un bouton = lancer (pleine puissance vers 1,25 s) | — |
 | les deux, maintenus 3 s | Échap | pause | retour |
