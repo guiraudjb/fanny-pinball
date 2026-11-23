@@ -83,7 +83,8 @@ fn main() -> Result<(), String> {
     // (lacet, tangage, distance) autour du centre du plateau
     let mut orbite: Option<(f32, f32, f32)> = None;
     let mut glisse = false;
-    let mut plein = false;
+    let mut plein = args.iter().any(|a| a == "--plein-ecran");
+    if plein { let _ = fenetre.set_fullscreen(sdl2::video::FullscreenType::Desktop); }
     let mut tirage_debut: Option<Instant> = None;
     let mut ev = sdl.event_pump()?;
     let mut avant = Instant::now();
@@ -106,6 +107,7 @@ fn main() -> Result<(), String> {
         Vector3::new(p.x, p.y, p.z)
     }).unwrap_or_else(Vector3::zeros);
     let mut cam_courante = nalgebra::Matrix4::<f32>::identity();
+    let mut saccades = (0u32, 0u32, 0.0f64);           // images après 3 s, images de plus de 20 ms, pire image (ms)
     let mut cible = rendu::Cible::default();          // image réduite (--echelle < 1), agrandie à l'écran
     let mut mesure = (0.0f64, 0.0f64, 0u32, Instant::now(), 0.0f64);   // --profil : ms de physique, ms de rendu, images
 
@@ -169,6 +171,7 @@ fn main() -> Result<(), String> {
             }
         }
         let dt = avant.elapsed().as_secs_f64() * 1000.0;
+        if ecoule > 3000.0 { saccades.0 += 1; if dt > 20.0 { saccades.1 += 1; } saccades.2 = saccades.2.max(dt); }
         avant = Instant::now();
         if let Some(t) = tirage_debut { sim.tirage = (t.elapsed().as_secs_f64() / TIRAGE_S).min(1.0) as f32; }
 
@@ -295,7 +298,8 @@ fn main() -> Result<(), String> {
             for y in (0..h as usize).rev() { out.extend_from_slice(&px[y * w as usize * 3..(y + 1) * w as usize * 3]); }
             std::fs::write(f, out).map_err(|e| e.to_string())?;
             let (sc, inf) = regles.display();
-            println!("capture {f} ({w}×{h}), caméra {}, billes {}, afficheur [{sc}] [{inf}], {:.0} i/s", cam.nom, billes.len(), fps.2);
+            println!("capture {f} ({w}×{h}), caméra {}, billes {}, afficheur [{sc}] [{inf}], {:.0} i/s, {} images dont {} de plus de 20 ms (pire {:.1} ms)",
+                cam.nom, billes.len(), fps.2, saccades.0, saccades.1, saccades.2);
             break 'jeu;
         }
         fenetre.gl_swap_window();

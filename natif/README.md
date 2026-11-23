@@ -68,7 +68,20 @@ node outils/exporter_scene_natif.mjs --px-mm 1.6 --sortie natif/donnees/scene_le
 cargo run --release -- --leger
 ```
 
-Autres réglages : `--echelle 0.5` (définition de l'image calculée, de 0,25 à 1), `--msaa 0|2|4|8`, `--profil` (temps de
+En plein écran 1920×1080 (`--plein-ecran`, même machine) :
+
+| Réglage | Sans synchro verticale (`--profil`) | En jeu (synchro à 60 Hz, partie de 27 s) |
+|---|---|---|
+| normal | 47–50 i/s (rendu 14,5 ms) | 60 i/s, aucun rafraîchissement perdu, pire image 27,6 ms |
+| `--msaa 0` | 61–64 i/s | 60 i/s |
+| `--leger` (image 1344×756) | 86–90 i/s (rendu 8,5 ms) | 60 i/s, aucun rafraîchissement perdu, pire image 28,2 ms |
+| `--leger --echelle 0.5` | 113–122 i/s | — |
+
+Le réglage normal tient 60 Hz grâce au travail en parallèle du processeur et de la carte graphique, mais avec peu de
+marge (14,5 ms de rendu pour 16,7 ms) ; `--leger` garde la moitié de l'image libre, et l'image, un peu plus douce,
+reste nette. La capture (`--capture`) donne le nombre d'images de plus de 20 ms et la pire image.
+
+Autres réglages : `--plein-ecran`, `--echelle 0.5` (définition de l'image calculée, de 0,25 à 1), `--msaa 0|2|4|8`, `--profil` (temps de
 physique et de rendu dans la console). La physique reste à 480 Hz dans tous les cas : c'est elle qui garantit les gestes,
 et elle ne coûte que 2 à 4 ms par image. Les pièces fixes opaques sont fusionnées par matériau au chargement (environ
 370 appels de dessin par image deviennent environ 120).
