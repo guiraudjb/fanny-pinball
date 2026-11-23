@@ -103,9 +103,12 @@ et elle ne coûte que 2 à 4 ms par image. Les pièces fixes opaques sont fusion
 4. **Cinématique** (Entrée pour passer, jouée une fois par session) : les pieds se déplient et soulèvent la caisse,
    le fronton se relève, puis la machine se met sous tension (tubes et ampoules qui hésitent, relais, jingle) et la
    caméra rejoint la vue de jeu.
-5. **Choix de la vue**, entre deux vues, aperçues en direct ; le lanceur ou Entrée lance la partie :
+5. **Choix de la vue**, entre quatre vues, aperçues en direct ; le lanceur ou Entrée lance la partie :
    - **Joueur debout**, sur un écran en paysage ;
-   - **Plateau plein écran (écran vertical)** : on pose l'écran sur la tranche, et la table l'occupe sur toute sa
+   - **Plateau 2D, écran horizontal** : le plateau vu de dessus sans perspective (projection orthographique), table
+     debout au centre, score en grand à gauche ;
+   - **Plateau 2D, écran vertical** : la même vue de dessus, sur toute la hauteur d'un écran posé sur la tranche ;
+   - **Plateau 3D, écran vertical** : on pose l'écran sur la tranche, et la table l'occupe sur toute sa
      hauteur. L'image est calculée en portrait puis tournée d'un quart de tour (`rendu::Tourne`), sans réglage du
      système. Le sens se règle dans Réglages → Écran vertical (haut de l'écran à droite ou à gauche). Le fronton
      étant hors champ, le score est repris dans un bandeau en haut.

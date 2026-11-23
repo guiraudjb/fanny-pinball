@@ -114,6 +114,7 @@ pub struct Noeud {
 }
 
 #[derive(Clone, Debug)]
+/// fov : angle vertical en degrés ; négatif : projection orthographique (vue 2D) de demi-hauteur −fov millimètres
 pub struct Camera { pub nom: String, pub format: String, pub matrice: Matrix4<f32>, pub fov: f32, pub near: f32, pub far: f32 }
 
 pub struct Scene {
@@ -451,7 +452,10 @@ impl Scene {
                     machine: &Matrix4<f32>, tension: f32) {
         let place = |i: usize| if self.noeuds[i].salle { self.noeuds[i].monde } else { machine * self.noeuds[i].monde };
         let vue = cam.matrice.try_inverse().unwrap_or_else(Matrix4::identity);
-        let proj = Matrix4::new_perspective(aspect, cam.fov.to_radians(), cam.near, cam.far);
+        let proj = if cam.fov < 0.0 {
+            let hh = -cam.fov;
+            Matrix4::new_orthographic(-hh * aspect, hh * aspect, -hh, hh, cam.near, cam.far)
+        } else { Matrix4::new_perspective(aspect, cam.fov.to_radians(), cam.near, cam.far) };
         let vp = proj * vue;
         let oeil = cam.matrice.transform_point(&Point3::origin());
         // dessins : opaques d'abord, puis transparents du plus loin au plus près

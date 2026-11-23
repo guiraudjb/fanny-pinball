@@ -209,7 +209,7 @@ fn main() -> Result<(), String> {
     // caméras « paysage » du jeu (choix de la vue)
     // deux vues de jeu : le joueur debout (écran en paysage) ou le plateau sur toute la hauteur d'un écran posé à la
     // verticale (image calculée en portrait puis tournée d'un quart de tour, voir rendu::Tourne)
-    let noms_vues = |_scene: &rendu::Scene| -> Vec<String> { vec!["joueur".to_string(), "vertical".to_string()] };
+    let noms_vues = |_scene: &rendu::Scene| -> Vec<String> { ["joueur", "vertical", "plan", "plan_vertical"].iter().map(|s| s.to_string()).collect() };
     let mut vues = noms_vues(&scene);
     let mut vue_sel = vues.iter().position(|n| *n == reg.vue).or_else(|| vues.iter().position(|n| n == "joueur")).unwrap_or(0);
 
@@ -580,8 +580,9 @@ fn main() -> Result<(), String> {
 
         // ------------------------------------------------ caméra
         let (w, h) = fenetre.drawable_size();
-        let vertical = reg.vue == "vertical" && w > h && orbite.is_none()
-            && matches!(ecran, Ecran::Vues | Ecran::Jeu | Ecran::Pause | Ecran::FinPartie | Ecran::Initiales);
+        let en_jeu = orbite.is_none() && matches!(ecran, Ecran::Vues | Ecran::Jeu | Ecran::Pause | Ecran::FinPartie | Ecran::Initiales);
+        let vertical = en_jeu && w > h && (reg.vue == "vertical" || reg.vue == "plan_vertical");
+        let plan = en_jeu && (reg.vue == "plan" || reg.vue == "plan_vertical");   // vue 2D : plateau vu de dessus
         let (ew, eh) = if vertical { (h, w) } else { (w, h) };     // taille logique de l'image (portrait si vertical)
         let aspect = ew as f32 / eh.max(1) as f32;
         let format = if aspect >= 1.0 { "paysage" } else { "portrait" };
@@ -617,6 +618,7 @@ fn main() -> Result<(), String> {
             }
             _ => fixe.clone(),
         };
+        let cam = if plan { camera_plan(&scene, pc.table, &sim, aspect).unwrap_or(cam) } else { cam };
         cam_courante = cam.matrice;
         let billes: Vec<(Vector3<f32>, UnitQuaternion<f32>)> = (0..sim.billes.len()).filter(|&i| !sim.billes[i].retiree).map(|i| {
             let (x, y) = sim.position(i);
@@ -643,7 +645,7 @@ fn main() -> Result<(), String> {
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
         // détail Bas : la salle (≈ 6 ms par image sur une GT 710) n'est dessinée que dans les menus et la cinématique
-        scene.sans_salle = vertical || drapeau("--sans-salle")
+        scene.sans_salle = vertical || plan || drapeau("--sans-salle")
             || (reg.detail == Detail::Bas && matches!(ecran, Ecran::Jeu | Ecran::Pause));
         scene.dessiner(&cam, aspect, &billes, pc.table, &m_machine, tension);
         if vertical {
@@ -668,7 +670,11 @@ fn main() -> Result<(), String> {
             Ecran::Initiales => ecrans::initiales(&mut ui, &lettres, pos_lettre, score_fin, nouveau_rang.unwrap_or(0), te),
             Ecran::Jeu => {}
         }
-        if vertical && matches!(ecran, Ecran::Jeu) { let (sc, inf) = regles.display(); ecrans::bandeau_score(&mut ui, &sc, &inf); }
+        if matches!(ecran, Ecran::Jeu) {
+            let (sc, inf) = regles.display();
+            if plan && !vertical && ui.w > ui.h { ecrans::score_lateral(&mut ui, &sc, &inf); }
+            else if vertical { ecrans::bandeau_score(&mut ui, &sc, &inf); }
+        }
         ui.dessiner();
         if vertical { unsafe { tourne.afficher(&cible, w, h, if reg.vertical_horaire { 1 } else { -1 }); } }
         if profil {
@@ -720,6 +726,22 @@ fn main() -> Result<(), String> {
 
 /// temps des règles hors partie (mode attraction des lampes) : l'horloge de la physique n'avance pas dans les menus
 fn regles_temps(regles: &regles::Regles, dt: f64) -> f64 { regles.now + dt }
+
+/// vue 2D : caméra orthographique perpendiculaire au plateau, le haut de la table en haut de l'image, la table entière
+/// cadrée (hauteur ou largeur, selon le format de l'image)
+fn camera_plan(scene: &rendu::Scene, table: Option<usize>, sim: &physique::Sim, aspect: f32) -> Option<rendu::Camera> {
+    let m = scene.noeuds[table?].monde;
+    let p = |x: f32, y: f32, z: f32| { let v = m * rendu::v4(x, y, z); Vector3::new(v.x, v.y, v.z) };
+    let (w, h) = (sim.w, sim.h);
+    let centre = p(w / 2.0, h / 2.0, 0.0);
+    let dessus = (p(w / 2.0, h / 2.0, -1.0) - centre).normalize();     // −z de la table : côté vitre
+    let haut = (p(w / 2.0, 0.0, 0.0) - centre).normalize();             // vers le fronton
+    let oeil = centre + dessus * 3000.0;
+    let vue = Matrix4::look_at_rh(&Point3::from(oeil), &Point3::from(centre), &haut);
+    let marge = 1.03;
+    let hh = (h / 2.0).max(w / 2.0 / aspect) * marge;
+    Some(rendu::Camera { nom: "plan".into(), format: "paysage".into(), matrice: vue.try_inverse()?, fov: -hh, near: 100.0, far: 6000.0 })
+}
 
 fn centre_plateau(scene: &rendu::Scene, table: Option<usize>, sim: &physique::Sim) -> Vector3<f32> {
     table.map(|t| {

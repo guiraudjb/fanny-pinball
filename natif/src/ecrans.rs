@@ -143,7 +143,9 @@ pub fn libelle_vue(nom: &str) -> &str {
         "joueur" => "Joueur debout",
         "haute" => "Vue haute",
         "plateau" => "Plateau de face",
-        "vertical" => "Plateau plein écran (écran vertical)",
+        "vertical" => "Plateau 3D, écran vertical",
+        "plan" => "Plateau 2D, écran horizontal",
+        "plan_vertical" => "Plateau 2D, écran vertical",
         "machine" => "Machine entière",
         n => n,
     }
@@ -225,4 +227,15 @@ pub fn bandeau_score(ui: &mut Ui, score: &str, info: &str) {
     ui.panneau(0.0, 0.0, ui.w, hb, 0.0, [0.02, 0.01, 0.01, 0.92], [0.02, 0.01, 0.01, 0.75]);
     ui.texte(Police::Texte, 24.0 * k, 16.0 * k, hb * 0.75, rgba(255, 120, 40, 1.0), Align::Gauche, score.trim());
     ui.texte(Police::Texte, 20.0 * k, ui.w - 16.0 * k, hb * 0.75, JAUNE, Align::Droite, info.trim());
+}
+
+/// vue 2D sur écran horizontal : la table occupe la hauteur au centre ; score et information à gauche, en grand
+pub fn score_lateral(ui: &mut Ui, score: &str, info: &str) {
+    let k = ui.h / 1080.0;
+    let x = ui.w * 0.17;
+    ui.texte_ombre(Police::Titre, 54.0 * k, x, 140.0 * k, JAUNE, Align::Centre, "Fanny Pinball");
+    ui.cadre(x - 220.0 * k, 200.0 * k, 440.0 * k, 190.0 * k, 24.0 * k, rgba(20, 8, 6, 0.92), ROUGE);
+    ui.texte(Police::Texte, 30.0 * k, x, 250.0 * k, GRIS, Align::Centre, "Score");
+    ui.texte(Police::Texte, 80.0 * k, x, 350.0 * k, rgba(255, 120, 40, 1.0), Align::Centre, score.trim());
+    ui.texte(Police::Texte, 44.0 * k, x, 460.0 * k, JAUNE, Align::Centre, info.trim());
 }
