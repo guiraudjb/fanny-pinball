@@ -21,7 +21,7 @@ const H_VITRE: f32 = 105.0;
 const MASSE: f32 = 0.080;
 const BILLE_E: f32 = 0.95;
 const SPINNER_I: f32 = 2.5e-6;
-const V_MAX: f32 = 6.0;
+const V_MAX: f32 = 10.0; // m/s : garde-fou numérique, jamais atteint en jeu (js/sim.js)
 const ROULEMENT: f32 = 0.005;
 /// frottement de pivotement au plateau (rad/s²), comme js/sim.js PIVOTEMENT
 const PIVOTEMENT: f32 = 13.0;

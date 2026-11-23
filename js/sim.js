@@ -28,7 +28,7 @@ const H_PAROI = 32;                       // mm, hauteur des parois et blocs (ca
 const H_VITRE = 105;                      // mm, dessous de la vitre
 const MASSE = 0.080;                      // kg, bille de 1-1/16"
 const SPINNER_I = 2.5e-6;                  // kg·m² : plaque du tourniquet autour de son axe
-const V_MAX = 6.0;                        // m/s
+const V_MAX = 10.0;                       // m/s : garde-fou numérique (solveur), jamais atteint en jeu (robot, 23/11 : 0 pas au-delà de 6 m/s)
 // Résistance au roulement (Rapier n'en a pas) : la bille roulant au contact du plateau perd ROULEMENT × g
 // (m/s²) tant qu'elle avance : 0,005 correspond au roulement d'une bille d'acier sur un plateau verni.
 const ROULEMENT = 0.005;
