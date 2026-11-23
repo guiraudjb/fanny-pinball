@@ -44,6 +44,7 @@ Il faut refaire ces deux exports après toute modification de la table, de la CA
 Dépendances système (Debian) : `libsdl2-dev libsdl2-mixer-dev`.
 
 ```sh
+natif/run.sh              # compile si besoin, exporte les scènes si elles manquent, lance le jeu (options transmises)
 cd natif
 cargo run --release
 cargo test --release      # course des palettes, évacuation, rampe
@@ -127,6 +128,8 @@ Ce sont les mêmes touches que la version web et que le contrôleur Pro Micro (`
 | + / − | pente du plateau |
 | Échap | menu de pause (reprendre, changer de vue, abandonner) |
 
-Dans les menus : ↑ ↓ ou les palettes pour choisir, ← → pour modifier, Entrée, S ou Espace pour valider, Échap pour revenir.
+Dans les menus : ↑ ↓ ou les palettes pour choisir, ← → pour modifier, Entrée ou S pour valider (dans les réglages,
+valider fait tourner la valeur), Échap pour revenir. Tout se joue aussi avec la manette à deux boutons
+`controleur/fanny_rp2040` (accords : voir son README).
 
 Le score et l'afficheur d'informations s'allument sur le fronton. Ils utilisent la même police 7 segments que les TM1637 de la réplique et que le jeu web (`js/segfont.js`). Le titre de la fenêtre les reprend aussi, avec la caméra et la cadence d'images.

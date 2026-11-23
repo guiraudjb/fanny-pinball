@@ -228,6 +228,7 @@ fn main() -> Result<(), String> {
         if v.len() == 3 { orbite = Some((v[0], v[1], v[2])); }
     }
     let mut glisse = false;
+    let mut maj_menu = [false, false];
     let mut pause_physique = false;
     let mut tirage_debut: Option<Instant> = None;
     let mut ev = sdl.event_pump()?;
@@ -266,7 +267,12 @@ fn main() -> Result<(), String> {
                     let bas = matches!(sc, Scancode::Down | Scancode::RShift);
                     let gauche = matches!(sc, Scancode::Left);
                     let droite = matches!(sc, Scancode::Right);
-                    let ok = matches!(sc, Scancode::Return | Scancode::KpEnter | Scancode::S | Scancode::Space);
+                    let ok = matches!(sc, Scancode::Return | Scancode::KpEnter | Scancode::S);
+                    // manette à deux boutons (controleur/fanny_rp2040) : l'accord maintenu envoie Bas, qui ne doit pas
+                    // faire défiler le menu ; les palettes s'y annulent d'elles-mêmes (monter puis descendre)
+                    if sc == Scancode::LShift { maj_menu[0] = true; }
+                    if sc == Scancode::RShift { maj_menu[1] = true; }
+                    if sc == Scancode::Down && maj_menu[0] && maj_menu[1] { continue; }
                     let retour = matches!(sc, Scancode::Escape | Scancode::Backspace);
                     if repeat && !(haut || bas || gauche || droite) { continue; }
                     let bip = |son: &mut audio::Audio| son.play(regles::snd::LANE);
@@ -274,7 +280,7 @@ fn main() -> Result<(), String> {
                         Ecran::Menu => {
                             if haut { sel = (sel + 2) % 3; bip(&mut son); }
                             if bas { sel = (sel + 1) % 3; bip(&mut son); }
-                            if retour && sc == Scancode::Escape { break 'jeu; }
+                            if retour && sc == Scancode::Escape { sel = 2; bip(&mut son); }   // Échap désigne « Quitter »
                             if ok {
                                 son.play(regles::snd::STANDUP);
                                 match sel { 0 => aller = Some(Ecran::Libre), 1 => aller = Some(Ecran::Reglages), _ => break 'jeu }
@@ -290,12 +296,14 @@ fn main() -> Result<(), String> {
                                     1 => {
                                         let i = resolutions.iter().position(|r| *r == reg.resolution).unwrap_or(0) as i32;
                                         // la liste va de la plus grande à la plus petite : → agrandit
-                                        reg.resolution = resolutions[(i - d).clamp(0, resolutions.len() as i32 - 1) as usize];
+                                        let n = resolutions.len() as i32;
+                                        let j = if ok { (i + 1) % n } else { (i - d).clamp(0, n - 1) };   // valider : fait le tour
+                                        reg.resolution = resolutions[j as usize];
                                         if !reg.plein_ecran { appliquer_affichage(&mut fenetre, &reg); }
                                     }
-                                    2 => reg.detail = reg.detail.suivant(d),
-                                    3 => { reg.volume_effets = (reg.volume_effets as i32 + d).clamp(0, 10) as u8; son.set_volumes(reg.volume_effets, reg.volume_musique); son.play(regles::snd::BUMPER); }
-                                    4 => { reg.volume_musique = (reg.volume_musique as i32 + d).clamp(0, 10) as u8; son.set_volumes(reg.volume_effets, reg.volume_musique); }
+                                    2 => reg.detail = if ok && reg.detail == Detail::Eleve { Detail::Bas } else { reg.detail.suivant(d) },
+                                    3 => { reg.volume_effets = if ok && reg.volume_effets >= 10 { 0 } else { (reg.volume_effets as i32 + d).clamp(0, 10) as u8 }; son.set_volumes(reg.volume_effets, reg.volume_musique); son.play(regles::snd::BUMPER); }
+                                    4 => { reg.volume_musique = if ok && reg.volume_musique >= 10 { 0 } else { (reg.volume_musique as i32 + d).clamp(0, 10) as u8 }; son.set_volumes(reg.volume_effets, reg.volume_musique); }
                                     _ => {}
                                 }
                                 regl_change = true;
@@ -379,6 +387,8 @@ fn main() -> Result<(), String> {
                     Scancode::Minus | Scancode::KpMinus => { let d = sim.pente_deg - 0.5; sim.set_pente(d); }
                     _ => {}
                 },
+                Event::KeyUp { scancode: Some(Scancode::LShift), .. } if ecran != Ecran::Jeu => maj_menu[0] = false,
+                Event::KeyUp { scancode: Some(Scancode::RShift), .. } if ecran != Ecran::Jeu => maj_menu[1] = false,
                 Event::KeyUp { scancode: Some(sc), .. } if ecran == Ecran::Jeu => match sc {
                     Scancode::LShift | Scancode::Z | Scancode::Left => { sim.held[0] = false; regles.on_switch(regles::sw::FLIP_L, false); }
                     Scancode::RShift | Scancode::Slash | Scancode::Right => { sim.held[1] = false; regles.on_switch(regles::sw::FLIP_R, false); }
@@ -419,6 +429,8 @@ fn main() -> Result<(), String> {
             if e == Ecran::Cinematique { t_cine0 = 0.0; cine_prec = -1.0; son.arreter_musique(); }
             if e == Ecran::Libre && ecran != Ecran::Initiales { nouveau_rang = None; }
             if e == Ecran::Jeu || e == Ecran::Pause { sim.held = [false, false]; }
+            if e != Ecran::Jeu { tirage_debut = None; sim.tirage = 0.0; }   // lanceur tiré puis pause : tir annulé
+            maj_menu = [false, false];
             sel = 0;
             ecran = e;
             t_ecran = Instant::now();

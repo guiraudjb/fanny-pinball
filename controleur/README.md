@@ -1,5 +1,8 @@
 # Contrôleur USB pour caisse dédiée (Arduino Pro Micro)
 
+> Variante minimale : **RP2040-Zero + 2 boutons + MPU-6050** (troisième bouton de lanceur facultatif), avec les
+> fonctions de service en accords → [fanny_rp2040/](fanny_rp2040/README.md).
+
 Ce dossier contient le firmware prêt à téléverser pour piloter **Fanny Pinball** depuis une caisse de mini-flipper / pincab maison avec :
 - des **boutons d'arcade** (palettes, lancer de bille dosé, Start, Crédit, Pause, Plein écran),
 - un **accéléromètre I2C** pour le bourrage (frontal, gauche et droit),
