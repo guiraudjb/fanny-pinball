@@ -49,7 +49,21 @@ deux Maj sont tenues.
 Le bourrage est masqué pendant 120 ms après chaque appui, pour qu'un coup sec sur un bouton ne passe pas pour une
 secousse.
 
-## Téléverser le firmware
+## Installer le firmware : CircuitPython (le plus simple)
+
+Si la carte affiche un disque **CIRCUITPY** quand on la branche, il suffit de copier
+[`circuitpython/code.py`](circuitpython/code.py) à la racine de ce disque. La carte redémarre aussitôt avec le
+nouveau programme, sans compilation. Il faut la bibliothèque `lib/adafruit_hid` du bundle Adafruit, déjà fournie avec
+la plupart des images CircuitPython de manettes. Essayé avec CircuitPython 7.3.3. Le seuil de bourrage est gardé dans
+`microcontroller.nvm`.
+
+Ne pas maintenir BOOT au branchement : BOOT sert à installer un nouveau système (fichier `.uf2` sur le disque
+`RPI-RP2`), pas à copier `code.py`.
+
+La console série est la même que la version Arduino (`screen /dev/ttyACM0 115200`). Ctrl‑C arrête le programme et
+Ctrl‑D le relance, par exemple après avoir câblé le MPU‑6050 : il n'est détecté qu'au démarrage.
+
+## Installer le firmware : Arduino
 
 1. IDE Arduino : *Préférences → URL de gestionnaire de cartes* :
    `https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json`,
