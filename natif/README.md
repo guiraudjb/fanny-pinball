@@ -97,12 +97,18 @@ et elle ne coûte que 2 à 4 ms par image. Les pièces fixes opaques sont fusion
    - affichage fenêtré ou plein écran ;
    - définition (taille de la fenêtre, ou définition de l'image calculée en plein écran, agrandie ensuite à l'écran) ;
    - niveau de détail : Bas (scène légère, image à 75 %, anisotrope 4×), Moyen (anisotrope 8×), Élevé (MSAA 4×, anisotrope 16×) ;
-   - volume des effets et volume de la musique (0 à 100).
+   - volume des effets et volume de la musique (0 à 100) ;
+   - sens de l'écran vertical.
 3. **Partie libre** : tableau des 10 meilleurs scores (`~/.config/fanny-pinball/scores.json`), puis Commencer ou Retour.
 4. **Cinématique** (Entrée pour passer, jouée une fois par session) : les pieds se déplient et soulèvent la caisse,
    le fronton se relève, puis la machine se met sous tension (tubes et ampoules qui hésitent, relais, jingle) et la
    caméra rejoint la vue de jeu.
-5. **Choix de la vue** : ← → passent d'une caméra à l'autre en direct, Entrée lance la partie.
+5. **Choix de la vue**, entre deux vues, aperçues en direct ; le lanceur ou Entrée lance la partie :
+   - **Joueur debout**, sur un écran en paysage ;
+   - **Plateau plein écran (écran vertical)** : on pose l'écran sur la tranche, et la table l'occupe sur toute sa
+     hauteur. L'image est calculée en portrait puis tournée d'un quart de tour (`rendu::Tourne`), sans réglage du
+     système. Le sens se règle dans Réglages → Écran vertical (haut de l'écran à droite ou à gauche). Le fronton
+     étant hors champ, le score est repris dans un bandeau en haut.
 6. **Fin de partie** : score, puis saisie des trois initiales aux palettes si le score entre au tableau.
 
 Options d'essai : `--ecran menu|reglages|libre|vues|jeu|pause|initiales|cinematique:t` (écran de départ),

@@ -50,7 +50,7 @@ pub fn menu_principal(ui: &mut Ui, sel: usize) {
     aide(ui, "Palettes : choisir   ·   Lanceur ou Entrée : valider   ·   Échap : quitter");
 }
 
-pub const NB_REGLAGES: usize = 6;
+pub const NB_REGLAGES: usize = 7;
 
 pub fn reglages(ui: &mut Ui, r: &Reglages, sel: usize, resolutions: &[(u32, u32)]) {
     voile(ui, 1.2);
@@ -60,18 +60,19 @@ pub fn reglages(ui: &mut Ui, r: &Reglages, sel: usize, resolutions: &[(u32, u32)
     let (x0, y0, hl, pas) = (x - lw / 2.0, 300.0 * k, 72.0 * k, 90.0 * k);
     let res = format!("{} × {}{}", r.resolution.0, r.resolution.1,
         if resolutions.first() == Some(&r.resolution) { "  (écran)" } else { "" });
-    let lignes: [(&str, String); 6] = [
+    let lignes: [(&str, String); 7] = [
         ("Affichage", if r.plein_ecran { "Plein écran".into() } else { "Fenêtré".into() }),
         (if r.plein_ecran { "Définition de l'image" } else { "Taille de la fenêtre" }, res),
         ("Niveau de détail", r.detail.nom().into()),
         ("Volume des effets", String::new()),
         ("Volume de la musique", String::new()),
+        ("Écran vertical", if r.vertical_horaire { "Haut de l'écran à droite".into() } else { "Haut de l'écran à gauche".into() }),
         ("Retour", String::new()),
     ];
     for (i, (nom, val)) in lignes.iter().enumerate() {
         let y = y0 + i as f32 * pas;
         let actif = i == sel;
-        if i == 5 {
+        if i == 6 {
             boutons(ui, x, y + 20.0 * k, 360.0 * k, &["Retour"], if actif { 0 } else { 9 });
             continue;
         }
@@ -142,6 +143,7 @@ pub fn libelle_vue(nom: &str) -> &str {
         "joueur" => "Joueur debout",
         "haute" => "Vue haute",
         "plateau" => "Plateau de face",
+        "vertical" => "Plateau plein écran (écran vertical)",
         "machine" => "Machine entière",
         n => n,
     }
@@ -214,4 +216,13 @@ pub fn cinematique(ui: &mut Ui, t: f64) {
     ui.panneau(0.0, 0.0, ui.w, bande, 0.0, [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0]);
     ui.panneau(0.0, ui.h - bande, ui.w, bande, 0.0, [0.0, 0.0, 0.0, 1.0], [0.0, 0.0, 0.0, 1.0]);
     ui.texte(Police::Texte, 24.0 * k, ui.w - 40.0 * k, ui.h - 36.0 * k, [GRIS[0], GRIS[1], GRIS[2], a], Align::Droite, "Entrée : passer");
+}
+
+/// vue verticale : le fronton est hors champ, le score et l'information sont repris en haut de l'image
+pub fn bandeau_score(ui: &mut Ui, score: &str, info: &str) {
+    let k = ui.h / 1080.0;
+    let hb = 30.0 * k;
+    ui.panneau(0.0, 0.0, ui.w, hb, 0.0, [0.02, 0.01, 0.01, 0.92], [0.02, 0.01, 0.01, 0.75]);
+    ui.texte(Police::Texte, 24.0 * k, 16.0 * k, hb * 0.75, rgba(255, 120, 40, 1.0), Align::Gauche, score.trim());
+    ui.texte(Police::Texte, 20.0 * k, ui.w - 16.0 * k, hb * 0.75, JAUNE, Align::Droite, info.trim());
 }

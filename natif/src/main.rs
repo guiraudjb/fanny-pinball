@@ -18,6 +18,7 @@ mod reglages;
 mod regles;
 mod rendu;
 mod ui;
+mod banc;
 
 use nalgebra::{Matrix4, Point3, UnitQuaternion, Vector3, Vector4};
 use reglages::{Detail, Reglages, Tableau};
@@ -195,7 +196,9 @@ fn main() -> Result<(), String> {
     son.set_volumes(reg.volume_effets, reg.volume_musique);
 
     // caméras « paysage » du jeu (choix de la vue)
-    let noms_vues = |scene: &rendu::Scene| -> Vec<String> { scene.cameras.iter().filter(|c| c.format == "paysage").map(|c| c.nom.clone()).collect() };
+    // deux vues de jeu : le joueur debout (écran en paysage) ou le plateau sur toute la hauteur d'un écran posé à la
+    // verticale (image calculée en portrait puis tournée d'un quart de tour, voir rendu::Tourne)
+    let noms_vues = |_scene: &rendu::Scene| -> Vec<String> { vec!["joueur".to_string(), "vertical".to_string()] };
     let mut vues = noms_vues(&scene);
     let mut vue_sel = vues.iter().position(|n| *n == reg.vue).or_else(|| vues.iter().position(|n| n == "joueur")).unwrap_or(0);
 
@@ -238,6 +241,7 @@ fn main() -> Result<(), String> {
     let mut etape_auto = 0;
     let mut saccades = (0u32, 0u32, 0.0f64);           // images après 3 s, images de plus de 20 ms, pire image (ms)
     let mut cible = rendu::Cible::default();
+    let mut tourne = rendu::Tourne::default();
     let mut mesure = (0.0f64, 0.0f64, 0u32, Instant::now(), 0.0f64);   // --profil : ms de physique, ms de rendu, images
     let mut cam_courante = Matrix4::<f32>::identity();
 
@@ -288,7 +292,7 @@ fn main() -> Result<(), String> {
                         Ecran::Reglages => {
                             if haut { sel = (sel + ecrans::NB_REGLAGES - 1) % ecrans::NB_REGLAGES; bip(&mut son); }
                             if bas { sel = (sel + 1) % ecrans::NB_REGLAGES; bip(&mut son); }
-                            let d = if gauche { -1 } else if droite || (ok && sel < 5) { 1 } else { 0 };
+                            let d = if gauche { -1 } else if droite || (ok && sel < 6) { 1 } else { 0 };
                             if d != 0 {
                                 match sel {
                                     0 => { reg.plein_ecran = !reg.plein_ecran; appliquer_affichage(&mut fenetre, &reg); }
@@ -302,12 +306,13 @@ fn main() -> Result<(), String> {
                                     }
                                     2 => reg.detail = if ok && reg.detail == Detail::Eleve { Detail::Bas } else { reg.detail.suivant(d) },
                                     3 => { reg.volume_effets = if ok && reg.volume_effets >= 10 { 0 } else { (reg.volume_effets as i32 + d).clamp(0, 10) as u8 }; son.set_volumes(reg.volume_effets, reg.volume_musique); son.play(regles::snd::BUMPER); }
+                                    5 => reg.vertical_horaire = !reg.vertical_horaire,
                                     4 => { reg.volume_musique = if ok && reg.volume_musique >= 10 { 0 } else { (reg.volume_musique as i32 + d).clamp(0, 10) as u8 }; son.set_volumes(reg.volume_effets, reg.volume_musique); }
                                     _ => {}
                                 }
                                 regl_change = true;
                             }
-                            if retour || (ok && sel == 5) { aller = Some(Ecran::Menu); }
+                            if retour || (ok && sel == 6) { aller = Some(Ecran::Menu); }
                         }
                         Ecran::Libre => {
                             if haut || bas { sel = 1 - sel.min(1); bip(&mut son); }
@@ -541,7 +546,8 @@ fn main() -> Result<(), String> {
             if let Some(m) = scene.mat(&format!("emis_cible_gauche_{i}")) { m.intensite = if hit { 0.9 } else if allume { 0.5 } else { 0.0 }; }
         }
         if let Some(a) = &pc.tourniquet { scene.noeuds[a.noeud].r = a.r0 * UnitQuaternion::from_axis_angle(&Vector3::x_axis(), sim.spinner.angle); }
-        let kick = (if age("plunger") < 60.0 { -6.0 } else { 0.0 }) + sim.tirage * physique::COURSE_LANCEUR;
+        // tige : tirée vers le joueur (recule hors de la caisse), puis frappe vers l'intérieur au relâchement
+        let kick = (if age("plunger") < 60.0 { 6.0 } else { 0.0 }) - sim.tirage * physique::COURSE_LANCEUR;
         if let Some(a) = &pc.tige { scene.noeuds[a.noeud].t = a.t0 + Vector3::new(0.0, kick, 0.0); }
         for a in &pc.lanceur { scene.noeuds[a.noeud].t = a.t0 + Vector3::new(0.0, 1.0, 0.0) * kick; }
         // machine : pieds, fronton, hauteur de la caisse (les pieds la soulèvent, leur bout restant au sol)
@@ -562,14 +568,20 @@ fn main() -> Result<(), String> {
 
         // ------------------------------------------------ caméra
         let (w, h) = fenetre.drawable_size();
-        let aspect = w as f32 / h.max(1) as f32;
+        let vertical = reg.vue == "vertical" && w > h && orbite.is_none()
+            && matches!(ecran, Ecran::Vues | Ecran::Jeu | Ecran::Pause | Ecran::FinPartie | Ecran::Initiales);
+        let (ew, eh) = if vertical { (h, w) } else { (w, h) };     // taille logique de l'image (portrait si vertical)
+        let aspect = ew as f32 / eh.max(1) as f32;
         let format = if aspect >= 1.0 { "paysage" } else { "portrait" };
         let cams: Vec<&rendu::Camera> = scene.cameras.iter().filter(|c| c.format == format).collect();
         let defaut = rendu::Camera { nom: "défaut".into(), format: format.into(),
             matrice: Matrix4::look_at_rh(&Point3::new(0.0, 1500.0, 1400.0), &Point3::origin(), &Vector3::y()).try_inverse().unwrap(),
             fov: 34.0, near: 10.0, far: 12000.0 };
-        let idx_jeu = cam_jeu.unwrap_or_else(|| cams.iter().position(|c| vues.get(vue_sel) == Some(&c.nom)).unwrap_or(0));
+        let nom_cam = if format == "portrait" { "plateau" } else { "joueur" };
+        let idx_jeu = cam_jeu.unwrap_or_else(|| cams.iter().position(|c| c.nom == nom_cam).unwrap_or(0));
         let fixe: rendu::Camera = if cams.is_empty() { defaut.clone() } else { cams[idx_jeu % cams.len()].clone() };
+        // écran vertical : la caméra plateau resserrée pour que la table occupe toute la hauteur de l'écran
+        let fixe = if vertical && cam_jeu.is_none() { rendu::Camera { fov: fixe.fov * 0.80, ..fixe } } else { fixe };
         let horloge = t_depart.elapsed().as_secs_f32();
         let cam: rendu::Camera = match (&scene.deplie, ecran) {
             (_, Ecran::Jeu | Ecran::Pause) if orbite.is_some() => {
@@ -604,8 +616,11 @@ fn main() -> Result<(), String> {
         // réglables), agrandie à l'écran, puis l'interface à la définition de l'écran
         let t_rendu = Instant::now();
         let echelle = echelle_force.unwrap_or(if reg.detail == Detail::Bas { 0.75 } else { 1.0 }).clamp(0.25, 1.0);
-        let (mut rw, mut rh) = (w, h);
-        if reg.plein_ecran && echelle_force.is_none() { rw = reg.resolution.0.min(w); rh = reg.resolution.1.min(h); }
+        let (mut rw, mut rh) = (ew, eh);
+        if reg.plein_ecran && echelle_force.is_none() {
+            let (a, b) = if vertical { (reg.resolution.1, reg.resolution.0) } else { reg.resolution };
+            rw = a.min(ew); rh = b.min(eh);
+        }
         rw = ((rw as f32 * echelle) as u32).max(1);
         rh = ((rh as f32 * echelle) as u32).max(1);
         let msaa = msaa_force.unwrap_or(reg.detail.msaa());
@@ -615,12 +630,18 @@ fn main() -> Result<(), String> {
             gl::ClearColor(0.09, 0.05, 0.027, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
+        scene.sans_salle = vertical;
         scene.dessiner(&cam, aspect, &billes, pc.table, &m_machine, tension);
-        unsafe {
-            cible.afficher(w, h);
-            gl::Viewport(0, 0, w as i32, h as i32);
+        if vertical {
+            // l'interface est dessinée dans l'image portrait, puis le tout est tourné
+            ui.debut(rw, rh);
+        } else {
+            unsafe {
+                cible.afficher(w, h);
+                gl::Viewport(0, 0, w as i32, h as i32);
+            }
+            ui.debut(w, h);
         }
-        ui.debut(w, h);
         let te = t_ecran.elapsed().as_secs_f64();
         match ecran {
             Ecran::Menu => ecrans::menu_principal(&mut ui, sel),
@@ -633,7 +654,9 @@ fn main() -> Result<(), String> {
             Ecran::Initiales => ecrans::initiales(&mut ui, &lettres, pos_lettre, score_fin, nouveau_rang.unwrap_or(0), te),
             Ecran::Jeu => {}
         }
+        if vertical && matches!(ecran, Ecran::Jeu) { let (sc, inf) = regles.display(); ecrans::bandeau_score(&mut ui, &sc, &inf); }
         ui.dessiner();
+        if vertical { unsafe { tourne.afficher(&cible, w, h, if reg.vertical_horaire { 1 } else { -1 }); } }
         if profil {
             mesure.4 += t_rendu.elapsed().as_secs_f64() * 1000.0;
             unsafe { gl::Finish(); }

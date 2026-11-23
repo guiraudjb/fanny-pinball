@@ -29,12 +29,14 @@ pub struct Reglages {
     pub detail: Detail,
     pub volume_effets: u8,     // 0 à 10
     pub volume_musique: u8,    // 0 à 10
-    pub vue: String,           // caméra choisie avant la dernière partie
+    pub vue: String,           // « joueur » ou « vertical » (plateau plein écran, écran posé à la verticale)
+    /// écran vertical tourné dans le sens des aiguilles d'une montre (son haut à droite), sinon dans l'autre sens
+    pub vertical_horaire: bool,
 }
 
 impl Default for Reglages {
     fn default() -> Self {
-        Reglages { plein_ecran: false, resolution: (1280, 800), detail: Detail::Moyen, volume_effets: 8, volume_musique: 6, vue: "joueur".into() }
+        Reglages { plein_ecran: false, resolution: (1280, 800), detail: Detail::Moyen, volume_effets: 8, volume_musique: 6, vue: "joueur".into(), vertical_horaire: true }
     }
 }
 

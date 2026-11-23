@@ -131,6 +131,8 @@ pub struct Scene {
     blanc: GLuint,
     pub afficheurs: Option<Afficheurs>,
     pub deplie: Option<Deplie>,
+    /// salle masquée (vue verticale : la caméra plateau est au-dessus du plafond)
+    pub sans_salle: bool,
 }
 
 /// Données de la cinématique (extras de la scène) : machine dépliée dans la salle
@@ -420,7 +422,7 @@ impl Scene {
             let (w, h, px) = pixels.swap_remove(t);
             Some(Afficheurs { tex: textures[t].id, w, h, fond: px, score, info, texte: String::new() })
         });
-        let mut s = Scene { textures, materiaux, maillages, lots, noeuds, noms, mat_noms, cameras, programme, u, bille, blanc, afficheurs, deplie };
+        let mut s = Scene { textures, materiaux, maillages, lots, noeuds, noms, mat_noms, cameras, programme, u, bille, blanc, afficheurs, deplie, sans_salle: false };
         s.mettre_a_jour();
         Ok(s)
     }
@@ -483,10 +485,12 @@ impl Scene {
             gl::Disable(gl::BLEND);
             let id = Matrix4::identity();
             for p in &self.lots {
+                if p.salle && self.sans_salle { continue; }
                 let (m, t) = if p.salle { (&id, 1.0) } else { (machine, tension) };
                 self.primitive(m, p.vao, p.n, &self.materiaux[p.mat], t);
             }
             for (i, p) in opaques {
+                if self.noeuds[i].salle && self.sans_salle { continue; }
                 let t = if self.noeuds[i].salle { 1.0 } else { tension };
                 self.primitive(&place(i), p.vao, p.n, &self.materiaux[p.mat], t);
             }
@@ -503,6 +507,7 @@ impl Scene {
             gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
             gl::DepthMask(gl::FALSE);
             for (_, i, p) in transp {
+                if self.noeuds[i].salle && self.sans_salle { continue; }
                 let t = if self.noeuds[i].salle { 1.0 } else { tension };
                 self.primitive(&place(i), p.vao, p.n, &self.materiaux[p.mat], t);
             }
@@ -622,5 +627,80 @@ impl Cible {
         let filtre = if self.w == w && self.h == h { gl::NEAREST } else { gl::LINEAR };
         gl::BlitFramebuffer(0, 0, self.w as i32, self.h as i32, 0, 0, w as i32, h as i32, gl::COLOR_BUFFER_BIT, filtre);
         gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+    }
+}
+
+/// Affichage tourné d'un quart de tour, pour un écran posé à la verticale alors que le système le voit en paysage :
+/// l'image portrait (Cible de h × w) est copiée dans une texture puis dessinée tournée sur tout l'écran (w × h).
+#[derive(Default)]
+pub struct Tourne { fbo: GLuint, tex: GLuint, w: u32, h: u32, prog: GLuint, vao: GLuint, u_sens: i32 }
+
+const VS_TOURNE: &str = r#"#version 330 core
+out vec2 uv;
+void main() {
+  vec2 p = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2);
+  uv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}"#;
+// sens > 0 : écran tourné dans le sens des aiguilles d'une montre (son haut à droite) ; < 0 : dans l'autre sens
+const FS_TOURNE: &str = r#"#version 330 core
+in vec2 uv;
+uniform sampler2D image;
+uniform int sens;
+out vec4 frag;
+void main() {
+  vec2 s = sens > 0 ? vec2(1.0 - uv.y, uv.x) : vec2(uv.y, 1.0 - uv.x);
+  frag = texture(image, s);
+}"#;
+
+impl Tourne {
+    pub unsafe fn afficher(&mut self, c: &Cible, w: u32, h: u32, sens: i32) {
+        if self.prog == 0 {
+            let sh = |src: &str, k| {
+                let s = gl::CreateShader(k);
+                let cs = CString::new(src).unwrap();
+                gl::ShaderSource(s, 1, &cs.as_ptr(), std::ptr::null());
+                gl::CompileShader(s);
+                s
+            };
+            self.prog = gl::CreateProgram();
+            gl::AttachShader(self.prog, sh(VS_TOURNE, gl::VERTEX_SHADER));
+            gl::AttachShader(self.prog, sh(FS_TOURNE, gl::FRAGMENT_SHADER));
+            gl::LinkProgram(self.prog);
+            let n = CString::new("sens").unwrap();
+            self.u_sens = gl::GetUniformLocation(self.prog, n.as_ptr());
+            gl::GenVertexArrays(1, &mut self.vao);
+        }
+        if self.tex == 0 || self.w != c.w || self.h != c.h {
+            if self.tex != 0 { gl::DeleteTextures(1, &self.tex); gl::DeleteFramebuffers(1, &self.fbo); }
+            gl::GenTextures(1, &mut self.tex);
+            gl::BindTexture(gl::TEXTURE_2D, self.tex);
+            gl::TexImage2D(gl::TEXTURE_2D, 0, gl::RGBA8 as i32, c.w as i32, c.h as i32, 0, gl::RGBA, gl::UNSIGNED_BYTE, std::ptr::null());
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MIN_FILTER, gl::LINEAR as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_MAG_FILTER, gl::LINEAR as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_S, gl::CLAMP_TO_EDGE as i32);
+            gl::TexParameteri(gl::TEXTURE_2D, gl::TEXTURE_WRAP_T, gl::CLAMP_TO_EDGE as i32);
+            gl::GenFramebuffers(1, &mut self.fbo);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
+            gl::FramebufferTexture2D(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::TEXTURE_2D, self.tex, 0);
+            self.w = c.w;
+            self.h = c.h;
+        }
+        // résolution de l'anticrénelage éventuel, directement dans la texture
+        gl::BindFramebuffer(gl::READ_FRAMEBUFFER, c.fbo);
+        gl::BindFramebuffer(gl::DRAW_FRAMEBUFFER, self.fbo);
+        gl::BlitFramebuffer(0, 0, c.w as i32, c.h as i32, 0, 0, c.w as i32, c.h as i32, gl::COLOR_BUFFER_BIT, gl::NEAREST);
+        gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+        gl::Viewport(0, 0, w as i32, h as i32);
+        gl::Disable(gl::DEPTH_TEST);
+        gl::Disable(gl::BLEND);
+        gl::UseProgram(self.prog);
+        gl::Uniform1i(self.u_sens, sens);
+        gl::ActiveTexture(gl::TEXTURE0);
+        gl::BindTexture(gl::TEXTURE_2D, self.tex);
+        gl::BindVertexArray(self.vao);
+        gl::DrawArrays(gl::TRIANGLES, 0, 3);
+        gl::BindVertexArray(0);
+        gl::Enable(gl::DEPTH_TEST);
     }
 }
