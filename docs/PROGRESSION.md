@@ -328,6 +328,21 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   - Les autres sont des sommets de lance-pierres ou de poteaux (un départ chacun), ou des départs placés derrière l'arche du haut, hors de l'aire de jeu.
   - Le banc écarte désormais ces départs, ainsi que ceux posés dans l'épaisseur d'une paroi.
   - Rampe : aucun blocage ; 23 touches de vitre sur 180 essais dans le S.
+- **Banc des gestes, bilan de 17 h** (physique définitive du jour) :
+
+  | Geste | Résultat |
+  | :--- | :---: |
+  | Palette : levée / retour | 21 ms / 77 ms |
+  | Berceau, palette tenue | 6/16 |
+  | Réception depuis le couloir de retour | 4/12 |
+  | Tirs depuis le berceau | 8/8, de 2,1 à 2,6 m/s |
+  | Rebond mort | 8/24 |
+  | Passes G→D | 6/30 réglages |
+  | Passes D→G | 5/30 réglages |
+  | Drop catch | 12/54 |
+  | Chute au centre | perdue 5 fois sur 5 |
+
+  Tous les gestes sont réalisables, chacun sur une fenêtre de réglage étroite.
 - **Plafond de vitesse** : en trois parties du robot (lancers compris), le plafond de 6 m/s ne s'est jamais déclenché. Il est porté à 10 m/s et ne sert plus que de garde-fou numérique contre une divergence du solveur ; ce n'est plus une aide de jeu.
 - **Collision de la CAO** : les triangles d'aire nulle (sommets arrondis au 0,1 mm dans les STL) sont retirés à l'export (`outils/cao_web.py`).
 - **Résistance au roulement sur la rampe** : le même coefficient de 0,005 que sur le plateau s'applique quand la bille roule sur le fond de la rampe. Au tir centré, la rampe demande maintenant environ 2 m/s ; à 2,4 m/s, elle est faite pour toutes les entrées.
