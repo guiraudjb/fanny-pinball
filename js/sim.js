@@ -46,6 +46,23 @@ const PALETTE = {
   coupMs: 40,             // ms
   eos: (8 * Math.PI) / 180, // rabattue de plus de 8° sous la butée haute : nouveau coup
 };
+// Caoutchoucs (anneaux des poteaux et des lance-pierres, caoutchouc des palettes). Deux effets réels que Rapier
+// n'a pas, appliqués après chaque pas :
+//  • rebond qui dépend de la vitesse d'impact (contact viscoélastique de Hertz, loi de Kuwabara–Kono) :
+//    e(v) = 1 − (1 − e1)·(v / 1 m/s)^0,2, e1 = rebond à 1 m/s ; plus fort au choc lent, plus faible au choc violent ;
+//  • pertes par hystérésis quand la bille roule ou glisse le long du caoutchouc : force opposée au mouvement le long
+//    de la surface = C × force d'appui (coefficient de roulement d'une bille d'acier sur caoutchouc).
+// La réaction est appliquée à la palette (motorisée). Valeurs : HYPOTHÈSES (aucune mesure publiée sur des
+// caoutchoucs de flipper), choisies dans les ordres de grandeur du caoutchouc ; à mesurer sur la réplique.
+const CAOUTCHOUC = {
+  anneau: { e1: 0.8 },    // anneaux noirs des poteaux et des lance-pierres — HYP
+  palette: { e1: 0.5 },   // caoutchouc rouge de palette, tendu sur la palette en plastique — HYP
+  hysteresis: 0.05,       // coefficient de résistance au roulement acier sur caoutchouc — HYP
+  vMin: 0.02,             // m/s : en dessous, pas de rebond (la bille reste au contact)
+};
+const rebondCaoutchouc = (v, e1) => Math.max(0, 1 - (1 - e1) * Math.pow(v, 0.2));
+// réglages exposés au banc d'essai (outils/gestes.mjs --regle palette.1=0.8)
+export const REGLAGES = { MATIERES: null, CAOUTCHOUC, PALETTE };
 const LAUNCH_V = 2.50;
 const COURSE_LANCEUR = 50;               // mm : course du lanceur à ressort tiré à fond                    // m/s : suit l'arrondi du haut et retombe sur les bumpers
 const BUMPER_V = 1.25;                    // m/s, coup du bumper
@@ -73,6 +90,7 @@ const MATIERES = {
   cible: [0.45, 0.2],
   mou: [0.2, 0.2],           // bras du tablier, lanceur
 };
+REGLAGES.MATIERES = MATIERES;
 
 // Groupes de collision : le portillon du couloir de lancement ne touche que les billes qui l'ont passé.
 const GR = { WALL: 0x0001, GATE: 0x0002, BALL: 0x0004, PAL: 0x0008 };   // PAL : palettes (ne touchent que les billes)
@@ -143,16 +161,18 @@ class Bille {
 }
 
 // Création : Rapier (WebAssembly) et les surfaces de la CAO se chargent d'abord.
-export async function creerSim(onSwitch, { collision = 'assets/cao/collision.glb', glb = null, motorisee = true } = {}) {
+export async function creerSim(onSwitch, { collision = 'assets/cao/collision.glb', glb = null, motorisee = true, caoutchoucs = true } = {}) {
   await R.init();
   const buf = glb || await (await fetch(collision)).arrayBuffer();
-  return new Sim(onSwitch, lireGLB(buf), { motorisee });
+  return new Sim(onSwitch, lireGLB(buf), { motorisee, caoutchoucs });
 }
 
 export class Sim {
-  constructor(onSwitch, surfaces = [], { motorisee = true } = {}) {
+  constructor(onSwitch, surfaces = [], { motorisee = true, caoutchoucs = true } = {}) {
     this.onSwitch = onSwitch;
     this.motorisee = motorisee;
+    this.modeleCaoutchouc = caoutchoucs;
+    this.caoutchoucs = new Map();   // poignée de collider → 'anneau' | 'palette' (modèle de caoutchouc)
     // table.js décrit les formes avec des corps Matter.js : on s'en sert comme gabarits (et pour le rendu)
     this.T = buildTable(Engine.create());
     this.ramps = { L: rampPath(GEO.ramps.L) };
@@ -176,6 +196,7 @@ export class Sim {
     this.flash = {};            // nom → instant du dernier choc (pour le rendu)
     this.flashDir = {};         // nom → vecteur unitaire (x, y) du choc (bascule de jupe de bumper)
     this.cool = {};             // anti-rebond des contacts
+    this.secoueAuto = true;     // secousse automatique d'une bille immobile (désactivée par outils/blocages.mjs)
     this.info = new Map();      // poignée de collider → rôle (bumper, sling, cible…)
 
     this.penteDeg = 6.5;
@@ -202,7 +223,8 @@ export class Sim {
 
   // ---------------------------------------------------------------- monde
   matiere(desc, nom) {
-    const [e, f] = MATIERES[nom];
+    let [e, f] = MATIERES[nom];
+    if (this.modeleCaoutchouc && (nom === 'caoutchouc' || nom === 'palette')) e = 0;   // rebond calculé par caoutchouc()
     return desc.setRestitution(e / BILLE_E).setFriction(f)
       .setRestitutionCombineRule(R.CoefficientCombineRule.Multiply)
       .setFrictionCombineRule(R.CoefficientCombineRule.Multiply)
@@ -233,6 +255,7 @@ export class Sim {
       if (b.isSensor) desc.setSensor(true);
       const c = this.world.createCollider(desc);
       if (role) this.info.set(c.handle, { ...role, corps: b, collider: c });
+      if (this.modeleCaoutchouc && matiere === 'caoutchouc') this.caoutchoucs.set(c.handle, { type: 'anneau' });
     }
   }
 
@@ -316,6 +339,7 @@ export class Sim {
       }
       const c = w.createCollider(cd, body);
       this.info.set(c.handle, { type: 'palette', nom: fl.def.side });
+      if (this.modeleCaoutchouc) this.caoutchoucs.set(c.handle, { type: 'palette', body, px: px * MM, py: py * MM });
       const sens = Math.sign(fl.def.up - fl.def.rest);           // sens de la levée autour de z
       return { fl, body, a0: fl.angle, sens, tenue: false, debutCoup: -1e9, coups: 0 };
     });
@@ -533,8 +557,13 @@ export class Sim {
       b.collider.setCollisionGroups(groupes(GR.BALL, GR.WALL | GR.BALL | GR.PAL | (fp.gate ? GR.GATE : 0)));
     }
 
+    if (this.modeleCaoutchouc) {
+      for (const b of this.balls) if (!b.retiree && b.plugin.fp.mode === 'table') b.vAvant = b.body.linvel();
+      for (const p of this.palettes) p.wAvant = p.body.angvel().z;
+    }
     this.world.step(this.events);
     if (this.motorisee) for (const p of this.palettes) this.butees(p);
+    if (this.modeleCaoutchouc) for (const b of this.balls) if (!b.retiree && b.plugin.fp.mode === 'table' && b.vAvant) this.caoutchouc(b, dt / 1000);
     this.events.drainCollisionEvents((h1, h2, debut) => {
       if (!debut) return;
       let a = this.info.get(h1), o = this.info.get(h2);
@@ -569,6 +598,60 @@ export class Sim {
       }
     }
     this.stepSpinner(dt);
+  }
+
+  // Caoutchoucs au contact de la bille après le pas : rebond e(v) au premier contact, hystérésis ensuite
+  caoutchouc(b, dt) {
+    const avant = b.contactsCaout || new Set(), maintenant = new Set();
+    this.world.contactPairsWith(b.collider, (autre) => {
+      const k = this.caoutchoucs.get(autre.handle);
+      if (!k) return;
+      this.world.contactPair(b.collider, autre, (m, flipped) => {
+        if (m.numSolverContacts() === 0) return;
+        maintenant.add(autre.handle);
+        const n0 = m.normal(), s = flipped ? 1 : -1;                  // normale vers la bille
+        const n = { x: n0.x * s, y: n0.y * s, z: n0.z * s };
+        const pt = m.solverContactPoint(0);
+        const pal = k.type === 'palette' ? this.palettes.find((p) => p.body === k.body) : null;
+        // vitesse de la surface au point de contact (palette en rotation autour de z), avant et après le pas
+        const rx = pal ? pt.x - k.px : 0, ry = pal ? pt.y - k.py : 0;
+        const vs = (w) => ({ x: -w * ry, y: w * rx, z: 0 });
+        const s0 = pal ? vs(pal.wAvant) : { x: 0, y: 0, z: 0 }, s1 = pal ? vs(pal.body.angvel().z) : { x: 0, y: 0, z: 0 };
+        const v0 = b.vAvant, v1 = b.body.linvel();
+        const dot = (a, c) => a.x * c.x + a.y * c.y + a.z * c.z;
+        const vn0 = dot({ x: v0.x - s0.x, y: v0.y - s0.y, z: v0.z - s0.z }, n);
+        const rel1 = { x: v1.x - s1.x, y: v1.y - s1.y, z: v1.z - s1.z }, vn1 = dot(rel1, n);
+        const rxn = rx * n.y - ry * n.x;                                // bras de levier (palette)
+        const invM = 1 / MASSE + (pal ? (rxn * rxn) / PALETTE.inertie : 0);
+        if (!avant.has(autre.handle)) {
+          // premier contact : rebond selon la vitesse d'approche
+          if (vn0 < -CAOUTCHOUC.vMin) {
+            const e = rebondCaoutchouc(-vn0, CAOUTCHOUC[k.type].e1);
+            const dv = e * -vn0 - vn1;
+            if (dv > 0) {
+              const J = dv / invM;
+              b.body.setLinvel({ x: v1.x + (J / MASSE) * n.x, y: v1.y + (J / MASSE) * n.y, z: v1.z + (J / MASSE) * n.z }, true);
+              if (pal) pal.body.applyImpulseAtPoint({ x: -J * n.x, y: -J * n.y, z: 0 }, pt, true);
+            }
+          }
+        } else {
+          // contact maintenu : pertes par hystérésis le long de la surface
+          let jn = 0;
+          for (let i = 0; i < m.numContacts(); i++) jn += m.contactImpulse(i);
+          const vt = { x: rel1.x - vn1 * n.x, y: rel1.y - vn1 * n.y, z: rel1.z - vn1 * n.z };
+          const lt = Math.hypot(vt.x, vt.y, vt.z);
+          if (lt > 1e-4 && jn > 0) {
+            const dv = Math.min(lt, (CAOUTCHOUC.hysteresis * jn) / MASSE);
+            const k1 = dv / lt, v = b.body.linvel(), sp = Math.hypot(v.x, v.y, v.z) || 1;
+            b.body.setLinvel({ x: v.x - vt.x * k1, y: v.y - vt.y * k1, z: v.z - vt.z * k1 }, true);
+            const w = b.body.angvel(), kw = Math.max(0, 1 - dv / sp);
+            b.body.setAngvel({ x: w.x * kw, y: w.y * kw, z: w.z * kw }, true);
+            if (pal) pal.body.applyImpulseAtPoint({ x: MASSE * vt.x * k1, y: MASSE * vt.y * k1, z: 0 }, pt, true);
+          }
+        }
+      });
+    });
+    b.contactsCaout = maintenant;
   }
 
   // Bobine d'une palette motorisée : coup de puissance à l'appui (et à la fin de course perdue), maintien, ressort
@@ -667,7 +750,7 @@ export class Sim {
     // bille immobile hors couloir (coincée) : petite secousse automatique
     for (const b of this.balls) {
       const fp = b.plugin.fp;
-      if (fp.mode !== 'table' || b.retiree || this.dansLanceur(b)) { fp.still = 0; continue; }
+      if (!this.secoueAuto || fp.mode !== 'table' || b.retiree || this.dansLanceur(b)) { fp.still = 0; continue; }
       const { x, y } = b.position;
       // bille tenue volontairement sur une palette levée : on ne la secoue pas
       const cradled = y > GEO.flippers[0].py - 90 && ((this.held.L && x < CX_TABLE) || (this.held.R && x >= CX_TABLE));

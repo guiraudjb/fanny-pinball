@@ -2,7 +2,9 @@
 // Chaque geste est essayé sur une plage de réglages (instant, durée, point d'impact) ; on compte les réussites.
 // Sert à vérifier que la géométrie des palettes permet tous les gestes, sans la régler pour un robot.
 //
-//   node outils/gestes.mjs [--cinematique] [--json sortie.json]
+//   node outils/gestes.mjs [--cinematique] [--sans-caoutchouc] [--json sortie.json]
+//   --regle CHEMIN=valeur : change un réglage de REGLAGES (sim.js) pour l'essai
+//   --sans-caoutchouc : rebond constant des caoutchoucs (sans e(v) ni hystérésis)
 //   --cinematique : ancien modèle de palette (vitesse imposée, masse infinie) au lieu de la palette motorisée
 import { createRequire } from 'module';
 import { readFileSync, writeFileSync } from 'fs';
@@ -15,11 +17,18 @@ const arg = (n, d) => { const i = process.argv.indexOf(`--${n}`); return i < 0 ?
 let graine = 7;
 Math.random = () => ((graine = (graine * 1664525 + 1013904223) >>> 0) / 2 ** 32);
 globalThis.window = { Matter: require(path.join(RACINE, 'vendor/matter.min.js')), crypto: globalThis.crypto, performance: globalThis.performance };
-const { creerSim } = await import(path.join(RACINE, 'js/sim.js'));
+const { creerSim, REGLAGES } = await import(path.join(RACINE, 'js/sim.js'));
+// --regle CAOUTCHOUC.hysteresis=0.1 --regle MATIERES.palette.1=0.8 (plusieurs fois possible)
+process.argv.forEach((a, i) => {
+  if (a !== '--regle') return;
+  const [cle, val] = process.argv[i + 1].split('=');
+  const ch = cle.split('.'), dernier = ch.pop();
+  ch.reduce((o, k) => o[k], REGLAGES)[dernier] = Number(val);
+});
 const { GEO, CX } = await import(path.join(RACINE, 'js/table.js'));
 const b = readFileSync(path.join(RACINE, 'assets/cao/collision.glb'));
 const glb = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength);
-const sim = await creerSim(() => {}, { glb, motorisee: !process.argv.includes('--cinematique') });
+const sim = await creerSim(() => {}, { glb, motorisee: !process.argv.includes('--cinematique'), caoutchoucs: !process.argv.includes('--sans-caoutchouc') });
 sim.power = true;
 
 const FR = 1000 / 60;
@@ -65,16 +74,29 @@ function distPalette(side, p) {
   const t = Math.max(0, Math.min(f.len, (p.x - f.px) * ux + (p.y - f.py) * uy));
   return Math.hypot(p.x - f.px - ux * t, p.y - f.py - uy * t) - (f.r1 + (f.r2 - f.r1) * (t / f.len)) - 13.5;
 }
-// l'autre palette est tenue levée (le joueur rattrape) : réussite = bille immobile en berceau dessus
-function arriveeOpposee(bille, side, ms = 3000) {
+// Réception sur l'autre palette, comme un joueur : la palette receveuse reste au repos et il la lève quand la bille
+// arrive à « d » mm de sa surface (d = 0 : au contact ; d < 0 : tenue levée dès le départ). Réussite = bille immobile
+// en berceau. Le geste est rejoué pour chaque instant de levée (simulation déterministe).
+const LEVEES = [-1, 0, 5, 10, 20, 30, 45, 60];
+function receptionner(bille, side, d, ms = 3000) {
   const o = autre(side);
-  sim.held[o] = true;
-  for (let t = 0; t < ms; t += FR) {
-    pas();
-    if (bille.retiree) return 'perdue';
-    if (bille.vitesse < 0.03 && distPalette(o, bille.position) < 2) return 'ok';
+  if (d < 0) sim.held[o] = true;
+  for (let t = 0; t < ms; t += 1000 / 480) {
+    sim.step(1000 / 480);
+    if (bille.retiree) return false;
+    if (!sim.held[o] && distPalette(o, bille.position) <= d) sim.held[o] = true;
+    if (sim.held[o] && bille.vitesse < 0.03 && distPalette(o, bille.position) < 2) return true;
   }
-  return 'ailleurs';
+  return false;
+}
+// rejoue « geste » (qui prépare la bille et renvoie la bille, ou null) pour chaque levée ; renvoie les levées réussies
+function essaisReception(geste, side) {
+  const ok = [];
+  for (const d of LEVEES) {
+    const bille = geste();
+    if (bille && receptionner(bille, side, d)) ok.push(d);
+  }
+  return ok;
 }
 
 const R = {};
@@ -138,32 +160,34 @@ function rouler(side, bille, leCible) {
   note('tir (m/s max selon le point de frappe)', v.length, 8, v.join(' '));
 }
 
-// 3. Rebond mort : bille qui tombe sur la palette au repos ; elle doit rejoindre la palette opposée
+// 3. Rebond mort : bille qui tombe sur la palette au repos et rebondit vers l'autre palette, que le joueur lève
+//    au bon moment ; réussite = au moins un instant de levée qui met la bille en berceau
 {
-  let ok = 0, n = 0;
+  let ok = 0, n = 0; const fen = [];
   for (const side of ['L', 'R']) for (const leI of [15, 25, 35, 45]) for (const v of [0.8, 1.2, 1.6]) {
     n++;
-    reset();
     const f = FL[side], a = f.rest;
     const x = f.px + Math.cos(a) * leI * sg(side), y = f.py + Math.sin(Math.abs(a)) * leI - 60;
-    const bille = sim.makeBall(x, y);
-    sim.setVitesse(bille, 0, vImg(v));
-    if (arriveeOpposee(bille, side) === 'ok') ok++;
+    const r = essaisReception(() => { reset(); const bl = sim.makeBall(x, y); sim.setVitesse(bl, 0, vImg(v)); return bl; }, side);
+    if (r.length) { ok++; fen.push(`${leI}/${v}:${r.length}`); }
   }
-  note('rebond mort (palette au repos)', ok, n, 'impact à 15–45 mm de l\'axe, 0,8–1,6 m/s');
+  note('rebond mort (palette au repos)', ok, n, `impact 15–45 mm, 0,8–1,6 m/s ; levées réussies sur ${LEVEES.length} : ${fen.join(' ')}`);
 }
 
 // 4. Passes depuis le berceau (post pass, tap pass) : la bille roule jusqu'à « le », coup bref de f ms ;
-//    elle doit finir en berceau sur l'autre palette (tenue levée par le joueur)
+//    elle doit finir en berceau sur l'autre palette (levée par le joueur au bon moment)
 {
   for (const side of ['L', 'R']) {
     let ok = 0, n = 0; const regl = [];
     for (const leC of [5, 10, 20, 30, 40, 50]) for (const f of [4, 8, 12, 17, 33]) {
       n++;
-      const bille = berceau(side);
-      if (!bille || !rouler(side, bille, leC)) continue;
-      coup(side, f);
-      if (arriveeOpposee(bille, side) === 'ok') { ok++; regl.push(`${leC}/${f}`); }
+      const r = essaisReception(() => {
+        const bille = berceau(side);
+        if (!bille || !rouler(side, bille, leC)) return null;
+        coup(side, f);
+        return bille;
+      }, side);
+      if (r.length) { ok++; regl.push(`${leC}/${f}:${r.length}`); }
     }
     note(`passe depuis le berceau (${side === 'L' ? 'G → D' : 'D → G'})`, ok, n, regl.join(' '));
   }
