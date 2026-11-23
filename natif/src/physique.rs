@@ -37,6 +37,8 @@ const LAUNCH_V: f32 = 2.50;
 pub const COURSE_LANCEUR: f32 = 50.0;
 const BUMPER_V: f32 = 1.25;
 const SLING_V: f32 = 1.05;
+/// vitesse normale minimale de la bille vers la face du lance-pierre pour fermer le contact à lames (js/sim.js V_LAMES_SLING)
+const V_LAMES_SLING: f32 = 0.3;
 const DISPERSION_BOBINE: f32 = 0.05;
 const NUDGE_V: f32 = 0.27;
 const TILT_BOB: f32 = 2.4;
@@ -401,6 +403,8 @@ v_avant: None, contacts_caout: HashSet::new(), retiree: false,
             Role::Sling { idx, a, n } => {
                 let cote = (x - a.0) * n.0 + (y - a.1) * n.1;
                 if cote < self.ball_r * 0.5 { return; }
+                let va = self.billes[i].v_avant.unwrap_or(*self.bodies[self.billes[i].corps].linvel());
+                if -(va.x * n.0 + va.y * n.1) < V_LAMES_SLING { return; }   // frôlement : lames non fermées
                 if !self.power || !self.debounce(&format!("sling{idx}"), 200.0) { return; }
                 self.flash.insert(format!("sling{idx}"), t);
                 post.push(Box::new(move |s: &mut Sim| s.frapper(i, n.0, n.1, SLING_V)));

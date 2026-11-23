@@ -171,15 +171,26 @@ fn main() -> Result<(), String> {
     gla.set_context_version(3, 3);
     gla.set_framebuffer_srgb_compatible(false);
     let resolutions = liste_resolutions(&video);
-    let (fw, fh) = if reg.plein_ecran { (1280, 800) } else { reg.resolution };
-    let mut fenetre = video.window("Fanny Pinball", fw, fh).opengl().resizable().position_centered().build().map_err(|e| e.to_string())?;
+    // plein écran : fenêtre sans bordure à la taille de l'écran, posée en (0, 0). Sans gestionnaire de fenêtres (borne :
+    // X seul), personne n'agrandit une fenêtre qui demande le plein écran ; elle doit naître à la bonne taille.
+    let ecran = video.desktop_display_mode(0).map(|m| (m.w as u32, m.h as u32)).unwrap_or((1280, 800));
+    let mut fenetre = if reg.plein_ecran {
+        video.window("Fanny Pinball", ecran.0, ecran.1).opengl().borderless().position(0, 0).build()
+    } else {
+        video.window("Fanny Pinball", reg.resolution.0, reg.resolution.1).opengl().resizable().position_centered().build()
+    }.map_err(|e| e.to_string())?;
     let _ctx = fenetre.gl_create_context()?;
     gl::load_with(|s| video.gl_get_proc_address(s) as *const _);
     let _ = video.gl_set_swap_interval(if profil { 0 } else { 1 });   // --profil : sans synchro verticale, coût réel
     let appliquer_affichage = |f: &mut sdl2::video::Window, r: &Reglages| {
-        if r.plein_ecran { let _ = f.set_fullscreen(sdl2::video::FullscreenType::Desktop); }
-        else {
+        if r.plein_ecran {
+            f.set_bordered(false);
+            let _ = f.set_size(ecran.0, ecran.1);
+            f.set_position(sdl2::video::WindowPos::Positioned(0), sdl2::video::WindowPos::Positioned(0));
+            let _ = f.set_fullscreen(sdl2::video::FullscreenType::Desktop);
+        } else {
             let _ = f.set_fullscreen(sdl2::video::FullscreenType::Off);
+            f.set_bordered(true);
             let _ = f.set_size(r.resolution.0, r.resolution.1);
             f.set_position(sdl2::video::WindowPos::Centered, sdl2::video::WindowPos::Centered);
         }

@@ -42,6 +42,11 @@ const nrm = { x: Math.sin(TOP_REST), y: -Math.cos(TOP_REST) };
 const off = FLIP.r1 - GUIDE_T / 2;
 const guideEnd = { x: LPX + nrm.x * off - dir.x * 16, y: FLIP.pivotY + nrm.y * off - dir.y * 16 };
 const SEP_X = 40; // séparateur couloir de sortie / couloir de retour
+// Poteau de tête du séparateur couloir extérieur / couloir de retour : position réglable comme sur les vraies machines
+// (plusieurs trous dans le plateau). { dx: vers le mur extérieur, dy: vers le haut } en mm depuis le haut du séparateur ;
+// le séparateur se prolonge jusqu'au poteau. Banc : natif, cargo test --release banc_sorties -- --ignored.
+export const POTEAU_EXT = globalThis.FANNY_POTEAU_EXT ?? { dx: 5, dy: 12 };   // trou « facile » (banc : 20 → 10 billes sur 60 en couloir extérieur)
+const tetePoteau = (m) => (POTEAU_EXT.dx || POTEAU_EXT.dy ? [[m(SEP_X - POTEAU_EXT.dx), 700 + DY - POTEAU_EXT.dy]] : []);
 const kL = (guideEnd.x - SEP_X) / dir.x;
 const guideKnee = { x: SEP_X, y: guideEnd.y - dir.y * kL };
 
@@ -155,8 +160,8 @@ export const GEO = {
     { side: 'R', px: mx(LPX), py: FLIP.pivotY, len: FLIP.len, r1: FLIP.r1, r2: FLIP.r2, rest: -FLIP.rest, up: -FLIP.up },
   ],
   separators: [
-    [[SEP_X, 700 + DY], [guideKnee.x, guideKnee.y], [guideEnd.x, guideEnd.y]],
-    [[mx(SEP_X), 700 + DY], [mx(guideKnee.x), guideKnee.y], [mx(guideEnd.x), guideEnd.y]],
+    [...tetePoteau((x) => x), [SEP_X, 700 + DY], [guideKnee.x, guideKnee.y], [guideEnd.x, guideEnd.y]],
+    [...tetePoteau(mx), [mx(SEP_X), 700 + DY], [mx(guideKnee.x), guideKnee.y], [mx(guideEnd.x), guideEnd.y]],
   ],
   // séparateurs entre les deux couloirs de retour : du poteau du haut jusqu'à la ligne du lance-pierre
   dividers: [

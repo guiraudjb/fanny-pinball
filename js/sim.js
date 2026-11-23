@@ -91,6 +91,10 @@ export function tirageLanceur(f) {
 // la surface est conservée. Seule la force de la bobine varie un peu d'un coup à l'autre (± DISPERSION_BOBINE).
 const BUMPER_V = 1.25;                    // m/s donnés à une bille arrêtée — HYP
 const SLING_V = 1.05;                     // m/s — HYP
+// Contact à lames du lance-pierre : il ne se ferme que si le caoutchouc est assez enfoncé, c'est-à-dire si la bille
+// arrive vers la face avec une vitesse normale d'au moins V_LAMES_SLING (écartement des lames réglé « peu sensible ») ;
+// un frôlement plus lent rebondit sur le caoutchouc sans déclencher la bobine.
+const V_LAMES_SLING = 0.3;                // m/s — réglage d'exploitant
 const DISPERSION_BOBINE = 0.05;
 const SLING_TUNE = { kick: SLING_V };
 const NUDGE_V = 0.27;                     // m/s, élan vers le haut donné par un coup de caisse
@@ -587,6 +591,8 @@ export class Sim {
         const { A, n, idx } = r;
         const side = (x - A[0]) * n.x + (y - A[1]) * n.y;
         if (side < BALL_R * 0.5) break; // choc sur le dos du triangle : pas de tir
+        const va = b.vAvant ?? b.v;
+        if (-(va.x * n.x + va.y * n.y) < V_LAMES_SLING) break;   // frôlement : lames du contact non fermées
         if (!this.power || !this.debounce(`sling${idx}`, 200)) break;
         this.flash[`sling${idx}`] = this.time;
         this.post.push(() => this.frapper(b, n.x, n.y, this.slingTune.kick));
