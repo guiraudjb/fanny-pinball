@@ -117,6 +117,7 @@ pub struct Sim {
     roles: HashMap<ColliderHandle, Role>,
     caoutchoucs: HashMap<ColliderHandle, bool>,   // true = palette, false = anneau
     drops: Vec<ColliderHandle>,
+    rampe: Option<ColliderHandle>,
     pub billes: Vec<Bille>,
     pub palettes: Vec<PaletteCorps>,
     pub reglages: Reglages,
@@ -165,6 +166,7 @@ impl Sim {
         params.num_solver_iterations = std::num::NonZeroUsize::new(ph["iterations"].as_u64().unwrap_or(8) as usize).unwrap();
         params.length_unit = f(&ph["length_unit"]);
         params.normalized_allowed_linear_error = f(&ph["erreur_lineaire"]);
+        params.normalized_prediction_distance = ph["prediction"].as_f64().unwrap_or(0.002) as f32;
         let (cs, cr) = unbounded();
         let (fs, fr) = unbounded();
         let mut sim = Sim {
@@ -174,7 +176,7 @@ impl Sim {
             gravite: vector![0.0, G * pente.sin(), G * pente.cos()],
             ev_col: cr, ev_force: fr, collecteur: ChannelEventCollector::new(cs, fs),
             geo: m["geo"].clone(), ball_r: f(&m["BALL_R"]), w: f(&m["W"]), h: f(&m["H"]), cx: f(&m["CX"]),
-            roles: HashMap::new(), caoutchoucs: HashMap::new(), drops: vec![], billes: vec![], palettes: vec![], reglages,
+            roles: HashMap::new(), caoutchoucs: HashMap::new(), drops: vec![], rampe: None, billes: vec![], palettes: vec![], reglages,
             time: 0.0, acc: 0.0, held: [false; 2], power: true, bob: 0.0, last_nudge: -1e9, force: 1.0, tirage: 0.0,
             shooter_closed: false, drops_up: vec![], spinner: Tourniquet::default(), flash: HashMap::new(),
             flash_dir: HashMap::new(), cool: HashMap::new(), secoue_auto: true, pente_deg: f(&ph["pente_deg"]), graine: 0x9e3779b97f4a7c15,
@@ -193,6 +195,7 @@ impl Sim {
             let h = sim.colliders.insert(col);
             if let Some(k) = c["caoutchouc"].as_str() { sim.caoutchoucs.insert(h, k == "palette"); }
             let r = &c["role"];
+            if r["nom"].as_str() == Some("rampe") { sim.rampe = Some(h); }
             let idx = r["idx"].as_u64().unwrap_or(0) as usize;
             let role = match r["type"].as_str().unwrap_or("") {
                 "bumper" => Role::Bumper { idx, centre: xy(&r["centre"]) },
@@ -516,6 +519,13 @@ impl Sim {
                 let w = *c.angvel();
                 c.set_linvel(vector![v.x * k, v.y * k, v.z], true);
                 c.set_angvel(w * k, true);
+            } else if sp > 0.005 && self.sur_rampe(self.billes[i].collider) {
+                // même résistance au roulement sur le fond de la rampe (vitesse 3D : le fond est en pente)
+                let k = (1.0 - (ROULEMENT * G * dt as f32) / 1000.0 / sp).max(0.0);
+                let c = &mut self.bodies[self.billes[i].corps];
+                let w = *c.angvel();
+                c.set_linvel(v * k, true);
+                c.set_angvel(w * k, true);
             }
             let (x, y) = self.position(i);
             if y > drain_y || x < -20.0 || x > self.w + 20.0 || y < -40.0 || h > H_VITRE + 20.0 || h < -40.0 {
@@ -526,6 +536,13 @@ impl Sim {
         }
         self.billes.retain(|b| b.mode != ModeBille::Partie);
         self.step_spinner(dt);
+    }
+
+    /// la bille roule-t-elle sur le fond de la rampe ? (contact réel, normale proche de la verticale)
+    fn sur_rampe(&self, bille: ColliderHandle) -> bool {
+        let Some(r) = self.rampe else { return false };
+        let Some(p) = self.narrow.contact_pair(bille, r) else { return false };
+        p.manifolds.iter().any(|m| m.data.normal.z.abs() >= 0.7 && m.points.iter().any(|q| q.dist < 0.0005))
     }
 
     /// caoutchoucs au contact de la bille après le pas : rebond e(v) au premier contact, hystérésis ensuite

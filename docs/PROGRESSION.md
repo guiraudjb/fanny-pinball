@@ -277,6 +277,22 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 - **Points de blocage** (`outils/blocages.mjs`) :
   - Le plateau entier a été balayé au pas de 25 mm, avec plusieurs vitesses de départ. Il ne reste aucun vrai piège : les poteaux ne donnent que des équilibres instables.
   - Pour éviter les faux blocages, le critère est maintenant une bille immobile 3 s à 1 mm près.
+- **Contacts déclenchés à 2 cm** (trouvé en traquant les billes « en jeu » du balayage) :
+  - Cause : avec `lengthUnit` 1, la distance de prédiction des contacts de Rapier vaut par défaut 0,02 × 1 m, soit 20 mm. Les contacts « commencés » partaient donc à 2 cm de la pièce : un bumper frappait la bille avant qu'elle ne le touche, une cible tombait à distance.
+  - Effet visible : au coin du toit du bouchon, le bumper voisin renvoyait la bille vers le haut, et elle faisait des allers-retours sur le toit.
+  - Correction : la prédiction est ramenée à 2 mm (`normalizedPredictionDistance` 0,002), dans la version web comme dans la version native.
+  - Nouveau balayage :
+
+    | | Avant | Après |
+    | :--- | :---: | :---: |
+    | Points d'arrêt | 4 | 1 |
+    | Billes encore en mouvement à 6 s | 316 | 108, dispersées dans le bas du plateau |
+    | Blocages depuis la rampe | 2 | 0 |
+
+    Le point restant est une bille posée pile au sommet du poteau haut du lance-pierres droit (2 départs sur 1 286). C'est un équilibre instable, et un bourrage la libère.
+- **Collision de la CAO** : les triangles d'aire nulle (sommets arrondis au 0,1 mm dans les STL) sont retirés à l'export (`outils/cao_web.py`).
+- **Résistance au roulement sur la rampe** : le même coefficient de 0,005 que sur le plateau s'applique quand la bille roule sur le fond de la rampe. Au tir centré, la rampe demande maintenant environ 2 m/s ; à 2,4 m/s, elle est faite pour toutes les entrées.
+- **Vitre** : dans le S de rayon 70 mm, une bille à 2,4–2,8 m/s grimpe le flanc extérieur relevé jusqu'à toucher la vitre (23 essais sur 180). Elle ne peut pas passer par-dessus, puisqu'il reste 2 mm de jeu.
 - **Version native réécrite** (`natif/`, voir son README) :
   - Le monde physique est exporté de la version web (`outils/exporter_natif.mjs` → `monde.json`), et la physique de `js/sim.js` est portée sur rapier3d : palettes motorisées, caoutchoucs, bobines, tourniquet.
   - Les règles sont portées ligne à ligne.
@@ -295,7 +311,7 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
 | Son sur la réplique | Le DFPlayer ne joue qu'une piste à la fois : priorité à la voix, ou second DFPlayer sur Serial2 |
 | Réalisme : roulement | Mesurer si possible la résistance au roulement réelle |
 | Réalisme : lanceur | Lanceur par tige à ressort |
-| Réalisme : rampe | Pas encore de résistance au roulement sur la rampe (le frein de roulement ne s'applique qu'au plateau) |
+| Réalisme : rampe | Bille qui touche la vitre dans le S serré (R70) à 2,4–2,8 m/s : élargir le virage ou ajouter une lèvre sur le flanc extérieur |
 | Réalisme : aides invisibles | Secousse automatique d'une bille immobile 1,5 s (`frameChecks`) ; plafond de vitesse 6 m/s |
 | Version native | Afficheurs du fronton (aujourd'hui dans le titre de la fenêtre) ; caméras pilotables (tour, lilliputien) ; ombres |
 | Plateau | Allongé à 1263 mm par Gemini (standard : 1067 mm) : à rediscuter avec la caisse |

@@ -225,6 +225,9 @@ export class Sim {
     // d'une surface en facettes — sur la rampe, elle n'avançait plus qu'au quart de sa vitesse.
     this.world.integrationParameters.lengthUnit = 1;
     this.world.integrationParameters.normalizedAllowedLinearError = 0.001;
+    // Distance de prédiction des contacts : 2 mm. Par défaut (0,02 × lengthUnit), 20 mm : les contacts « commencés »
+    // partaient à 2 cm de la pièce, un bumper frappait la bille avant qu'elle ne le touche, une cible tombait à distance.
+    this.world.integrationParameters.normalizedPredictionDistance = 0.002;
     this.events = new R.EventQueue(true);
     this.construire(surfaces);
   }
@@ -390,6 +393,7 @@ export class Sim {
     const c = this.world.createCollider(this.matiere(R.ColliderDesc.trimesh(new Float32Array(v), new Uint32Array(idx),
       R.TriMeshFlags.FIX_INTERNAL_EDGES), 'rampe'));
     this.info.set(c.handle, { type: 'surface', nom: 'rampe' });
+    this.rampeCol = c;
 
   }
 
@@ -485,6 +489,17 @@ export class Sim {
   resetDrops() {
     for (const [, r] of this.info) if (r.type === 'drop') r.collider.setEnabled(true);
     this.dropsUp = this.dropsUp.map(() => true);
+  }
+
+  // la bille roule-t-elle sur le fond de la rampe ? (contact réel, normale proche de la verticale)
+  surRampe(b) {
+    if (!this.rampeCol) return false;
+    let oui = false;
+    this.world.contactPair(b.collider, this.rampeCol, (m) => {
+      if (Math.abs(m.normal().z) < 0.7) return;
+      for (let i = 0; i < m.numContacts(); i++) if (m.contactDist(i) < 0.0005) oui = true;
+    });
+    return oui;
   }
 
   // ---------------------------------------------------------------- chocs
@@ -644,6 +659,11 @@ export class Sim {
         // freinage de roulement : vitesse et rotation réduites ensemble (la bille continue de rouler sans glisser)
         const k = Math.max(0, 1 - (ROULEMENT * G * dt) / 1000 / sp), w = b.body.angvel();
         b.body.setLinvel({ x: v.x * k, y: v.y * k, z: v.z }, true);
+        b.body.setAngvel({ x: w.x * k, y: w.y * k, z: w.z * k }, true);
+      } else if (b.hauteur >= 0.3 && sp > 0.005 && this.surRampe(b)) {
+        // même résistance au roulement sur le fond de la rampe (vitesse 3D : le fond est en pente)
+        const k = Math.max(0, 1 - (ROULEMENT * G * dt) / 1000 / sp), w = b.body.angvel();
+        b.body.setLinvel({ x: v.x * k, y: v.y * k, z: v.z * k }, true);
         b.body.setAngvel({ x: w.x * k, y: w.y * k, z: w.z * k }, true);
       }
       // évacuation (sous le tablier) et filet de sécurité : bille sortie de la table

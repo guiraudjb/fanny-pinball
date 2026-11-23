@@ -66,7 +66,7 @@ const monde = {
   W, H, BALL_R, CX,
   physique: {
     pas_hz: 480, pente_deg: sim.penteDeg, gravite: 9.81, iterations: ip.numSolverIterations,
-    length_unit: ip.lengthUnit, erreur_lineaire: ip.normalizedAllowedLinearError,
+    length_unit: ip.lengthUnit, erreur_lineaire: ip.normalizedAllowedLinearError, prediction: ip.normalizedPredictionDistance,
     reglages: JSON.parse(JSON.stringify(REGLAGES)),
   },
   fixes, palettes,
