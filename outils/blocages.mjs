@@ -85,6 +85,9 @@ if (!arg('sans-plateau')) {
   const dirs = [null, [0, -1], [1, 0], [-1, 0], [0, 1]].slice(0, Number(arg('variantes', 5)));
   for (let y = PAS / 2; y < H; y += PAS) for (let x = PAS / 2; x < W; x += PAS) {
     nouvelle();
+    // derrière l'arche du haut (entre l'arche et la caisse) : hors de l'aire de jeu, la bille ne peut pas y aller
+    const E = GEO.ellipse;
+    if (y < E.cy && ((x - E.cx) / E.rx) ** 2 + ((y - E.cy) / E.ry) ** 2 > 1) continue;
     if (!libre(x, y) || auLanceur({ x, y })) continue;
     for (const d of dirs) {
       nouvelle();

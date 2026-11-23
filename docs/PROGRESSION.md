@@ -322,6 +322,12 @@ Journal du projet, du plus ancien au plus récent. Les exigences correspondantes
   - Avant : la vitesse suivait une loi linéaire, avec 30 % de la vitesse nominale même à peine tiré.
   - Maintenant, elle suit l'énergie d'un ressort précomprimé, qui rend k·(x₀·x + x²/2), avec x₀ = 20 mm (HYP). La vitesse vaut v ∝ √E : 25 % à 10 % de course, 66 % à mi-course, 110 % à fond (inchangé).
   - Même loi dans le jeu web, le robot (course calculée par la loi inverse) et la version native.
+- **Balayage des blocages, 16 h 45** (physique définitive du jour, 2 788 départs) :
+  - Six points restent, dont aucun piège du plateau.
+  - Le principal, 13 départs, vient d'une même colonne x = 438 : ces billes descendent tout droit sans vitesse latérale et s'arrêtent pile au sommet du poteau du couloir extérieur droit. C'est un équilibre centré, inatteignable en jeu, et un bourrage le défait.
+  - Les autres sont des sommets de lance-pierres ou de poteaux (un départ chacun), ou des départs placés derrière l'arche du haut, hors de l'aire de jeu.
+  - Le banc écarte désormais ces départs, ainsi que ceux posés dans l'épaisseur d'une paroi.
+  - Rampe : aucun blocage ; 23 touches de vitre sur 180 essais dans le S.
 - **Plafond de vitesse** : en trois parties du robot (lancers compris), le plafond de 6 m/s ne s'est jamais déclenché. Il est porté à 10 m/s et ne sert plus que de garde-fou numérique contre une divergence du solveur ; ce n'est plus une aide de jeu.
 - **Collision de la CAO** : les triangles d'aire nulle (sommets arrondis au 0,1 mm dans les STL) sont retirés à l'export (`outils/cao_web.py`).
 - **Résistance au roulement sur la rampe** : le même coefficient de 0,005 que sur le plateau s'applique quand la bille roule sur le fond de la rampe. Au tir centré, la rampe demande maintenant environ 2 m/s ; à 2,4 m/s, elle est faite pour toutes les entrées.
