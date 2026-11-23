@@ -242,6 +242,7 @@ fn main() -> Result<(), String> {
         if v.len() == 3 { orbite = Some((v[0], v[1], v[2])); }
     }
     let mut glisse = false;
+    let mut code_sortie = 0;
     let mut maj_menu = [false, false];
     let mut pause_physique = false;
     let mut tirage_debut: Option<Instant> = None;
@@ -271,7 +272,7 @@ fn main() -> Result<(), String> {
             use sdl2::event::Event;
             let menu = !matches!(ecran, Ecran::Jeu);
             match e {
-                Event::Quit { .. } => break 'jeu,
+                Event::Quit { .. } => { code_sortie = 2; break 'jeu }   // fenêtre fermée ou signal : pas un « Quitter »
                 Event::KeyDown { scancode: Some(Scancode::F11), repeat: false, .. } => {
                     reg.plein_ecran = !reg.plein_ecran;
                     appliquer_affichage(&mut fenetre, &reg);
@@ -297,7 +298,7 @@ fn main() -> Result<(), String> {
                             if retour && sc == Scancode::Escape { sel = 2; bip(&mut son); }   // Échap désigne « Quitter »
                             if ok {
                                 son.play(regles::snd::STANDUP);
-                                match sel { 0 => aller = Some(Ecran::Libre), 1 => aller = Some(Ecran::Reglages), _ => break 'jeu }
+                                match sel { 0 => aller = Some(Ecran::Libre), 1 => aller = Some(Ecran::Reglages), _ => { code_sortie = 0; break 'jeu } }
                             }
                         }
                         Ecran::Reglages => {
@@ -641,7 +642,9 @@ fn main() -> Result<(), String> {
             gl::ClearColor(0.09, 0.05, 0.027, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
-        scene.sans_salle = vertical;
+        // détail Bas : la salle (≈ 6 ms par image sur une GT 710) n'est dessinée que dans les menus et la cinématique
+        scene.sans_salle = vertical || drapeau("--sans-salle")
+            || (reg.detail == Detail::Bas && matches!(ecran, Ecran::Jeu | Ecran::Pause));
         scene.dessiner(&cam, aspect, &billes, pc.table, &m_machine, tension);
         if vertical {
             // l'interface est dessinée dans l'image portrait, puis le tout est tourné
@@ -695,6 +698,9 @@ fn main() -> Result<(), String> {
             break 'jeu;
         }
         fenetre.gl_swap_window();
+        // faible latence : le pilote ne garde pas d'images d'avance (sinon, sur une carte lente, l'appui sur une palette
+        // n'apparaît à l'écran que deux ou trois images plus tard)
+        if !profil || drapeau("--finish") { unsafe { gl::Finish(); } }
 
         fps.0 += 1;
         if fps.1.elapsed().as_secs_f32() >= 0.25 {
@@ -706,6 +712,9 @@ fn main() -> Result<(), String> {
         }
     }
     reg.enregistrer();
+    // code de sortie : 0 = « Quitter » choisi dans le menu (la borne s'éteint), 2 = fenêtre fermée ou processus arrêté
+    // de l'extérieur (la borne relance le jeu)
+    if code_sortie != 0 { std::process::exit(code_sortie); }
     Ok(())
 }
 

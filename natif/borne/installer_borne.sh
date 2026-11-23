@@ -32,6 +32,11 @@ sudo usermod -aG video,audio,input,render "$UTIL"
 # serveur X lancé par un utilisateur depuis la console
 echo -e "allowed_users=anybody\nneeds_root_rights=yes" | sudo tee /etc/X11/Xwrapper.config >/dev/null
 
+# extinction sans mot de passe, pour « Quitter » (seulement cette commande)
+echo "$UTIL ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff" | sudo tee /etc/sudoers.d/borne-fanny >/dev/null
+sudo chmod 440 /etc/sudoers.d/borne-fanny
+sudo visudo -cf /etc/sudoers.d/borne-fanny >/dev/null
+
 echo "== 3/7 Connexion automatique de $UTIL sur tty1"
 sudo mkdir -p /etc/systemd/system/getty@tty1.service.d
 sudo tee /etc/systemd/system/getty@tty1.service.d/autologin.conf >/dev/null <<EOF
@@ -64,9 +69,9 @@ cd "$JEU"
 while true; do
   ./fanny-pinball --plein-ecran >>"\$HOME/.borne_jeu.log" 2>&1
   code=\$?
-  [ \$code -ne 0 ] && { sleep 2; continue; }      # plantage : on relance
-  case "$QUITTER" in
-    eteindre) systemctl poweroff ;;
+  [ \$code -ne 0 ] && { sleep 2; continue; }      # plantage ou arrêt extérieur : on relance
+  case "$QUITTER" in                                # code 0 : « Quitter » choisi dans le menu
+    eteindre) sudo -n /usr/bin/systemctl poweroff; sleep 30 ;;
     relancer) sleep 1; continue ;;
   esac
   touch "\$HOME/.borne_pause"; exit 0              # console : pas de relance avant le prochain démarrage
