@@ -33,22 +33,32 @@ fn main() -> Result<(), String> {
     let mut sim = physique::Sim::charger(base.join("donnees/monde.json").to_str().unwrap())?;
     let mut regles = regles::Regles::new(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7));
 
+    // réglages de rendu : --leger (machine modeste : sans anticrénelage, image calculée à 70 %, filtrage anisotrope 4×,
+    // scène aux textures allégées donnees/scene_leger.glb si elle existe), --echelle f, --msaa n, --profil
+    let args: Vec<String> = std::env::args().collect();
+    let opt = |n: &str| args.iter().position(|a| a == n).and_then(|i| args.get(i + 1)).cloned();
+    let leger = args.iter().any(|a| a == "--leger");
+    let profil = args.iter().any(|a| a == "--profil");
+    let msaa: u8 = opt("--msaa").and_then(|v| v.parse().ok()).unwrap_or(if leger { 0 } else { 4 });
+    let echelle: f32 = opt("--echelle").and_then(|v| v.parse().ok()).unwrap_or(if leger { 0.7f32 } else { 1.0 }).clamp(0.25, 1.0);
+    let aniso_max: f32 = if leger { 4.0 } else { 16.0 };
+
     let sdl = sdl2::init()?;
     let video = sdl.video()?;
     let gla = video.gl_attr();
     gla.set_context_profile(sdl2::video::GLProfile::Core);
     gla.set_context_version(3, 3);
-    gla.set_multisample_buffers(1);
-    gla.set_multisample_samples(4);
+    if msaa > 1 { gla.set_multisample_buffers(1); gla.set_multisample_samples(msaa); }
     gla.set_framebuffer_srgb_compatible(false);
     let mut fenetre = video.window("Fanny Pinball", 1280, 800).opengl().resizable().position_centered().build().map_err(|e| e.to_string())?;
     let _ctx = fenetre.gl_create_context()?;
     gl::load_with(|s| video.gl_get_proc_address(s) as *const _);
-    let _ = video.gl_set_swap_interval(1);
+    let _ = video.gl_set_swap_interval(if profil { 0 } else { 1 });   // --profil : sans synchro verticale, coût réel
     unsafe { gl::Enable(gl::MULTISAMPLE); }
 
-    let chemin_scene = base.join("donnees/scene.glb");
-    let mut scene = rendu::Scene::charger(chemin_scene.to_str().unwrap())
+    let chemin_leger = base.join("donnees/scene_leger.glb");
+    let chemin_scene = if leger && chemin_leger.exists() { chemin_leger } else { base.join("donnees/scene.glb") };
+    let mut scene = rendu::Scene::charger(chemin_scene.to_str().unwrap(), aniso_max)
         .map_err(|e| format!("{e}\n(scène absente : node outils/exporter_scene_natif.mjs)"))?;
     let mut son = audio::Audio::init(&base.join("../assets"));
     if !base.join("../assets/sons").exists() { son = audio::Audio::init(&base.join("assets")); }
@@ -80,8 +90,6 @@ fn main() -> Result<(), String> {
     let t_depart = Instant::now();
     let mut fps = (0u32, Instant::now(), 0.0f32);
     // essais sans joueur : --auto (départ puis tir), --capture fichier.ppm [--apres ms] [--camera n] [--orbite l,t,d]
-    let args: Vec<String> = std::env::args().collect();
-    let opt = |n: &str| args.iter().position(|a| a == n).and_then(|i| args.get(i + 1)).cloned();
     let auto = args.iter().any(|a| a == "--auto");
     let capture = opt("--capture");
     let apres: f64 = opt("--apres").and_then(|v| v.parse().ok()).unwrap_or(3000.0);
@@ -98,6 +106,8 @@ fn main() -> Result<(), String> {
         Vector3::new(p.x, p.y, p.z)
     }).unwrap_or_else(Vector3::zeros);
     let mut cam_courante = nalgebra::Matrix4::<f32>::identity();
+    let mut cible = rendu::Cible::default();          // image réduite (--echelle < 1), agrandie à l'écran
+    let mut mesure = (0.0f64, 0.0f64, 0u32, Instant::now(), 0.0f64);   // --profil : ms de physique, ms de rendu, images
 
     'jeu: loop {
         for e in ev.poll_iter() {
@@ -162,6 +172,7 @@ fn main() -> Result<(), String> {
         avant = Instant::now();
         if let Some(t) = tirage_debut { sim.tirage = (t.elapsed().as_secs_f64() / TIRAGE_S).min(1.0) as f32; }
 
+        let t_phys = Instant::now();
         if !pause {
             sim.step(dt);
             for (id, ferme) in std::mem::take(&mut sim.contacts) { regles.on_switch(&id, ferme); }
@@ -173,6 +184,7 @@ fn main() -> Result<(), String> {
         for b in sorties.bobines { sim.coil(b); }
         for s in sorties.sons { son.play(s); }
         son.set_music(regles.mode == regles::Mode::Play);
+        mesure.0 += t_phys.elapsed().as_secs_f64() * 1000.0;
 
         // ------------------------------------------------ animation de la scène
         let now = sim.time;
@@ -251,12 +263,28 @@ fn main() -> Result<(), String> {
             let hz = if sim.billes[i].mode == physique::ModeBille::Saucer { -7.0 } else { sim.hauteur(i).min(200.0) };
             (Vector3::new(x, y, -(sim.ball_r + hz)), sim.rotation(i))
         }).collect();
+        let t_rendu = Instant::now();
+        let (rw, rh) = if echelle < 1.0 { ((w as f32 * echelle) as u32, (h as f32 * echelle) as u32) } else { (w, h) };
         unsafe {
-            gl::Viewport(0, 0, w as i32, h as i32);
+            if echelle < 1.0 { cible.preparer(rw, rh); }
+            gl::Viewport(0, 0, rw as i32, rh as i32);
             gl::ClearColor(0.09, 0.05, 0.027, 1.0);
             gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
         }
         scene.dessiner(cam, aspect, &billes, table);
+        if echelle < 1.0 { unsafe { cible.afficher(w, h); } }
+        if profil {
+            mesure.4 += t_rendu.elapsed().as_secs_f64() * 1000.0;
+            unsafe { gl::Finish(); }
+            mesure.1 += t_rendu.elapsed().as_secs_f64() * 1000.0;
+            mesure.2 += 1;
+            if mesure.3.elapsed().as_secs_f32() >= 2.0 {
+                let n = mesure.2.max(1) as f64;
+                println!("{:.0} i/s : physique {:.1} ms, rendu {:.1} ms par image dont {:.1} ms de préparation ({rw}×{rh}, msaa {msaa})",
+                    n / mesure.3.elapsed().as_secs_f64(), mesure.0 / n, mesure.1 / n, mesure.4 / n);
+                mesure = (0.0, 0.0, 0, Instant::now(), 0.0);
+            }
+        } else { mesure.0 = 0.0; }
         if let (Some(f), true) = (&capture, ecoule > apres) {
             let mut px = vec![0u8; (w * h * 3) as usize];
             unsafe {

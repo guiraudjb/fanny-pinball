@@ -49,6 +49,30 @@ cargo run --release
 cargo test --release      # course des palettes, évacuation, rampe
 ```
 
+## Machine modeste
+
+Mesures sur un Celeron G3900T (2 cœurs, 2,6 GHz) avec un Intel HD 510, l'entrée de gamme des puces graphiques intégrées,
+partie automatique en 1280×800, sans synchronisation verticale (`--profil`) :
+
+| Réglage | Images/s | Rendu par image | Physique par image |
+|---|---|---|---|
+| normal (anticrénelage 4×) | 66–72 | 10 ms | 3,5 ms |
+| `--msaa 0` | 76–80 | 9,3 ms | 3 ms |
+| `--leger` | 100–105 | 7 ms | 2 ms |
+
+`--leger` désactive l'anticrénelage, calcule l'image à 70 % de la fenêtre puis l'agrandit, limite le filtrage
+anisotrope à 4× et charge `donnees/scene_leger.glb` (textures deux fois moins fines) si elle existe :
+
+```sh
+node outils/exporter_scene_natif.mjs --px-mm 1.6 --sortie natif/donnees/scene_leger.glb
+cargo run --release -- --leger
+```
+
+Autres réglages : `--echelle 0.5` (définition de l'image calculée, de 0,25 à 1), `--msaa 0|2|4|8`, `--profil` (temps de
+physique et de rendu dans la console). La physique reste à 480 Hz dans tous les cas : c'est elle qui garantit les gestes,
+et elle ne coûte que 2 à 4 ms par image. Les pièces fixes opaques sont fusionnées par matériau au chargement (environ
+370 appels de dessin par image deviennent environ 120).
+
 ## Commandes
 
 Ce sont les mêmes touches que la version web et que le contrôleur Pro Micro (`controleur/fanny_pincab`).

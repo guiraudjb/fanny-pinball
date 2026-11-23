@@ -109,6 +109,7 @@ pub struct Noeud {
     pub visible: bool,
     maillage: Option<usize>,
     pub monde: Matrix4<f32>,
+    fusionne: bool,          // pièce fixe opaque : dessinée dans le lot de son matériau (Scene::lots)
 }
 
 #[derive(Clone, Debug)]
@@ -118,6 +119,7 @@ pub struct Scene {
     textures: Vec<Texture>,
     pub materiaux: Vec<Materiau>,
     maillages: Vec<Vec<Primitive>>,
+    lots: Vec<Primitive>,    // pièces fixes opaques fusionnées par matériau, dans le repère du monde
     pub noeuds: Vec<Noeud>,
     pub noms: HashMap<String, usize>,
     pub mat_noms: HashMap<String, usize>,
@@ -229,11 +231,11 @@ fn normales(pos: &[[f32; 3]], idx: &[u32]) -> Vec<[f32; 3]> {
 }
 
 impl Scene {
-    pub fn charger(chemin: &str) -> Result<Scene, String> {
+    pub fn charger(chemin: &str, aniso_max: f32) -> Result<Scene, String> {
         let (doc, buffers, images) = gltf::import(chemin).map_err(|e| format!("{chemin} : {e}"))?;
         let mut aniso = 1.0f32;
         unsafe { gl::GetFloatv(0x84FF, &mut aniso); }
-        let aniso = aniso.min(16.0);
+        let aniso = aniso.min(aniso_max);
         // textures (images glTF décodées, converties en RGBA)
         let mut textures = vec![];
         let mut pixels: Vec<(u32, u32, Vec<u8>)> = vec![];
@@ -271,7 +273,8 @@ impl Scene {
         let mut materiaux = materiaux;
         materiaux.push(Materiau { nom: "défaut".into(), couleur: [0.8, 0.8, 0.8, 1.0], tex: None, metal: 0.0, rugosite: 0.6,
             emission: [0.0; 3], emission_tex: None, intensite: 1.0, transparent: false, double_face: false, sans_eclairage: false });
-        let mut maillages = vec![];
+        type Brut = (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<[f32; 2]>, Vec<u32>, usize);
+        let mut bruts: Vec<Vec<Brut>> = vec![];
         for m in doc.meshes() {
             let mut prims = vec![];
             for p in m.primitives() {
@@ -281,11 +284,23 @@ impl Scene {
                 let pos: Vec<[f32; 3]> = pos.collect();
                 let idx: Vec<u32> = r.read_indices().map(|i| i.into_u32().collect()).unwrap_or_else(|| (0..pos.len() as u32).collect());
                 let nor: Vec<[f32; 3]> = r.read_normals().map(|n| n.collect()).unwrap_or_else(|| normales(&pos, &idx));
-                let uv: Vec<[f32; 2]> = r.read_tex_coords(0).map(|t| t.into_f32().collect()).unwrap_or_else(|| vec![[0.0, 0.0]; pos.len()]);
-                let v = unsafe { vao(&pos, &nor, &uv, &idx) };
-                prims.push(Primitive { vao: v, n: idx.len() as i32, mat: p.material().index().unwrap_or(defaut) });
+                let mut uv: Vec<[f32; 2]> = r.read_tex_coords(0).map(|t| t.into_f32().collect()).unwrap_or_else(|| vec![[0.0, 0.0]; pos.len()]);
+                // KHR_texture_transform (repeat / offset de Three.js) : les plastiques ont des coordonnées en mm et une
+                // seule texture pour toute la table ; sans la transformation, elle se répète des centaines de fois
+                let mat = p.material();
+                let tt = mat.pbr_metallic_roughness().base_color_texture().and_then(|t| t.texture_transform())
+                    .or_else(|| mat.emissive_texture().and_then(|t| t.texture_transform()));
+                if let Some(t) = tt {
+                    let ([ox, oy], r, [sx, sy]) = (t.offset(), t.rotation(), t.scale());
+                    let (c, s) = (r.cos(), r.sin());
+                    for q in uv.iter_mut() {
+                        let (u, v) = (q[0] * sx, q[1] * sy);
+                        *q = [c * u + s * v + ox, -s * u + c * v + oy];
+                    }
+                }
+                prims.push((pos, nor, uv, idx, p.material().index().unwrap_or(defaut)));
             }
-            maillages.push(prims);
+            bruts.push(prims);
         }
         // nœuds : hiérarchie aplatie (parent avant enfants)
         let mut noeuds: Vec<Noeud> = vec![];
@@ -293,12 +308,48 @@ impl Scene {
             let (t, r, s) = n.transform().decomposed();
             let rq = UnitQuaternion::from_quaternion(Quaternion::new(r[3], r[0], r[1], r[2]));
             out.push(Noeud { nom: n.name().unwrap_or("").to_string(), parent, t: Vector3::from(t), r: rq, s: Vector3::from(s),
-                t0: Vector3::from(t), r0: rq, visible: true, maillage: n.mesh().map(|m| m.index()), monde: Matrix4::identity() });
+                t0: Vector3::from(t), r0: rq, visible: true, maillage: n.mesh().map(|m| m.index()), monde: Matrix4::identity(),
+                fusionne: false });
             let me = out.len() - 1;
             for c in n.children() { ajouter(c, Some(me), out); }
         }
         let sc = doc.default_scene().or_else(|| doc.scenes().next()).ok_or("scène vide")?;
         for n in sc.nodes() { ajouter(n, None, &mut noeuds); }
+        // Fusion des pièces fixes : seuls les nœuds dyn_* (et leurs enfants) bougent ; les autres pièces opaques sont
+        // regroupées par matériau, déjà placées dans le repère du monde. ~370 appels de dessin par image deviennent
+        // ~120 : sur un petit processeur, c'est le nombre d'appels, plus que les pixels, qui coûte.
+        let mut mondes = vec![Matrix4::<f32>::identity(); noeuds.len()];
+        for i in 0..noeuds.len() {
+            let n = &noeuds[i];
+            let local = Matrix4::new_translation(&n.t) * n.r.to_homogeneous() * Matrix4::new_nonuniform_scaling(&n.s);
+            mondes[i] = match n.parent { Some(p) => mondes[p] * local, None => local };
+        }
+        let mobile = |i: usize| { let mut k = Some(i); while let Some(j) = k { if noeuds[j].nom.starts_with("dyn_") { return true; } k = noeuds[j].parent; } false };
+        let opaque = |m: &Materiau| !(m.transparent || m.couleur[3] < 0.999);
+        let mut lots_bruts: Vec<(Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<[f32; 2]>, Vec<u32>)> = (0..materiaux.len()).map(|_| Default::default()).collect();
+        let mut propre = vec![false; bruts.len()];   // maillage qui garde ses propres tampons (pièce mobile ou transparente)
+        let mut fusion = vec![false; noeuds.len()];
+        for i in 0..noeuds.len() {
+            let Some(mi) = noeuds[i].maillage else { continue };
+            if mobile(i) || !bruts[mi].iter().all(|p| opaque(&materiaux[p.4])) { propre[mi] = true; continue; }
+            fusion[i] = true;
+            let m = mondes[i];
+            let n3: Matrix3<f32> = m.fixed_view::<3, 3>(0, 0).into_owned().try_inverse().unwrap_or_else(Matrix3::identity).transpose();
+            for (pos, nor, uv, idx, mat) in &bruts[mi] {
+                let l = &mut lots_bruts[*mat];
+                let base = l.0.len() as u32;
+                l.0.extend(pos.iter().map(|p| { let q = m.transform_point(&Point3::new(p[0], p[1], p[2])); [q.x, q.y, q.z] }));
+                l.1.extend(nor.iter().map(|n| { let v = (n3 * Vector3::new(n[0], n[1], n[2])).try_normalize(1e-12).unwrap_or(Vector3::z()); [v.x, v.y, v.z] }));
+                l.2.extend_from_slice(uv);
+                l.3.extend(idx.iter().map(|k| k + base));
+            }
+        }
+        for (i, f) in fusion.into_iter().enumerate() { noeuds[i].fusionne = f; }
+        let lots: Vec<Primitive> = lots_bruts.iter().enumerate().filter(|(_, l)| !l.3.is_empty())
+            .map(|(mat, l)| Primitive { vao: unsafe { vao(&l.0, &l.1, &l.2, &l.3) }, n: l.3.len() as i32, mat }).collect();
+        let maillages: Vec<Vec<Primitive>> = bruts.iter().enumerate().map(|(mi, prims)| if !propre[mi] { vec![] } else {
+            prims.iter().map(|(pos, nor, uv, idx, mat)| Primitive { vao: unsafe { vao(pos, nor, uv, idx) }, n: idx.len() as i32, mat: *mat }).collect()
+        }).collect();
         let mut cameras = vec![];
         let mut rects: Option<([f32; 4], [f32; 4])> = None;
         if let Some(x) = sc.extras() {
@@ -338,7 +389,7 @@ impl Scene {
             let (w, h, px) = pixels.swap_remove(t);
             Some(Afficheurs { tex: textures[t].id, w, h, fond: px, score, info, texte: String::new() })
         });
-        let mut s = Scene { textures, materiaux, maillages, noeuds, noms, mat_noms, cameras, programme, u, bille, blanc, afficheurs };
+        let mut s = Scene { textures, materiaux, maillages, lots, noeuds, noms, mat_noms, cameras, programme, u, bille, blanc, afficheurs };
         s.mettre_a_jour();
         Ok(s)
     }
@@ -372,7 +423,7 @@ impl Scene {
         let mut transp = vec![];
         for (i, n) in self.noeuds.iter().enumerate() {
             let Some(mi) = n.maillage else { continue };
-            if !self.visible(i) { continue; }
+            if n.fusionne || !self.visible(i) { continue; }
             for p in &self.maillages[mi] {
                 let m = &self.materiaux[p.mat];
                 if m.transparent || m.couleur[3] < 0.999 {
@@ -396,6 +447,8 @@ impl Scene {
             gl::Enable(gl::DEPTH_TEST);
             gl::DepthMask(gl::TRUE);
             gl::Disable(gl::BLEND);
+            let id = Matrix4::identity();
+            for p in &self.lots { self.primitive(&id, p.vao, p.n, &self.materiaux[p.mat]); }
             for (i, p) in opaques { self.primitive(&self.noeuds[i].monde, p.vao, p.n, &self.materiaux[p.mat]); }
             // billes d'acier : repère de la table
             if let Some(t) = table {
@@ -459,3 +512,40 @@ unsafe fn sphere(r: f32, nlon: u32, nlat: u32) -> (GLuint, i32) {
 /// vecteur colonne utilitaire (évite un avertissement si non utilisé ailleurs)
 #[allow(dead_code)]
 pub fn v4(x: f32, y: f32, z: f32) -> Vector4<f32> { Vector4::new(x, y, z, 1.0) }
+
+/// Image calculée en définition réduite (machine modeste) : rendu dans un tampon hors écran, puis agrandi à l'écran
+/// avec filtrage linéaire (glBlitFramebuffer).
+#[derive(Default)]
+pub struct Cible { fbo: GLuint, couleur: GLuint, profondeur: GLuint, w: u32, h: u32 }
+
+impl Cible {
+    pub unsafe fn preparer(&mut self, w: u32, h: u32) {
+        if self.fbo == 0 || self.w != w || self.h != h {
+            if self.fbo != 0 {
+                gl::DeleteFramebuffers(1, &self.fbo);
+                gl::DeleteRenderbuffers(1, &self.couleur);
+                gl::DeleteRenderbuffers(1, &self.profondeur);
+            }
+            gl::GenFramebuffers(1, &mut self.fbo);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
+            gl::GenRenderbuffers(1, &mut self.couleur);
+            gl::BindRenderbuffer(gl::RENDERBUFFER, self.couleur);
+            gl::RenderbufferStorage(gl::RENDERBUFFER, gl::RGBA8, w as i32, h as i32);
+            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::COLOR_ATTACHMENT0, gl::RENDERBUFFER, self.couleur);
+            gl::GenRenderbuffers(1, &mut self.profondeur);
+            gl::BindRenderbuffer(gl::RENDERBUFFER, self.profondeur);
+            gl::RenderbufferStorage(gl::RENDERBUFFER, gl::DEPTH_COMPONENT24, w as i32, h as i32);
+            gl::FramebufferRenderbuffer(gl::FRAMEBUFFER, gl::DEPTH_ATTACHMENT, gl::RENDERBUFFER, self.profondeur);
+            self.w = w;
+            self.h = h;
+        }
+        gl::BindFramebuffer(gl::FRAMEBUFFER, self.fbo);
+    }
+
+    pub unsafe fn afficher(&self, w: u32, h: u32) {
+        gl::BindFramebuffer(gl::READ_FRAMEBUFFER, self.fbo);
+        gl::BindFramebuffer(gl::DRAW_FRAMEBUFFER, 0);
+        gl::BlitFramebuffer(0, 0, self.w as i32, self.h as i32, 0, 0, w as i32, h as i32, gl::COLOR_BUFFER_BIT, gl::LINEAR);
+        gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+    }
+}

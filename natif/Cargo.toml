@@ -10,7 +10,7 @@ rapier3d = "0.22"
 nalgebra = "0.33"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-gltf = { version = "1.4", features = ["import", "extras", "names", "KHR_materials_emissive_strength", "KHR_lights_punctual", "KHR_materials_unlit", "KHR_materials_transmission"] }
+gltf = { version = "1.4", features = ["import", "extras", "names", "KHR_materials_emissive_strength", "KHR_lights_punctual", "KHR_materials_unlit", "KHR_materials_transmission", "KHR_texture_transform"] }
 sdl2 = { version = "0.37", features = ["mixer"] }
 gl = "0.14"
 
