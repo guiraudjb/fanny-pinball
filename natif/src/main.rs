@@ -1,3 +1,5 @@
+// pas de fenêtre de console sous Windows (version publiée)
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 // Fanny Pinball, version native (Rust) : même physique que la version web (monde exporté), mêmes règles, scène 3D
 // exportée du jeu web avec l'habillage de la caisse, dans un café provençal (js/salle.js).
 //
@@ -105,6 +107,37 @@ fn camera_orbite(d: &rendu::Deplie, lacet: f32, tangage: f32, dist: f32, cible_z
     o.x = o.x.clamp(s[0] + 250.0, s[1] - 250.0);
     o.y = o.y.clamp(s[2] + 250.0, s[3] - 250.0);
     o.z = o.z.clamp(s[4] + 300.0, s[5] - 250.0);
+    let m = d.machine_monde;
+    let p = |v: Vector3<f32>| { let q = m * Vector4::new(v.x, v.y, v.z, 1.0); Point3::new(q.x, q.y, q.z) };
+    let haut = (m * Vector4::new(0.0, 0.0, 1.0, 0.0)).xyz().normalize();
+    let vue = Matrix4::look_at_rh(&p(o), &p(c), &haut);
+    rendu::Camera { nom: "orbite".into(), format: "paysage".into(), matrice: vue.try_inverse().unwrap_or_else(Matrix4::identity),
+        fov, near: 20.0, far: 30000.0 }
+}
+
+/// caméra orbitale qui cadre la machine entière, des pieds au haut du fronton levé : la cible est le centre de la
+/// caisse dépliée, et l'angle de champ s'ouvre au besoin (au moins fov_min) pour que les huit coins de la boîte
+/// englobante tiennent dans l'image avec une marge, même quand les murs de la salle rapprochent la caméra
+fn camera_cadree(d: &rendu::Deplie, lacet: f32, tangage: f32, dist: f32, fov_min: f32, aspect: f32) -> rendu::Camera {
+    let (z0, z1) = (-d.h_sol, d.haut);
+    let c = Vector3::new(d.largeur / 2.0, d.longueur * 0.5, (z0 + z1) / 2.0);
+    let mut o = c + Vector3::new(lacet.sin() * tangage.cos(), -lacet.cos() * tangage.cos(), tangage.sin()) * dist;
+    let s = d.salle;
+    o.x = o.x.clamp(s[0] + 250.0, s[1] - 250.0);
+    o.y = o.y.clamp(s[2] + 250.0, s[3] - 250.0);
+    o.z = o.z.clamp(s[4] + 300.0, s[5] - 250.0);
+    let vue_caisse = Matrix4::look_at_rh(&Point3::from(o), &Point3::from(c), &Vector3::z());
+    let (mut tv, mut th) = (0.0f32, 0.0f32);
+    for k in 0..8 {
+        let p = Vector3::new(if k & 1 == 0 { -40.0 } else { d.largeur + 40.0 }, if k & 2 == 0 { -40.0 } else { d.longueur + 40.0 },
+                             if k & 4 == 0 { z0 } else { z1 + 30.0 });
+        let q = vue_caisse * Vector4::new(p.x, p.y, p.z, 1.0);
+        let prof = (-q.z).max(1.0);
+        tv = tv.max(q.y.abs() / prof);
+        th = th.max(q.x.abs() / prof);
+    }
+    let demi = (tv.max(th / aspect.max(0.1)) * 1.10).atan();
+    let fov = (2.0 * demi.to_degrees()).max(fov_min).min(75.0);
     let m = d.machine_monde;
     let p = |v: Vector3<f32>| { let q = m * Vector4::new(v.x, v.y, v.z, 1.0); Point3::new(q.x, q.y, q.z) };
     let haut = (m * Vector4::new(0.0, 0.0, 1.0, 0.0)).xyz().normalize();
@@ -612,9 +645,11 @@ fn main() -> Result<(), String> {
             }
             (Some(d), Ecran::Cinematique) => {
                 let t = t_cine0 as f32;
-                let u = (t / 8.2).min(1.0);
-                let o = camera_orbite(d, -1.05 + 0.75 * u, 0.36 - 0.12 * u, 2900.0 - 900.0 * u, -200.0 + 450.0 * pieds_u, 40.0);
-                camera_melange(&o, &fixe, lisse(t as f64, 8.2, 10.4))
+                // la machine entière reste dans l'image (fronton levé compris) pendant le dépliage et l'allumage,
+                // puis la caméra rejoint la vue de jeu
+                let u = lisse(t as f64, 0.0, 8.6);
+                let o = camera_cadree(d, -1.05 + 0.85 * u, 0.30 - 0.12 * u, 2800.0 - 250.0 * u, 40.0, aspect);
+                camera_melange(&o, &fixe, lisse(t as f64, 8.6, 10.6))
             }
             _ => fixe.clone(),
         };

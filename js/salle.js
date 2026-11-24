@@ -23,6 +23,15 @@ export async function construireSalle(THREE, { L, P, hSol }) {
     t.anisotropy = 8;
     return t;
   };
+  // textures et sprites peints par Krea 2 (outils/salle_krea2.py → assets/salle/) ; à défaut, dessin canvas
+  const charger = (u) => new Promise((ok) => new THREE.TextureLoader().load(u, (t) => { t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; ok(t); }, undefined, () => ok(null)));
+  const peint = async (nom, repete = true) => {
+    const t = await charger(`assets/salle/${nom}`);
+    if (t && repete) t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  };
+  const K = Object.fromEntries(await Promise.all(['tomettes.jpg', 'chaux.jpg', 'soubassement.jpg', 'paysage.jpg', 'ardoise.jpg',
+    'tapis.png', 'olivier.png', 'affiche_papis.jpg', 'comptoir.jpg'].map(async (n) => [n.split('.')[0], await peint(n, !/paysage|ardoise|tapis|olivier|affiche/.test(n))])));
   const alea = (() => { let s = 7; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32); })();
   const boite = (l, p, h, x, y, z, m) => {              // pavé posé : (x, y) centre, z = dessous
     const b = new THREE.Mesh(new THREE.BoxGeometry(l, p, h), m);
@@ -47,7 +56,7 @@ export async function construireSalle(THREE, { L, P, hSol }) {
   };
 
   // ---------------------------------------------------------------- sol : tomettes hexagonales en terre cuite
-  const tomettes = toile(1024, 1024, (c, w, h) => {
+  const tomettes = K.tomettes || toile(1024, 1024, (c, w, h) => {
     c.fillStyle = '#5a2d18'; c.fillRect(0, 0, w, h);
     const r = w / 8, dx = r * Math.sqrt(3), dy = r * 1.5;
     for (let j = -1; j < h / dy + 1; j++) for (let i = -1; i < w / dx + 1; i++) {
@@ -61,13 +70,13 @@ export async function construireSalle(THREE, { L, P, hSol }) {
       c.beginPath(); c.ellipse(cx - r * 0.2, cy - r * 0.25, r * 0.45, r * 0.25, -0.5, 0, 2 * Math.PI); c.fill();
     }
   });
-  tomettes.repeat.set((X1 - X0) / 900, (Y1 - Y0) / 900);
+  tomettes.repeat.set((X1 - X0) / (K.tomettes ? 1300 : 900), (Y1 - Y0) / (K.tomettes ? 1300 : 900));
   const sol = new THREE.Mesh(new THREE.PlaneGeometry(X1 - X0, Y1 - Y0), mat('tomettes', { map: tomettes, roughness: 0.75 }));
   sol.position.set((X0 + X1) / 2, (Y0 + Y1) / 2, SOL);
   g.add(sol);
 
   // ---------------------------------------------------------------- murs : chaux ocre, soubassement lavande
-  const chaux = toile(1024, 1024, (c, w, h) => {
+  const chaux = K.chaux || toile(1024, 1024, (c, w, h) => {
     c.fillStyle = '#e3a857'; c.fillRect(0, 0, w, h);
     for (let k = 0; k < 900; k++) {
       const x = alea() * w, y = alea() * h, r = 20 + alea() * 90;
@@ -78,7 +87,7 @@ export async function construireSalle(THREE, { L, P, hSol }) {
       c.fillStyle = gr; c.fillRect(x - r, y - r, 2 * r, 2 * r);
     }
   });
-  const soubassement = toile(512, 512, (c, w, h) => {
+  const soubassement = K.soubassement || toile(512, 512, (c, w, h) => {
     c.fillStyle = '#7d6fb0'; c.fillRect(0, 0, w, h);
     for (let k = 0; k < 400; k++) {
       c.fillStyle = `rgba(${alea() < 0.5 ? '255,255,255' : '40,20,80'},0.05)`;
@@ -88,7 +97,7 @@ export async function construireSalle(THREE, { L, P, hSol }) {
   const H_SOUB = 950;
   const mur = (x, y, longueur, rz) => {
     const tx = chaux.clone(); tx.needsUpdate = true; tx.repeat.set(longueur / 1400, 3000 / 1400);
-    const ts = soubassement.clone(); ts.needsUpdate = true; ts.repeat.set(longueur / 700, 1);
+    const ts = soubassement.clone(); ts.needsUpdate = true; ts.repeat.set(longueur / (K.soubassement ? 1900 : 700), 1);
     plan(longueur, 3000 - H_SOUB, mat('chaux_' + longueur, { map: tx, roughness: 0.95 }), x, y, SOL + H_SOUB + (3000 - H_SOUB) / 2, rz);
     plan(longueur, H_SOUB, mat('soubassement_' + longueur, { map: ts, roughness: 0.6 }), x, y, SOL + H_SOUB / 2, rz);
   };
@@ -114,7 +123,7 @@ export async function construireSalle(THREE, { L, P, hSol }) {
   for (let y = Y0 + 500; y < Y1; y += 900) boite(X1 - X0, 180, 220, (X0 + X1) / 2, y, HAUT - 220, bois);
 
   // ---------------------------------------------------------------- fenêtres du fond : paysage de lavande au soleil
-  const paysage = toile(1024, 1024, (c, w, h) => {
+  const paysage = K.paysage || toile(1024, 1024, (c, w, h) => {
     const ciel = c.createLinearGradient(0, 0, 0, h * 0.55);
     ciel.addColorStop(0, '#2f8fe0'); ciel.addColorStop(1, '#bfe6ff');
     c.fillStyle = ciel; c.fillRect(0, 0, w, h);
@@ -178,7 +187,6 @@ export async function construireSalle(THREE, { L, P, hSol }) {
   fenetre(L / 2 + 1500);
 
   // ---------------------------------------------------------------- affiches de Fanny au mur gauche
-  const charger = (u) => new Promise((ok) => new THREE.TextureLoader().load(u, (t) => { t.colorSpace = THREE.SRGBColorSpace; ok(t); }, undefined, () => ok(null)));
   const cadre = mat('cadre', { color: 0x3a2414, roughness: 0.5 });
   const affiche = async (url, x, y, z, w, rz) => {
     const t = await charger(url);
@@ -192,11 +200,15 @@ export async function construireSalle(THREE, { L, P, hSol }) {
   await affiche('assets/fronton.jpg', X0 + 4, -400, SOL + 1900, 1100, Math.PI / 2);
   await affiche('assets/fanny_lancer.png', X0 + 4, -1700, SOL + 1750, 650, Math.PI / 2);
   await affiche('assets/fanny_victoire.png', X1 - 4, -2300, SOL + 1750, 650, -Math.PI / 2);
+  if (K.affiche_papis) await affiche('assets/salle/affiche_papis.jpg', X0 + 4, 900, SOL + 1800, 620, Math.PI / 2);
 
   // ---------------------------------------------------------------- ardoise du concours, au mur droit
   const ardoise = toile(1024, 768, (c, w, h) => {
-    c.fillStyle = '#1d2621'; c.fillRect(0, 0, w, h);
-    for (let k = 0; k < 300; k++) { c.fillStyle = 'rgba(255,255,255,0.025)'; c.fillRect(alea() * w, alea() * h, alea() * 120, alea() * 8); }
+    if (K.ardoise) c.drawImage(K.ardoise.image, 0, 0, w, h);
+    else {
+      c.fillStyle = '#1d2621'; c.fillRect(0, 0, w, h);
+      for (let k = 0; k < 300; k++) { c.fillStyle = 'rgba(255,255,255,0.025)'; c.fillRect(alea() * w, alea() * h, alea() * 120, alea() * 8); }
+    }
     c.fillStyle = '#f4f1e8'; c.textAlign = 'center';
     c.font = 'italic 900 92px Georgia, serif'; c.fillText('Grand Concours', w / 2, 140);
     c.font = 'italic 700 72px Georgia, serif'; c.fillText('de Pétanque', w / 2, 230);
@@ -205,9 +217,11 @@ export async function construireSalle(THREE, { L, P, hSol }) {
     c.fillStyle = '#f4f1e8'; c.font = '500 50px Georgia, serif';
     c.fillText('Mise : 5 F · Pastis offert au vainqueur', w / 2, 460);
     c.fillText('Qui perd 13 à 0 embrasse Fanny !', w / 2, 560);
-    c.strokeStyle = '#f4f1e8'; c.lineWidth = 5;
-    for (const [x, r] of [[w / 2 - 90, 34], [w / 2, 34], [w / 2 + 90, 34]]) { c.beginPath(); c.arc(x, 660, r, 0, 2 * Math.PI); c.stroke(); }
-    c.fillStyle = '#e8392c'; c.beginPath(); c.arc(w / 2 + 170, 675, 14, 0, 2 * Math.PI); c.fill();
+    if (!K.ardoise) {
+      c.strokeStyle = '#f4f1e8'; c.lineWidth = 5;
+      for (const [x, r] of [[w / 2 - 90, 34], [w / 2, 34], [w / 2 + 90, 34]]) { c.beginPath(); c.arc(x, 660, r, 0, 2 * Math.PI); c.stroke(); }
+      c.fillStyle = '#e8392c'; c.beginPath(); c.arc(w / 2 + 170, 675, 14, 0, 2 * Math.PI); c.fill();
+    }
   });
   ardoise.wrapS = ardoise.wrapT = THREE.ClampToEdgeWrapping;
   plan(1300, 975, mat('ardoise', { map: ardoise, roughness: 0.9 }), X1 - 16, 400, SOL + 1800, -Math.PI / 2);
@@ -215,7 +229,8 @@ export async function construireSalle(THREE, { L, P, hSol }) {
 
   // ---------------------------------------------------------------- comptoir en zinc, bouteilles, tabourets
   const zinc = mat('zinc', { color: 0xb9bfc6, metalness: 0.9, roughness: 0.3 });
-  const facade = mat('comptoir', { color: 0x6b4226, roughness: 0.7 });
+  if (K.comptoir) K.comptoir.repeat.set(2200 / 1400, 1);
+  const facade = mat('comptoir', K.comptoir ? { map: K.comptoir, roughness: 0.6 } : { color: 0x6b4226, roughness: 0.7 });
   const xc = X1 - 500, yc = -1200;
   boite(700, 2200, 1050, xc, yc, SOL, facade);
   boite(800, 2300, 50, xc - 30, yc, SOL + 1050, zinc);
@@ -266,6 +281,11 @@ export async function construireSalle(THREE, { L, P, hSol }) {
 
   // ---------------------------------------------------------------- olivier en jarre, au fond à gauche
   const xo = X0 + 600, yo = Y1 - 700;
+  if (K.olivier) {
+    const H = 2300, W = (H * K.olivier.image.width) / K.olivier.image.height;
+    const m = mat('olivier_sprite', { map: K.olivier, alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.9 });
+    for (const rz of [Math.PI / 4, -Math.PI / 4]) plan(W, H, m, xo, yo, SOL + H / 2, rz);
+  } else {
   const jarre = new THREE.Mesh(new THREE.SphereGeometry(330, 20, 14), mat('jarre', { color: 0xb8612f, roughness: 0.85 }));
   jarre.scale.set(1, 1, 1.25);
   jarre.position.set(xo, yo, SOL + 380);
@@ -277,6 +297,7 @@ export async function construireSalle(THREE, { L, P, hSol }) {
     f.position.set(xo + (alea() - 0.5) * 900, yo + (alea() - 0.5) * 600, SOL + 1950 + (alea() - 0.3) * 600);
     f.scale.z = 0.7;
     g.add(f);
+  }
   }
 
   // ---------------------------------------------------------------- guirlande de guinguette sous les poutres
@@ -301,7 +322,7 @@ export async function construireSalle(THREE, { L, P, hSol }) {
   guirlande(new THREE.Vector3(X0 + 100, (Y0 + Y1) / 2, zg), new THREE.Vector3(X1 - 100, (Y0 + Y1) / 2, zg), 12, 300);
 
   // ---------------------------------------------------------------- tapis rond sous la machine
-  const tapis = toile(512, 512, (c, w, h) => {
+  const tapis = K.tapis || toile(512, 512, (c, w, h) => {
     c.clearRect(0, 0, w, h);
     for (const [r, col] of [[250, '#8a2b1f'], [222, '#e8b04a'], [200, '#8a2b1f'], [150, '#2f5fa8'], [130, '#8a2b1f']]) {
       c.fillStyle = col; c.beginPath(); c.arc(w / 2, h / 2, r, 0, 2 * Math.PI); c.fill();

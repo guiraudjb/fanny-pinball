@@ -44,7 +44,9 @@ impl Default for Reglages {
 pub struct Score { pub nom: String, pub points: u64, pub date: String }
 
 fn dossier() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from)
+    // Windows : %APPDATA%\fanny-pinball ; ailleurs : $XDG_CONFIG_HOME ou ~/.config
+    let base = (if cfg!(windows) { std::env::var_os("APPDATA").map(PathBuf::from) } else { None })
+        .or_else(|| std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from))
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(|| PathBuf::from("."));
     base.join("fanny-pinball")

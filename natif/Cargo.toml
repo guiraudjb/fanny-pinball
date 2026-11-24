@@ -1,6 +1,6 @@
 [package]
 name = "fanny-pinball"
-version = "0.2.0"
+version = "1.0.0"
 edition = "2021"
 description = "Fanny Pinball, version native : physique Rapier identique à la version web, scène 3D exportée du jeu web"
 license = "MIT"

@@ -1,0 +1,64 @@
+# Compile la version native (natif/) pour Linux et Windows. Les exécutables sont déposés en artefacts ; la release
+# est assemblée par outils/release.sh avec les données 3D (exportées du jeu web, hors dépôt) et les sons.
+name: natif
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+env:
+  SDL2_VERSION: "2.30.9"
+  SDL2_MIXER_VERSION: "2.8.0"
+
+jobs:
+  linux:
+    runs-on: ubuntu-22.04          # glibc 2.35 : tourne sur les distributions de 2022 et après
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --locked
+        working-directory: natif
+      - run: strip natif/target/release/fanny-pinball
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64
+          path: natif/target/release/fanny-pinball
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: SDL2 et SDL2_mixer (bibliothèques de développement Visual C++)
+        shell: pwsh
+        run: |
+          $d = "$env:RUNNER_TEMP\sdl"
+          New-Item -ItemType Directory -Force $d | Out-Null
+          Invoke-WebRequest "https://github.com/libsdl-org/SDL/releases/download/release-$env:SDL2_VERSION/SDL2-devel-$env:SDL2_VERSION-VC.zip" -OutFile "$d\sdl2.zip"
+          Invoke-WebRequest "https://github.com/libsdl-org/SDL_mixer/releases/download/release-$env:SDL2_MIXER_VERSION/SDL2_mixer-devel-$env:SDL2_MIXER_VERSION-VC.zip" -OutFile "$d\mixer.zip"
+          Expand-Archive "$d\sdl2.zip" $d
+          Expand-Archive "$d\mixer.zip" $d
+          $lib = "$d\libs"
+          New-Item -ItemType Directory -Force $lib | Out-Null
+          Copy-Item "$d\SDL2-$env:SDL2_VERSION\lib\x64\*" $lib
+          Copy-Item "$d\SDL2_mixer-$env:SDL2_MIXER_VERSION\lib\x64\*" $lib -Recurse
+          "SDL_LIBS=$lib" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Compilation
+        shell: pwsh
+        working-directory: natif
+        run: |
+          $env:RUSTFLAGS = "-L native=$env:SDL_LIBS"
+          cargo build --release --locked
+      - name: Exécutable et DLL
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force sortie | Out-Null
+          Copy-Item natif\target\release\fanny-pinball.exe sortie\
+          Copy-Item "$env:SDL_LIBS\SDL2.dll", "$env:SDL_LIBS\SDL2_mixer.dll" sortie\
+          Get-ChildItem sortie
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-x86_64
+          path: sortie/
