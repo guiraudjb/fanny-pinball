@@ -2,7 +2,8 @@
 """Fond de la vue bureau de la table VPX (écran 1680 x 1050) : clin d'œil au jeu Arducible « Fanny Pétanque World Tour ».
 
   - la carte des escales du World Tour (pays en aplats ocre, itinéraire en pointillés entre les escales de la rampe), assombrie ;
-  - à gauche : le titre FANNY PÉTANQUE WORLD TOUR et le médaillon de Fanny ;
+  - à gauche : le titre FANNY PÉTANQUE WORLD TOUR, le flipper complet (habillage robe à pois) qui tourne sur lui-même
+    (vues rendues par tourniquet.mjs, --tourniquet) et le médaillon de Fanny ;
   - sous l'afficheur : deux cadres où le script de la table fait défiler deux GIF animés tirés des vidéos du projet,
     le châssis du jeu en action et l'articulation de la boule, puis la signature #arducible, the DIY pétanque game.
 
@@ -11,7 +12,7 @@ dans la scène devant les cadres (PANNEAUX dans generateur/src/main.rs, rectangl
 
 Sources : dépôt du jeu Arducible (vidéos, carte, médaillon, boule dorée, police Alfa Slab One).
 Sorties (versées au dépôt, le générateur n'a pas besoin des sources) : outils/vpx/donnees/fond/
-  fond.jpg  chassis.gif  articulation.gif
+  fond.jpg  chassis.gif  articulation.gif  tourniquet.gif
 
   python3 outils/vpx/fond.py [--source ~/Projets/story/Arducible_Fanny_Petanque_World_Tour]
 """
@@ -22,6 +23,7 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ICI = os.path.dirname(os.path.abspath(__file__))
 ap = argparse.ArgumentParser()
 ap.add_argument('--source', default=os.path.expanduser('~/Projets/story/Arducible_Fanny_Petanque_World_Tour'))
+ap.add_argument('--tourniquet', help='vues du flipper qui tourne (tourniquet.mjs : v00.png…), posées sur le fond')
 a = ap.parse_args()
 S = a.source
 SORTIE = os.path.join(ICI, 'donnees/fond')
@@ -30,6 +32,8 @@ os.makedirs(SORTIE, exist_ok=True)
 W, H = 1680, 1050
 # cadres des deux animations (pixels d'écran) : le générateur y place les flashers
 CADRES = {'chassis': (1158, 628, 1398, 868), 'articulation': (1412, 628, 1652, 868)}
+# à gauche, sans cadre : le flipper complet (habillage robe à pois) qui tourne sur lui-même
+TOURNIQUET = (12, 250, 252, 650)
 CREME, BRUN, OR = (246, 231, 193), (43, 24, 12), (232, 178, 60)
 POLICE = os.path.join(S, 'assets/fonts/AlfaSlabOne-Regular.ttf')
 SCRIPT = next((p for p in ['/usr/share/fonts/opentype/urw-base35/Z003-MediumItalic.otf',
@@ -111,11 +115,11 @@ fond = Image.fromarray((np.clip(A, 0, 1) * 255).astype(np.uint8)).convert('RGBA'
 texte(fond, (205, 70), 'FANNY', 86, ancre='mm', epais=5, angle=4)
 texte(fond, (200, 140), 'PÉTANQUE', 50, fond=OR, ancre='mm', angle=4)
 texte(fond, (195, 192), 'WORLD TOUR', 44, ancre='mm', angle=4)
-med = Image.open(os.path.join(S, 'assets/Images/fanny_10x10cm.png')).convert('RGBA').resize((250, 250), Image.LANCZOS)
+med = Image.open(os.path.join(S, 'assets/Images/fanny_10x10cm.png')).convert('RGBA').resize((164, 164), Image.LANCZOS)
 ombre = Image.new('RGBA', fond.size, (0, 0, 0, 0))
-ImageDraw.Draw(ombre).ellipse((32, 262, 286, 516), fill=(0, 0, 0, 170))
+ImageDraw.Draw(ombre).ellipse((18, 842, 186, 1010), fill=(0, 0, 0, 170))
 fond.alpha_composite(ombre.filter(ImageFilter.GaussianBlur(8)))
-fond.alpha_composite(med, (24, 250))
+fond.alpha_composite(med, (12, 834))
 
 # ------------------------------------------------------------------ sous l'afficheur : cadres des GIF et signature
 d = ImageDraw.Draw(fond)
@@ -168,7 +172,18 @@ infos = {
     # vidéo « assemblage articulation » : la boule sur son articulation, aller-retour
     'articulation': gif('articulation', 'assemblage-articulation.mp4', 0, 2.75, 8, (576, 576, 0, 30), aller_retour=True),
 }
-json.dump({'cadres': CADRES, 'gif': {k: {'images': n, 'fps': f} for k, (n, f) in infos.items()}},
+# flipper qui tourne : chaque vue (fond transparent, ombre au sol comprise) posée sur le morceau de fond qu'elle couvre
+if a.tourniquet:
+    x0, y0, x1, y1 = TOURNIQUET
+    sous = fond.crop(TOURNIQUET)
+    vues = []
+    for f in sorted(os.listdir(a.tourniquet)):
+        if f.endswith('.png'):
+            v = Image.open(os.path.join(a.tourniquet, f)).convert('RGBA').resize((x1 - x0, y1 - y0), Image.LANCZOS)
+            im = sous.copy(); im.alpha_composite(v); vues.append(im.convert('RGB'))
+    vues[0].save(os.path.join(SORTIE, 'tourniquet.gif'), save_all=True, append_images=vues[1:], duration=83, loop=0, optimize=True)
+    infos['tourniquet'] = (len(vues), 12)
+json.dump({'cadres': {**CADRES, 'tourniquet': TOURNIQUET}, 'gif': {k: {'images': n, 'fps': f} for k, (n, f) in infos.items()}},
           open(os.path.join(SORTIE, 'fond.json'), 'w'), indent=1)
 print(SORTIE, infos)
 print([(n, int(x), int(y)) for (n, _, _), (x, y) in zip(ESCALES, pts)])

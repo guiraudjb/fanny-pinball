@@ -33,18 +33,24 @@ use vpin::vpx::{
 };
 
 const MM: f32 = 1.0 / 0.54; // mm → unités VP
-// vitesse de tir du lanceur au clavier (vpinball : speed_fire / 100 × course tirée ; 80 par défaut, trop faible pour
-// les 1 263 mm du plateau : la bille doit monter tout le couloir et faire le tour du haut). Réglé à l'essai (TIR_LANCEUR=…).
-const TIR_LANCEUR: f32 = 200.0;
+// Frappe propre du lanceur de vpinball : presque nulle. Au clavier il partait tout ou rien (rien sous 0,45 s d'appui,
+// pleine vitesse au-delà de 0,7 s) ; la vitesse de la bille est donnée par le script (LacherLanceur : durée d'appui,
+// ressort précomprimé, comme le jeu web), le lanceur de vpinball ne sert plus qu'au geste. TIR_LANCEUR=… pour essayer.
+const TIR_LANCEUR: f32 = 5.0;
+/// vitesse de tirage du lanceur (vpinball speed_pull, 0,5 par défaut : pleine course en moins de 0,3 s) : le geste
+/// suit l'appui, pleine course en 0,7 à 0,9 s comme TIRAGE_MS du script.
+const TIRAGE_LANCEUR: f32 = 0.1;
 /// luminosité de l'afficheur à points (1 = vpinball par défaut)
 const LUMINOSITE_AFFICHEUR: f32 = 1.0;
 /// force des reflets sur le plateau (0 à 1 ; la table minimale de vpin met 1, trop fort : effet miroir)
 const REFLET_PLATEAU: f32 = 0.12;
 /// Panneaux animés du fond (vue bureau) : GIF, flasher, centre x, y, hauteur et côté en mm (repère du plateau), tournés
 /// de 45° vers la caméra ; ils recouvrent les cadres dessinés par fond.py sous l'afficheur (réglés à l'écran).
-const PANNEAUX: [(&str, &str, f32, f32, f32, f32); 2] = [
-    ("chassis", "GifChassis", 552.5, 1217.5, 332.5, 110.0),
-    ("articulation", "GifArticulation", 673.0, 1217.5, 332.5, 112.0),
+/// Dernières valeurs : largeur et hauteur (dans le plan du panneau, mm).
+const PANNEAUX: [(&str, &str, f32, f32, f32, f32, f32); 3] = [
+    ("chassis", "GifChassis", 552.5, 1217.5, 332.5, 110.0, 110.0),
+    ("articulation", "GifArticulation", 673.0, 1217.5, 332.5, 112.0, 112.0),
+    ("tourniquet", "GifTourniquet", -191.0, 732.0, 118.0, 207.0, 350.0),
 ];
 /// place du fronton sur le fond de la vue bureau : gauche, haut, largeur (fractions de l'écran)
 const FRONTON_BUREAU: [f32; 3] = [0.64, 0.04, 0.34];
@@ -343,7 +349,8 @@ fn main() {
     let tir: f32 = std::env::var("TIR_LANCEUR").ok().and_then(|s| s.parse().ok()).unwrap_or(TIR_LANCEUR);
     items.push(GameItemEnum::Plunger(Plunger { name: "Plunger".into(),
         center: Vertex2D::new(f(&l["x"]) * MM, (f(&l["ballY"]) + f(&t["BALL_R"])) * MM + course),
-        width: 22.0 * MM * 0.5, stroke: course, speed_fire: tir, mech_strength: tir, is_visible: vu, ..Default::default() }));
+        width: 22.0 * MM * 0.5, stroke: course, speed_fire: tir, mech_strength: tir, is_visible: vu,
+        speed_pull: std::env::var("TIRAGE_LANCEUR").ok().and_then(|s| s.parse().ok()).unwrap_or(TIRAGE_LANCEUR), ..Default::default() }));
     // contact SHOOTER : bille posée sur le lanceur
     let mut capt = Trigger { name: "CapteurLanceur".into(), center: p2(f(&l["x"]), f(&l["ballY"])), radius: 25.0,
         shape: TriggerShape::None, is_visible: false, ..Default::default() };
@@ -438,7 +445,7 @@ fn main() {
     // GIF animés du décor (châssis, articulation de la boule) : une image VPX par vue, jouées par le script sur deux
     // flashers tournés vers la caméra devant les cadres du fond (fond.py, CADRES). Position réglée sur la Batocera.
     let mut gifs = String::new();
-    for &(nom, flasher, x, y, z, cote) in PANNEAUX.iter() {
+    for &(nom, flasher, x, y, z, larg, haut) in PANNEAUX.iter() {
         let chemin = ici.join("donnees/fond").join(format!("{nom}.gif"));
         let Ok(fichier) = fs::File::open(&chemin) else { continue };
         use image::AnimationDecoder;
@@ -455,7 +462,7 @@ fn main() {
             rot_x: -45.0, display_texture: true, alpha: 100, is_visible: true, filter: Filter::None, image_alignment: RampImageAlignment::Wrap,
             color: Color::from_rgb(0xffffff), modulate_vs_add: 1.0, ..Default::default() };
         // ordre des points inverse (sinon la face est tournée vers le dessous et n'est pas dessinée)
-        fl.drag_points = [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)].iter().map(|&(a, b)| dp(x + a * cote / 2.0, y + b * cote / 2.0, 0.0)).collect();
+        fl.drag_points = [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)].iter().map(|&(a, b)| dp(x + a * larg / 2.0, y + b * haut / 2.0, 0.0)).collect();
         items.push(GameItemEnum::Flasher(fl));
         gifs += &format!("Array({flasher}, \"{nom}_\", {}, {ms}), ", vues.len());
     }

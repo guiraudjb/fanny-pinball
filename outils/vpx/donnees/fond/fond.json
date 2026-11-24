@@ -11,6 +11,12 @@
    628,
    1652,
    868
+  ],
+  "tourniquet": [
+   12,
+   250,
+   252,
+   650
   ]
  },
  "gif": {
@@ -21,6 +27,10 @@
   "articulation": {
    "images": 42,
    "fps": 8
+  },
+  "tourniquet": {
+   "images": 48,
+   "fps": 12
   }
  }
 }

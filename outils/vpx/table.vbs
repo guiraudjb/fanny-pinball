@@ -101,6 +101,7 @@ Sub Table1_Init()
   If GetCustomParam(1) = "balayage" Then Apres 1500, "BalayageLot"
   If GetCustomParam(1) = "rampe" Then Apres 1500, "EssaiRampe"
   If GetCustomParam(1) = "logique" Then essaiLogique = True : Apres 1500, "LogiqueDepart"
+  If GetCustomParam(1) = "lanceur" Then essaiLogique = True : logiqueProtege = True : Apres 1500, "LanceurDepart"
 End Sub
 
 ' ---------------------------------------------------------------- décor d'origine : pièces animées à chaque image
@@ -128,10 +129,10 @@ End Sub
 ' départ, tir du lanceur à pleine course, positions de la bille dans le journal de vpinball (Debug.Print)
 Dim testT0 : testT0 = 0
 Sub TestDepart() : Debug.Print "ESSAI depart" : StartGame : Apres 2500, "TestTire" : End Sub
-Sub TestTire() : Debug.Print "ESSAI tire" : Plunger.PullBack : Apres 1500, "TestLache" : End Sub
+Sub TestTire() : Debug.Print "ESSAI tire" : TirerLanceur : Apres 1500, "TestLache" : End Sub
 Sub TestLache()
   Debug.Print "ESSAI lache"
-  Plunger.Fire
+  LacherLanceur
   testT0 = maintenant
   Apres 100, "TestJournal"
 End Sub
@@ -143,6 +144,89 @@ Sub TestJournal()
   If maintenant - testT0 < 4000 Then Apres 100, "TestJournal" Else TestPalettes
 End Sub
 Sub TestPalettes() : Debug.Print "ESSAI palettes" : LeftFlipper.RotateToEnd : RightFlipper.RotateToEnd : End Sub
+
+' ---------------------------------------------------------------- lanceur à ressort (comme js/sim.js forceLanceur)
+' Le lanceur de vpinball, tiré au clavier, part tout ou rien (rien sous 0,45 s d'appui, pleine vitesse au-delà de 0,7 s).
+' Comme le jeu web : la durée d'appui donne le tirage (pleine course en TIRAGE_MS), le ressort précomprimé de PRECHARGE
+' mm rend k·(x0·x + x²/2), la bille part à LANCEUR_V × √(énergie) : 110 % tiré à fond, presque rien à peine tiré.
+' Le lanceur de vpinball reste pour le geste (tirage, retour) ; sa propre frappe est faible (speed_fire du générateur).
+' LANCEUR_V : tiré à fond (110 %), la bille fait l'arrondi du haut, tombe dans un couloir T-O-U-R puis dans les bumpers
+' (mesuré : couloirs de 32,5 à 34 ; au-delà elle fait le tour et redescend à gauche ; -c1 lanceur). Tout appui de
+' plus de 0,85 s donne ce tir ; en deçà, la bille part moins fort.
+Const LANCEUR_V = 30.3, TIRAGE_MS = 900, PRECHARGE = 20, COURSE_LANCEUR = 50
+Dim tirageDebut : tirageDebut = -1
+Function ForceLanceur(p)
+  Dim x : If p < 0 Then p = 0
+  If p > 1 Then p = 1
+  x = p * COURSE_LANCEUR
+  ForceLanceur = 1.1 * Sqr((PRECHARGE * x + x * x / 2) / (PRECHARGE * COURSE_LANCEUR + COURSE_LANCEUR * COURSE_LANCEUR / 2))
+End Function
+' bille posée sur le lanceur (couloir de droite, en bas, presque immobile)
+Function BilleSurLanceur()
+  Dim b : Set BilleSurLanceur = Nothing
+  For Each b In GetBalls
+    If b.X * 0.54 > 482 And b.Y * 0.54 > 1080 And Abs(b.VelY) < 3 Then Set BilleSurLanceur = b
+  Next
+End Function
+Dim lanceurTrace
+Sub LancerBille(v)
+  Dim b : Set b = BilleSurLanceur()
+  If b Is Nothing Then
+    If GetCustomParam(1) = "lanceur" Then Debug.Print "LANCEUR   pas de bille sur le lanceur"
+    Exit Sub
+  End If
+  ' bille posée : ni vitesse de côté ni rotation (une rotation restée d'avant la freine contre la paroi du couloir)
+  b.AngMomX = 0 : b.AngMomY = 0 : b.AngMomZ = 0
+  b.X = 498 / 0.54                                          ' dans l'axe du couloir (posée contre sa paroi, elle frotte et cale)
+  b.VelX = 0 : b.VelY = -v * (1 + (Rnd - 0.5) * 0.04)
+End Sub
+Sub TirerLanceur() : tirageDebut = GameTime : Plunger.PullBack : End Sub
+Sub LacherLanceur()
+  Plunger.Fire
+  If tirageDebut < 0 Then Exit Sub
+  LancerBille LANCEUR_V * ForceLanceur((GameTime - tirageDebut) / TIRAGE_MS)
+  tirageDebut = -1
+End Sub
+
+' ---------------------------------------------------------------- dosage du lanceur (VPinballX -c1 lanceur)
+' Pour chaque durée d'appui : bille posée sur le lanceur, tirage, lâcher (même chemin que le clavier) ; on note
+' la vitesse de départ, le point le plus haut atteint et les points marqués (couloirs T-O-U-R 300, bumpers 100…).
+Dim LANCEUR_MS : LANCEUR_MS = Array(300, 600, 800, 850, 900, 1000, 1200, 1500, 2000, 3000, 900, 1000, 1200, 1500, 2000, 900, 1100, 1300)   ' durées d'appui
+Dim lanceurI, lanceurT0, lanceurYmin, lanceurV, lanceurScore, lanceurPos
+Sub LanceurDepart() : Debug.Print "LANCEUR depart" : StartGame : lanceurI = 0 : Apres 3000, "LanceurPose" : End Sub
+Function LanceurBille()
+  Dim b : Set LanceurBille = Nothing
+  For Each b In GetBalls : Set LanceurBille = b : Next
+End Function
+Sub LanceurPose()
+  Dim b : Set b = LanceurBille()
+  If b Is Nothing Then Apres 500, "LanceurPose" : Exit Sub
+  Distributeur.Enabled = False                            ' sinon il attrape la bille au passage
+  b.X = 498 / 0.54 : b.Y = 1178 / 0.54 : b.Z = 25 : b.VelX = 0 : b.VelY = 0 : b.VelZ = 0   ' sur la pointe du lanceur
+  Apres 2500, "LanceurTire"
+End Sub
+Sub LanceurTire() : TirerLanceur : Apres LANCEUR_MS(lanceurI), "LanceurLache" : End Sub
+Sub LanceurLache()
+  lanceurPos = 0
+  LacherLanceur
+  lanceurT0 = maintenant : lanceurYmin = 9999 : lanceurV = 0 : lanceurScore = score : logiqueDetail = "" : lanceurTrace = ""
+  Apres 20, "LanceurSuivi"
+End Sub
+Sub LanceurSuivi()
+  Dim b : Set b = LanceurBille()
+  If Not b Is Nothing Then
+    If -b.VelY > lanceurV Then lanceurV = -b.VelY
+    If b.Y * 0.54 < lanceurYmin Then lanceurYmin = b.Y * 0.54
+    If (maintenant - lanceurT0) Mod 200 < 20 And maintenant - lanceurT0 < 2600 Then lanceurTrace = lanceurTrace & " " & Int(b.X * 0.54) & "," & Int(b.Y * 0.54)
+  End If
+  If maintenant - lanceurT0 < 3500 Then Apres 20, "LanceurSuivi" : Exit Sub
+  Debug.Print "LANCEUR appui " & LANCEUR_MS(lanceurI) & " ms : vitesse " & Round(lanceurV, 1) & _
+    ", plus haut y=" & Int(lanceurYmin) & " mm, points " & (score - lanceurScore) & " [" & Left(logiqueDetail, 120) & " ]"
+  Debug.Print "LANCEUR   trajet" & lanceurTrace
+  lanceurI = lanceurI + 1
+  If lanceurI > UBound(LANCEUR_MS) Then Debug.Print "LANCEUR fin" : Exit Sub
+  LanceurPose
+End Sub
 
 ' ---------------------------------------------------------------- balayage des zones de blocage (VPinballX -c1 balayage)
 ' Des billes posées sans vitesse sur une grille de tout le plateau (et sur la rampe), par lots de billes éloignées :
@@ -623,7 +707,7 @@ End Sub
 Sub Table1_KeyDown(ByVal keycode)
   If keycode = StartGameKey Then StartGame : Exit Sub
   If keycode = AddCreditKey Or keycode = AddCreditKey2 Then AddCredit : Exit Sub
-  If keycode = PlungerKey Then Plunger.PullBack : Exit Sub
+  If keycode = PlungerKey Then TirerLanceur : Exit Sub
   If keycode = LeftTiltKey Then Nudge 90, 2 : Secousse : Exit Sub
   If keycode = RightTiltKey Then Nudge 270, 2 : Secousse : Exit Sub
   If keycode = CenterTiltKey Then Nudge 0, 2 : Secousse : Exit Sub
@@ -638,7 +722,7 @@ End Sub
 
 Sub Table1_KeyUp(ByVal keycode)
   If keycode = PlungerKey Then
-    Plunger.Fire
+    LacherLanceur
     If shooterClosed Then Son SND_LAUNCH
   End If
   If keycode = LeftFlipperKey Then LeftFlipper.RotateToStart
@@ -696,6 +780,7 @@ Sub LancementAuto()
   If Not shooterClosed Then Exit Sub
   Son SND_LAUNCH
   Plunger.AutoPlunger = True : Plunger.Fire : Plunger.AutoPlunger = False
+  LancerBille LANCEUR_V * ForceLanceur(1)                 ' plein tir (le lanceur de vpinball ne frappe presque pas)
 End Sub
 
 Sub Drain_Hit()
