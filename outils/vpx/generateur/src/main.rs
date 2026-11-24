@@ -11,6 +11,7 @@
 // Les éléments partent des valeurs par défaut de vpinball (bibliothèque vpin, celle de vpxtool) : on ne fixe que
 // la position, les dimensions et les noms utilisés par le script. 1 unité VP = 0,54 mm (bille de 27 mm = 50 u).
 use serde_json::Value;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use vpin::vpx::{
@@ -19,7 +20,7 @@ use vpin::vpx::{
     gameitem::{
         GameItemEnum, bumper::Bumper, dragpoint::DragPoint, flipper::Flipper, gate::Gate, hittarget::{HitTarget, TargetType},
         kicker::{Kicker, KickerType}, light::Light, plunger::Plunger, ramp::{Ramp, RampType}, spinner::Spinner,
-        textbox::TextBox, timer::Timer, trigger::{Trigger, TriggerShape}, vertex2d::Vertex2D, vertex3d::Vertex3D, wall::Wall,
+        textbox::{TextAlignment, TextBox}, font::Font, timer::Timer, trigger::{Trigger, TriggerShape}, vertex2d::Vertex2D, vertex3d::Vertex3D, wall::Wall,
     },
     image::ImageData,
     material::{SaveMaterial, SavePhysicsMaterial},
@@ -305,11 +306,14 @@ fn main() {
     }
 
     // ---------------------------------------------------------------- afficheurs (fronton) et horloge du script
-    let mut score = TextBox { name: "Afficheur".into(), ver1: Vertex2D::new(150.0, 560.0), ver2: Vertex2D::new(850.0, 640.0),
-        text: "FANNY".into(), ..Default::default() };
+    // Sans écran de fronton (Batocera, écran unique), les boîtes de texte se dessinent par-dessus le plateau :
+    // fond transparent, en haut de l'écran, police lisible (taille OLE en 1/10 000 de point).
+    let police = |pt: u32| Font::new(0, HashSet::new(), 700, pt * 10000, "Arial".into());
+    let mut score = TextBox { name: "Afficheur".into(), ver1: Vertex2D::new(12.0, 6.0), ver2: Vertex2D::new(430.0, 66.0),
+        text: "FANNY".into(), is_transparent: true, align: TextAlignment::Left, font: police(30), ..Default::default() };
     score.back_color = Color::from_rgb(0x000000); score.font_color = Color::from_rgb(0xff3a1a);
-    let mut info = TextBox { name: "AfficheurInfo".into(), ver1: Vertex2D::new(350.0, 650.0), ver2: Vertex2D::new(650.0, 720.0),
-        text: "PLAY".into(), ..Default::default() };
+    let mut info = TextBox { name: "AfficheurInfo".into(), ver1: Vertex2D::new(740.0, 6.0), ver2: Vertex2D::new(988.0, 66.0),
+        text: "PLAY".into(), is_transparent: true, align: TextAlignment::Right, font: police(30), ..Default::default() };
     info.back_color = Color::from_rgb(0x000000); info.font_color = Color::from_rgb(0xffb020);
     items.push(GameItemEnum::TextBox(score));
     items.push(GameItemEnum::TextBox(info));
