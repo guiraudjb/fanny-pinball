@@ -98,6 +98,8 @@ Sub Table1_Init()
   If IsNumeric(hs) Then highScore = CLng(hs)
   Musique SND_MUSIQUE_GENERIQUE
   If GetCustomParam(1) = "test" Then Apres 1500, "TestDepart"
+  If GetCustomParam(1) = "balayage" Then Apres 1500, "BalayageLot"
+  If GetCustomParam(1) = "rampe" Then Apres 1500, "EssaiRampe"
 End Sub
 
 ' ---------------------------------------------------------------- décor d'origine : pièces animées à chaque image
@@ -140,6 +142,128 @@ Sub TestJournal()
   If maintenant - testT0 < 4000 Then Apres 100, "TestJournal" Else TestPalettes
 End Sub
 Sub TestPalettes() : Debug.Print "ESSAI palettes" : LeftFlipper.RotateToEnd : RightFlipper.RotateToEnd : End Sub
+
+' ---------------------------------------------------------------- balayage des zones de blocage (VPinballX -c1 balayage)
+' Des billes posées sans vitesse sur une grille de tout le plateau (et sur la rampe), par lots de billes éloignées :
+' plateau incliné, palettes baissées, une bille qui ne bouge plus au bout de 4 s est coincée (BLOQUE) ; une bille
+' qui sort du plateau ou passe dessous trahit un collider mal orienté (PERDUE).
+Const LOT_BALAYAGE = 14
+Dim balayageI : balayageI = 0
+Dim balPas : balPas = 0
+Dim balDepart(13), balX(13), balY(13), balN
+
+' DestroyBall laisse en place une bille coincée dans un pli : on la pose dans l'évacuation, Drain_Hit la retire
+Sub ViderTable()
+  Dim b
+  For Each b In GetBalls
+    b.X = 240 / 0.54 : b.Y = 1125 / 0.54 : b.Z = 25 : b.VelX = 0 : b.VelY = 2 : b.VelZ = 0
+  Next
+End Sub
+
+Sub BalayageLot()
+  Dim i, k, b, total
+  total = (UBound(POINTS_ESSAI) + 1) / 3
+  ViderTable
+  If balayageI >= total Then Debug.Print "BALAYAGE fin " & total & " points" : Exit Sub
+  balPas = Int(total / LOT_BALAYAGE) + 1
+  balN = 0
+  For i = 0 To LOT_BALAYAGE - 1
+    k = (balayageI Mod balPas) + i * balPas        ' points répartis sur tout le plateau dans un même lot
+    If k < total And balayageI < total Then
+      Distributeur.Enabled = True
+      Set b = Distributeur.CreateBall
+      Distributeur.Kick 0, 0
+      b.X = POINTS_ESSAI(3 * k) : b.Y = POINTS_ESSAI(3 * k + 1) : b.Z = POINTS_ESSAI(3 * k + 2)
+      b.VelX = 0 : b.VelY = 0 : b.VelZ = 0
+      balDepart(balN) = k : balN = balN + 1
+    End If
+  Next
+  Distributeur.Enabled = False
+  balayageI = balayageI + 1
+  If balayageI > balPas Then balayageI = total
+  Apres 3000, "BalayageMesure1"
+End Sub
+
+Sub BalayageMesure1()
+  Dim b, i : i = 0
+  For Each b In GetBalls
+    If i < 14 Then balX(i) = b.X : balY(i) = b.Y
+    i = i + 1
+  Next
+  balN = i
+  Apres 1500, "BalayageMesure2"
+End Sub
+
+' une bille coincée est encore (à 3 VP près) là où était une bille 1,5 s plus tôt
+Sub BalayageMesure2()
+  Dim b, i, d, dmin
+  For Each b In GetBalls
+    dmin = 1E9
+    For i = 0 To balN - 1
+      If i < 14 Then
+        d = Sqr((b.X - balX(i)) ^ 2 + (b.Y - balY(i)) ^ 2)
+        If d < dmin Then dmin = d
+      End If
+    Next
+    If b.Z < -20 Or b.X < -20 Or b.X > 1000 Or b.Y < -20 Or b.Y > 2400 Then
+      Debug.Print "PERDUE x=" & Int(b.X) & " y=" & Int(b.Y) & " z=" & Int(b.Z)
+    ElseIf dmin < 3 And b.X < 880 Then
+      Debug.Print "BLOQUE x=" & Int(b.X) & " y=" & Int(b.Y) & " z=" & Int(b.Z)
+    End If
+  Next
+  Debug.Print "BALAYAGE lot " & balayageI & "/" & balPas
+  BalayageLot
+End Sub
+
+' ---------------------------------------------------------------- essai de la rampe (VPinballX -c1 rampe)
+' tirs de face à trois vitesses (unités VP par 10 ms), puis billes posées derrière l'entrée, sous la rampe
+Dim ESSAIS_RAMPE : ESSAIS_RAMPE = Array( _
+  Array("face lent", 196, 570, 25, -0.2, -0.98, 22), Array("face moyen", 196, 570, 25, -0.2, -0.98, 32), _
+  Array("face fort", 196, 570, 25, -0.2, -0.98, 45), Array("arriere 1", 178, 455, 25, 0, 0, 0), _
+  Array("arriere 2", 165, 440, 25, 0, 0, 0), Array("arriere 3", 190, 430, 25, 0, 0, 0), _
+  Array("haut 100", 100, 300, 25, 0.1, 1, 15), Array("haut 125", 125, 300, 25, 0.1, 1, 15), _
+  Array("haut 150", 150, 300, 25, 0, 1, 15), Array("haut 175", 175, 300, 25, 0, 1, 15), _
+  Array("haut 200", 200, 300, 25, -0.1, 1, 15), Array("haut 225", 225, 300, 25, -0.2, 1, 15), _
+  Array("haut 150 vite", 150, 250, 25, -0.1, 1, 35), Array("haut 180 vite", 180, 250, 25, -0.2, 1, 35))
+Dim essaiRampeI : essaiRampeI = 0
+Dim essaiT0, essaiZmax
+
+Sub EssaiRampe()
+  Dim b, e
+  ViderTable
+  If essaiRampeI > UBound(ESSAIS_RAMPE) Then Debug.Print "RAMPE fin" : Exit Sub
+  e = ESSAIS_RAMPE(essaiRampeI)
+  Distributeur.Enabled = True
+  Set b = Distributeur.CreateBall
+  Distributeur.Kick 0, 0
+  Distributeur.Enabled = False
+  b.X = e(1) / 0.54 : b.Y = e(2) / 0.54 : b.Z = e(3)
+  b.VelX = e(4) * e(6) : b.VelY = e(5) * e(6) : b.VelZ = 0
+  Debug.Print "RAMPE essai " & e(0)
+  essaiT0 = maintenant : essaiZmax = 0
+  Apres 100, "EssaiRampeSuivi"
+End Sub
+
+Sub EssaiRampeSuivi()
+  Dim b, n : n = 0
+  For Each b In GetBalls
+    n = n + 1
+    If b.Z > essaiZmax Then essaiZmax = b.Z
+    If ((maintenant - essaiT0) Mod 300) < 100 Then Debug.Print "RAMPE   t=" & (maintenant - essaiT0) & " x=" & Int(b.X * 0.54) & " y=" & Int(b.Y * 0.54) & " h=" & Int((b.Z - 25) * 0.54) & "mm"
+  Next
+  If n = 0 Or maintenant - essaiT0 > 6000 Then
+    Debug.Print "RAMPE   hauteur max " & Int((essaiZmax - 25) * 0.54) & " mm" & IIf(n = 0, " (evacuee)", "")
+    For Each b In GetBalls : Debug.Print "RAMPE   fin x=" & Int(b.X * 0.54) & " y=" & Int(b.Y * 0.54) & " h=" & Int((b.Z - 25) * 0.54) : Next
+    essaiRampeI = essaiRampeI + 1
+    Apres 200, "EssaiRampe"
+  Else
+    Apres 100, "EssaiRampeSuivi"
+  End If
+End Sub
+
+Function IIf(c, a, b)
+  If c Then IIf = a Else IIf = b
+End Function
 
 Sub Table1_Exit()
   SaveValue "FannyPinball", "HighScore", highScore
@@ -399,7 +523,7 @@ Sub LancementAuto()
 End Sub
 
 Sub Drain_Hit()
-  Drain.DestroyBall
+  ActiveBall.DestroyBall
   ballsInPlay = ballsInPlay - 1 : If ballsInPlay < 0 Then ballsInPlay = 0
   If mode <> "play" Then Exit Sub
   If tilted Then
@@ -655,6 +779,9 @@ End Sub
 
 ' --- rampe : escales du World Tour, jackpot en multiball
 Sub CapteurRampe_Hit()
+  ' le capteur est un volume posé sur le plateau : une bille qui passe dessous, sur le plateau, ne compte pas
+  If ActiveBall.Z < 55 Then Exit Sub
+  If GetCustomParam(1) = "rampe" Then Debug.Print "RAMPE   capteur de rampe : passage réussi"
   If Not Contact() Then Exit Sub
   Ajouter 2000, 200
   If multiball Then

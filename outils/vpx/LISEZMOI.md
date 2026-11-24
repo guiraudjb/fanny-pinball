@@ -14,6 +14,7 @@ Prérequis : Node 22, Google Chrome, Rust récent (rustup) et `vpxtool` (`cargo 
 |---|---|
 | `exporter_vpx.mjs` | `donnees/table.json` (géométrie de `js/table.js` en mm) et `donnees/plateau.png` (plateau peint par le moteur 2D, 2 px/mm) |
 | `decor_glb.py` | décor 3D de la version d'origine : `natif/donnees/scene.glb` (vue 3D du jeu web) → `donnees/decor` (groupes par matière, textures, plateau HD) ; sans le café ni les pieds |
+| `collisions.py` | colliders 3D du jeu d'origine (`natif/donnees/monde.json` : parois, poteaux, rampe et ses pattes, bloc F-A-N-N-Y, guides…) → `donnees/collisions`, primitives VPX invisibles qui remplacent les murs du plan 2D ; calcule aussi les points du balayage |
 | `generateur/` | crate Rust (bibliothèque `vpin`, celle de vpxtool) : murs, palettes, bumpers, lance-pierres, cibles, couloirs, Cercle, tourniquet, rampe en trois tronçons, lampes, afficheurs, matières, sons |
 | `table.vbs` | règles : portage fidèle de `js/rules.js` (mêmes valeurs, mêmes numéros de sons) |
 | `apercu.mjs` | contrôle visuel sans vpinball : `vpxtool export gltf` puis rendu three.js |
@@ -37,3 +38,11 @@ positions de la bille dans le journal de vpinball (`ESSAI t=… x=… y=…`) pu
 (`TIR_LANCEUR` = 200 : la bille monte le couloir, passe le portillon et fait le tour du haut).
 
 Encore à régler en jeu : force des lance-pierres (80), éjection du Cercle (`EjecterCercle`, 12), capteur de rampe.
+
+## Essais sur la machine (Batocera ou VPX local)
+
+`VPinballX_GL -c1 <mode> -Play FannyPinball.vpx`, résultats dans le journal (`Script.Print`) :
+
+- `test` : partie, tir du lanceur, trajectoire de la bille (`ESSAI …`).
+- `balayage` : billes posées sans vitesse sur une grille de 20 mm de tout le plateau (751 points) ; une bille immobile après 4,5 s est signalée `BLOQUE x= y=`, une bille sortie du plateau `PERDUE`.
+- `rampe` : tirs dans la rampe à trois vitesses, billes posées sous la rampe et lâchées du haut du plateau au-dessus de l'entrée (`RAMPE …`).

@@ -99,3 +99,39 @@ pub fn charger(dossier: &Path, pivots: &[(&str, f32, f32)], image: impl Fn(&str,
     }
     out
 }
+
+/// Colliders de la version d'origine (donnees/collisions, préparé par collisions.py depuis natif/donnees/monde.json) :
+/// primitives invisibles et collidables, avec le rebond et le frottement du jeu.
+pub fn collisions(dossier: &Path) -> Vec<GameItemEnum> {
+    let d: Value = serde_json::from_str(&std::fs::read_to_string(dossier.join("collisions.json")).expect("donnees/collisions (python3 collisions.py)")).unwrap();
+    let mut items = vec![];
+    for (k, g) in d["groupes"].as_array().unwrap().iter().enumerate() {
+        let octets = std::fs::read(dossier.join(g["fichier"].as_str().unwrap())).unwrap();
+        let ns = g["sommets"].as_u64().unwrap() as usize;
+        let nt = g["triangles"].as_u64().unwrap() as usize;
+        let ibytes: Vec<u8> = if ns > 65535 { octets[ns * 32..].to_vec() }
+            else { octets[ns * 32..].chunks_exact(4).flat_map(|b| (u32::from_le_bytes(b.try_into().unwrap()) as u16).to_le_bytes()).collect() };
+        let cv = zlib(&octets[..ns * 32]);
+        let ci = zlib(&ibytes);
+        let mut p = Primitive {
+            name: format!("Col{k:03}_{}", g["nom"].as_str().unwrap_or("paroi")),
+            position: Vertex3D::new(0.0, 0.0, 0.0), size: Vertex3D::new(1.0, 1.0, 1.0),
+            is_visible: false, is_collidable: true, is_toy: false, use_3d_mesh: true, static_rendering: true, hit_event: false,
+            elasticity: g["rebond"].as_f64().unwrap_or(0.3) as f32, friction: g["frottement"].as_f64().unwrap_or(0.2) as f32,
+            ..Default::default()
+        };
+        p.rot_and_tra = [0.0; 9];
+        p.elasticity_falloff = 0.0;
+        p.scatter = 0.0;
+        p.overwrite_physics = Some(true);
+        p.collision_reduction_factor = Some(0.0);
+        p.num_vertices = Some(ns as u32);
+        p.compressed_vertices_len = Some(cv.len() as u32);
+        p.compressed_vertices_data = Some(cv);
+        p.num_indices = Some((nt * 3) as u32);
+        p.compressed_indices_len = Some(ci.len() as u32);
+        p.compressed_indices_data = Some(ci);
+        items.push(GameItemEnum::Primitive(Box::new(p)));
+    }
+    items
+}

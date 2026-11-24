@@ -70,6 +70,11 @@ fn son(nom: &str, chemin: &Path) -> SoundData {
 fn mur(nom: &str, pts: &[(f32, f32)], haut: f32, visible: bool) -> Wall {
     let mut w = Wall { name: nom.into(), height_top: haut * MM, height_bottom: 0.0, is_top_bottom_visible: visible,
         is_side_visible: visible, ..Default::default() };
+    // vpinball attend ses polygones dans le sens horaire mathématique (aire signée < 0, y vers le bas) : dans l'autre
+    // sens, les normales de collision pointent vers l'intérieur et la bille entre dans le mur (et y reste coincée).
+    let aire: f32 = (0..pts.len()).map(|i| { let (a, b) = (pts[i], pts[(i + 1) % pts.len()]); a.0 * b.1 - b.0 * a.1 }).sum();
+    let mut pts = pts.to_vec();
+    if aire > 0.0 { pts.reverse(); }
     w.drag_points = pts.iter().map(|&(x, y)| dp(x, y, 0.0)).collect();
     w
 }
@@ -146,8 +151,14 @@ fn main() {
 
     let mut items: Vec<GameItemEnum> = vec![];
 
-    // ---------------------------------------------------------------- murs (chaque morceau convexe du jeu web)
+    // ---------------------------------------------------------------- collisions
+    // Les colliders 3D de la version d'origine (python3 collisions.py) remplacent les murs du plan 2D et la rampe :
+    // le plan 2D ignorait des volumes (pattes et flancs de la rampe, bloc F-A-N-N-Y…) où la bille se coinçait.
+    let col_dir = ici.join("donnees/collisions");
+    let colliders_origine = col_dir.join("collisions.json").exists();
+    if colliders_origine { items.extend(decor::collisions(&col_dir)); }
     for (i, m) in t["murs"].as_array().unwrap().iter().enumerate() {
+        if colliders_origine { break; }
         let pts: Vec<(f32, f32)> = m["pts"].as_array().unwrap().iter().map(|p| (f(&p[0]), f(&p[1]))).collect();
         let genre = m["genre"].as_str().unwrap_or("mur");
         let visible = vu && m["visible"].as_bool().unwrap_or(true) && genre != "apron";
@@ -169,6 +180,7 @@ fn main() {
         let mut wl = mur(if i == 0 { "LanceG" } else { "LanceD" }, &pts, 32.0, vu);
         wl.image = "plateau".into(); wl.side_material = "Caoutchouc".into(); wl.top_material = "Bois".into();
         let n = wl.drag_points.len();
+        let pts: Vec<(f32, f32)> = wl.drag_points.iter().map(|d| (d.x / MM, d.y / MM)).collect();   // ordre vpinball
         for k in 0..n {
             let (a, b) = (pts[k], pts[(k + 1) % n]);
             if dist(a.0, a.1) < 2.5 && dist(b.0, b.1) < 2.5 { wl.drag_points[k].is_slingshot = Some(true); }
@@ -252,9 +264,16 @@ fn main() {
     let c = &t["cercle"];
     items.push(GameItemEnum::Kicker(Kicker { name: "Cercle".into(), center: p2(f(&c["x"]), f(&c["y"])), radius: f(&c["ring"]) * MM * 0.9,
         kicker_type: KickerType::Hole, ..Default::default() }));
-    let e = &t["evacuation"];
-    items.push(GameItemEnum::Kicker(Kicker { name: "Drain".into(), center: p2(f(&e["x"]), f(&e["y"])), radius: f(&e["largeur"]) * MM * 0.5,
-        kicker_type: KickerType::Invisible, ..Default::default() }));
+    // évacuation : toute la largeur sous le tablier (trou central et couloirs extérieurs y mènent), comme la ligne
+    // d'évacuation du jeu d'origine ; un simple trou laissait des billes s'arrêter contre le bas de la caisse.
+    // Il commence au-dessus du bord du tablier (seule l'ouverture centrale y est accessible) : sinon une bille posée
+    // sur le coin de l'ouverture restait au bord sans tomber (balayage : x=203 y=1144 mm).
+    let front = f(&t["tablier"]["front"]);
+    let mut drain = Trigger { name: "Drain".into(), center: p2(240.0, (front + f(&t["H"])) / 2.0), radius: 25.0,
+        shape: TriggerShape::None, is_visible: false, ..Default::default() };
+    drain.drag_points = [(0.0, front - 18.0), (480.0, front - 18.0), (480.0, f(&t["H"])), (0.0, f(&t["H"]))].iter()
+        .map(|&(x, y)| dp(x, y, 0.0)).rev().collect();
+    items.push(GameItemEnum::Trigger(drain));
     let l = &t["lanceur"];
     items.push(GameItemEnum::Kicker(Kicker { name: "Distributeur".into(), center: p2(f(&l["x"]), f(&l["ballY"]) - 30.0), radius: 25.0,
         kicker_type: KickerType::Invisible, ..Default::default() }));
@@ -291,6 +310,7 @@ fn main() {
     let s_palier = longueur / 3.0;
     let troncons = [("RampeMontee", 0.0, s_montee, 0.0, zh), ("RampePalier", s_montee, s_palier, zh, zh), ("RampeDescente", s_palier, longueur + 1.0, zh, zf)];
     for (nom, s0, s1, z0, z1) in troncons {
+        if colliders_origine { break; }
         let mut dpts: Vec<DragPoint> = vec![];
         let mut dernier = -1e9f32;
         for &(x, y, s) in &pts {
@@ -362,6 +382,11 @@ fn main() {
         items.extend(d.items);
     }
     for (base, liste) in &noms { entete += &format!("Dim {base} : {base} = Array({})\n", liste.join(", ")); }
+    // points du balayage des zones de blocage (-c1 balayage) : x, y, z en unités VP (python3 collisions.py)
+    let pts_essai: Vec<f64> = fs::read_to_string(ici.join("donnees/collisions/points_essai.json")).ok()
+        .and_then(|s| serde_json::from_str::<Vec<Vec<f64>>>(&s).ok()).unwrap_or_default().into_iter().flatten().collect();
+    let lignes: Vec<String> = pts_essai.chunks(24).map(|c| c.iter().map(|v| format!("{v}")).collect::<Vec<_>>().join(", ")).collect();
+    entete += &format!("Dim POINTS_ESSAI : POINTS_ESSAI = Array({})\n", lignes.join(", _\n  "));
     for it in items { v.add_game_item(it); }
 
     // ---------------------------------------------------------------- sons (pistes du DFPlayer, mêmes numéros)
