@@ -21,7 +21,7 @@ use vpin::vpx::{
     self, VPX,
     color::Color,
     gameitem::{
-        GameItemEnum, bumper::Bumper, dragpoint::DragPoint, flipper::Flipper, gate::Gate, hittarget::{HitTarget, TargetType},
+        GameItemEnum, bumper::Bumper, dragpoint::DragPoint, flasher::{Filter, Flasher}, flipper::Flipper, ramp_image_alignment::RampImageAlignment, gate::Gate, hittarget::{HitTarget, TargetType},
         kicker::{Kicker, KickerType}, light::Light, plunger::Plunger, ramp::{Ramp, RampType}, spinner::Spinner,
         textbox::{TextAlignment, TextBox}, font::Font, timer::Timer, trigger::{Trigger, TriggerShape}, vertex2d::Vertex2D, vertex3d::Vertex3D, wall::Wall,
     },
@@ -40,6 +40,12 @@ const TIR_LANCEUR: f32 = 200.0;
 const LUMINOSITE_AFFICHEUR: f32 = 1.0;
 /// force des reflets sur le plateau (0 à 1 ; la table minimale de vpin met 1, trop fort : effet miroir)
 const REFLET_PLATEAU: f32 = 0.12;
+/// Panneaux animés du fond (vue bureau) : GIF, flasher, centre x, y, hauteur et côté en mm (repère du plateau), tournés
+/// de 45° vers la caméra ; ils recouvrent les cadres dessinés par fond.py sous l'afficheur (réglés à l'écran).
+const PANNEAUX: [(&str, &str, f32, f32, f32, f32); 2] = [
+    ("chassis", "GifChassis", 552.5, 1217.5, 332.5, 110.0),
+    ("articulation", "GifArticulation", 673.0, 1217.5, 332.5, 112.0),
+];
 /// place du fronton sur le fond de la vue bureau : gauche, haut, largeur (fractions de l'écran)
 const FRONTON_BUREAU: [f32; 3] = [0.64, 0.04, 0.34];
 /// caméra de la vue bureau (mode caméra) : visée, champ, recul, position x/y/z, échelle x, mode, décalage horizontal
@@ -182,8 +188,12 @@ fn main() {
     // fond de la vue bureau (16:10) : salle sombre, fronton en haut à droite ; l'afficheur se place dessous
     {
         let (lw, lh) = (1680u32, 1050u32);
-        let mut fond = image::RgbImage::from_fn(lw, lh, |_, y| { let k = 1.0 - 0.5 * y as f32 / lh as f32;
-            image::Rgb([(34.0 * k) as u8, (26.0 * k) as u8, (22.0 * k) as u8]) });
+        // décor du World Tour (python3 fond.py) s'il est là, sinon un dégradé sombre
+        let mut fond = match image::open(ici.join("donnees/fond/fond.jpg")) {
+            Ok(im) => image::imageops::resize(&im.to_rgb8(), lw, lh, image::imageops::FilterType::Lanczos3),
+            Err(_) => image::RgbImage::from_fn(lw, lh, |_, y| { let k = 1.0 - 0.5 * y as f32 / lh as f32;
+                image::Rgb([(34.0 * k) as u8, (26.0 * k) as u8, (22.0 * k) as u8]) }),
+        };
         let fr = image::open(racine.join("assets/fronton.jpg")).unwrap().to_rgb8();
         let fw = (lw as f32 * FRONTON_BUREAU[2]) as u32;
         let fh = fw * fr.height() / fr.width();
@@ -425,6 +435,30 @@ fn main() {
     score.back_color = Color::from_rgb(0x0a0604); score.font_color = Color::from_rgb(0xffffff);
     score.intensity_scale = LUMINOSITE_AFFICHEUR;
     items.push(GameItemEnum::TextBox(score));
+    // GIF animés du décor (châssis, articulation de la boule) : une image VPX par vue, jouées par le script sur deux
+    // flashers tournés vers la caméra devant les cadres du fond (fond.py, CADRES). Position réglée sur la Batocera.
+    let mut gifs = String::new();
+    for &(nom, flasher, x, y, z, cote) in PANNEAUX.iter() {
+        let chemin = ici.join("donnees/fond").join(format!("{nom}.gif"));
+        let Ok(fichier) = fs::File::open(&chemin) else { continue };
+        use image::AnimationDecoder;
+        let dec = image::codecs::gif::GifDecoder::new(std::io::BufReader::new(fichier)).unwrap();
+        let vues = dec.into_frames().collect_frames().unwrap();
+        let ms = { let (n, d) = vues[0].delay().numer_denom_ms(); (n / d.max(1)).max(20) };
+        for (k, v_) in vues.iter().enumerate() {
+            let tmp = sortie.join(format!(".{nom}_{k:02}.jpg"));
+            image::DynamicImage::ImageRgba8(v_.buffer().clone()).to_rgb8().save(&tmp).unwrap();
+            v.add_or_replace_image(image(&format!("{nom}_{k:02}"), &tmp));
+            fs::remove_file(&tmp).ok();
+        }
+        let mut fl = Flasher { name: flasher.into(), image_a: format!("{nom}_00"), height: z * MM, pos_x: Some(x * MM), pos_y: Some(y * MM),
+            rot_x: -45.0, display_texture: true, alpha: 100, is_visible: true, filter: Filter::None, image_alignment: RampImageAlignment::Wrap,
+            color: Color::from_rgb(0xffffff), modulate_vs_add: 1.0, ..Default::default() };
+        // ordre des points inverse (sinon la face est tournée vers le dessous et n'est pas dessinée)
+        fl.drag_points = [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)].iter().map(|&(a, b)| dp(x + a * cote / 2.0, y + b * cote / 2.0, 0.0)).collect();
+        items.push(GameItemEnum::Flasher(fl));
+        gifs += &format!("Array({flasher}, \"{nom}_\", {}, {ms}), ", vues.len());
+    }
     let mut horloge = Timer { name: "Horloge".into(), center: Vertex2D::new(20.0, 20.0), ..Default::default() };
     horloge.timer.is_enabled = true; horloge.timer.interval = 20;
     items.push(GameItemEnum::Timer(horloge));
@@ -443,6 +477,8 @@ fn main() {
         items.extend(d.items);
     }
     for (base, liste) in &noms { entete += &format!("Dim {base} : {base} = Array({})\n", liste.join(", ")); }
+    // GIF du décor : (flasher, préfixe des images, nombre de vues, durée d'une vue en ms)
+    entete += &format!("Dim GIFS : GIFS = Array({})\n", gifs.trim_end_matches(", "));
     // points du balayage des zones de blocage (-c1 balayage) : x, y, z en unités VP (python3 collisions.py)
     let pts_essai: Vec<f64> = fs::read_to_string(ici.join("donnees/collisions/points_essai.json")).ok()
         .and_then(|s| serde_json::from_str::<Vec<Vec<f64>>>(&s).ok()).unwrap_or_default().into_iter().flatten().collect();

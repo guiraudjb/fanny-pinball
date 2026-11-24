@@ -27,7 +27,7 @@ Prérequis : Node 22, Google Chrome, Rust récent (rustup) et `vpxtool` (`cargo 
 - 1 unité VP = 0,54 mm (bille de 27 mm = 50 u) ; même repère que le jeu (y vers le joueur). Pente 6,5°.
 - Sons : `assets/sons/00NN.mp3` deviennent `s00NN` (numéros du DFPlayer de la réplique) ; musiques sur le fronton.
 - Lampes : `L_<nom>` de `LAMP_LAYOUT` (render.js), pilotées par `MajLampes` comme `Rules.lamps()`.
-- Afficheurs : `Afficheur` (score, 8 caractères) et `AfficheurInfo` (4 caractères), comme les TM1637.
+- Afficheur : `Afficheur`, afficheur à points sous le fronton (score, bille, multiplicateur, messages).
 - Touches : celles de vpinball (palettes, lanceur, départ, crédit, bourrages). Trois coups de caisse rapprochés
   ferment le pendule (ATTENTION, ATTENTION, TILT).
 
@@ -46,8 +46,11 @@ Encore à régler en jeu : force des lance-pierres (80), éjection du Cercle (`E
 - `test` : partie, tir du lanceur, trajectoire de la bille (`ESSAI …`).
 - `balayage` : billes posées sans vitesse sur une grille de 20 mm de tout le plateau (751 points) ; une bille immobile après 4,5 s est signalée `BLOQUE x= y=`, une bille sortie du plateau `PERDUE`.
 - `rampe` : tirs dans la rampe à trois vitesses, billes posées sous la rampe et lâchées du haut du plateau au-dessus de l'entrée (`RAMPE …`).
+- `logique` : toute la logique de jeu, élément par élément (`LOGIQUE …`, tableau `LOGIQUE` du script) : bumpers, lance-pierres, couloirs T-O-U-R et du bas, tourniquet, boules, cibles TIRER / POINTER / BOUCHON, carreau, F-A-N-N-Y, rampe et escales, multiball au Cercle, jackpots, super jackpot, sauvetage, pendule (ATTENTION, TILT), fin de mène et bonus, bille suivante, fin de partie, record, match. Chaque étape écrit les points marqués, le détail des ajouts et l'état du jeu ; les billes évacuées pendant les tirs sont remplacées au lanceur.
+- Les capteurs de vpinball signalent plusieurs fois le même passage : le script ne compte qu'un passage par capteur et par 150 ms (`Doublon`).
 
 ## Vue et afficheur
 
-- Vue « bureau » (écran unique paysage, réglage des autres tables de la Batocera) : mode caméra, plateau à gauche vu de face, fond `fond_bureau` composé par le générateur (salle sombre, fronton en haut à droite). Réglage : `VUE_BUREAU` dans `generateur/src/main.rs`, ou `VUE="visée,champ,recul,x,y,z,échelle,mode,décalage"` pour essayer sans recompiler.
+- Vue « bureau » (écran unique paysage, réglage des autres tables de la Batocera) : mode caméra, plateau à gauche vu de face, fond `fond_bureau` composé par le générateur (décor `donnees/fond/fond.jpg`, fronton en haut à droite). Réglage : `VUE_BUREAU` dans `generateur/src/main.rs`, ou `VUE="visée,champ,recul,x,y,z,échelle,mode,décalage"` pour essayer sans recompiler.
 - Afficheur à points 128 × 32 sous le fronton : le VPX de la Batocera ne dessine pas le texte des boîtes de texte, le script calcule les points (police 5 × 7, `DessinerAfficheur`) et les envoie par `DMDPixels` à la boîte `Afficheur` marquée DMD.
+- Décor du fond (`fond.py`, clin d'œil au jeu Arducible « Fanny Pétanque World Tour ») : carte des escales en aplats ocre avec l'itinéraire de la rampe en pointillés, titre et médaillon de Fanny à gauche ; sous l'afficheur, deux GIF tirés des vidéos du projet (le châssis en action, la boule sur son articulation) et la signature #arducible, the DIY pétanque game. Les sorties (`donnees/fond/` : `fond.jpg`, `chassis.gif`, `articulation.gif`) sont versées au dépôt ; `python3 fond.py --source <dépôt Arducible_Fanny_Petanque_World_Tour>` les refait. VPX n'anime pas une image de fond : chaque vue des GIF devient une image de la table, jouée par le script (`AnimerGifs`) sur deux flashers placés dans la scène devant les cadres et tournés vers la caméra (`PANNEAUX` dans `generateur/src/main.rs`).

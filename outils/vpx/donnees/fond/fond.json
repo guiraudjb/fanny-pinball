@@ -1,0 +1,26 @@
+{
+ "cadres": {
+  "chassis": [
+   1158,
+   628,
+   1398,
+   868
+  ],
+  "articulation": [
+   1412,
+   628,
+   1652,
+   868
+  ]
+ },
+ "gif": {
+  "chassis": {
+   "images": 48,
+   "fps": 6
+  },
+  "articulation": {
+   "images": 42,
+   "fps": 8
+  }
+ }
+}

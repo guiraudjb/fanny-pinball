@@ -1032,6 +1032,18 @@ Sub AnnonceSuper() : Say "SUPER JACKPOT AU CERCLE", 2200 : End Sub
 ' ---------------------------------------------------------------- horloge (20 ms) : minuteries, lampes, afficheurs
 Dim dernierPendule : dernierPendule = 0
 Dim essaiLogique : essaiLogique = False
+'  --- décor de la vue bureau : GIF animés (châssis, articulation de la boule) joués sur leurs flashers
+'  GIFS (généré) : Array(flasher, préfixe des images, nombre de vues, durée d'une vue en ms)
+Dim gifVue(7)
+Sub AnimerGifs()
+  Dim i, g, n
+  For i = 0 To UBound(GIFS)
+    g = GIFS(i)
+    n = Int(maintenant / g(3)) Mod g(2)
+    If n <> gifVue(i) Then gifVue(i) = n : g(0).ImageA = g(1) & Right("0" & n, 2)
+  Next
+End Sub
+
 Sub Horloge_Timer()
   maintenant = GameTime
   Dim i, a
@@ -1044,6 +1056,7 @@ Sub Horloge_Timer()
   If maintenant - dernierPendule > 1000 Then dernierPendule = maintenant : If tiltPendule > 0 Then tiltPendule = tiltPendule - 1
   MajLampes
   Afficheurs
+  AnimerGifs
   If essaiLogique Then LogiqueMessages
 End Sub
 
