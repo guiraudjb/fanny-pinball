@@ -1349,8 +1349,10 @@ export class Renderer3D {
   boutonFlipper(d) {
     const v = (pts) => pts.map(([r, h]) => new THREE.Vector2(r, h)).reverse();   // profil parcouru du haut vers le bas : faces vers l'extérieur
     const g = new THREE.Group();
-    const plast = new THREE.MeshPhysicalMaterial({ color: 0xd11a25, roughness: 0.12, transmission: 0.55, thickness: 6, ior: 1.5,
-      clearcoat: 1, clearcoatRoughness: 0.08, attenuationColor: 0x8a0710, attenuationDistance: 12 });
+    // plastique rouge translucide : simple transparence vernie. La transmission (réfraction) de three.js imposait un
+    // second rendu complet de la scène à chaque image pour ces deux petits boutons (≈ 2× le coût du dessin).
+    const plast = new THREE.MeshPhysicalMaterial({ color: 0xc8121d, roughness: 0.12, transparent: true, opacity: 0.88,
+      emissive: 0x5a0308, emissiveIntensity: 0.6, clearcoat: 1, clearcoatRoughness: 0.08 });
     const bague = new THREE.Mesh(new THREE.LatheGeometry(v([[d / 2, 0], [d / 2 + 6.5, 0], [d / 2 + 7.2, 0.7], [d / 2 + 7.2, 2.2],
       [d / 2 + 6.3, 3], [d / 2 - 0.5, 3]]), 48), plast);
     const r = d / 2 + 2.5;
@@ -2146,6 +2148,23 @@ export class Renderer3D {
       if (v && v[3]) m.quaternion.set(v[3].x, v[3].y, v[3].z, v[3].w);   // la bille roule (reflets qui tournent)
     });
 
+    // matériaux transparents à double face : three.js les dessine en deux passes (dos puis face) en les marquant
+    // « à recompiler » à chaque image (getParameters pour chaque objet) ; une seule passe suffit ici (plastiques,
+    // vitres et halos minces). Balayage léger, refait quand des pièces arrivent (CAO, caisse, habillage).
+    if (this.scene.children.length !== this.nEnfants || (this.balayage = (this.balayage || 0) + 1) % 120 === 0) {
+      this.nEnfants = this.scene.children.length;
+      // un matériau partagé par des objets qui reçoivent l'ombre et d'autres non change de programme à chaque objet :
+      // tous ses objets la reçoivent
+      const recoit = new Map();
+      this.scene.traverse((o) => {
+        if (!o.material) return;
+        for (const m of [].concat(o.material)) {
+          if (m.transparent && m.side === THREE.DoubleSide) m.forceSinglePass = true;
+          if (o.isMesh) (recoit.get(m) || recoit.set(m, []).get(m)).push(o);
+        }
+      });
+      for (const objs of recoit.values()) if (objs.some((o) => o.receiveShadow)) for (const o of objs) o.receiveShadow = true;
+    }
     if (this.envDirty) { this.envDirty = false; this.captureEnv(); }
     if (this.tour) this.updateTour();
     else if (this.enLilliputien) this.updateLilliputien();
