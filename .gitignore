@@ -14,3 +14,6 @@ natif/donnees/.GLTFExporter.js
 natif/donnees/scene.glb
 natif/donnees/scene_leger.glb
 outils/_*.mjs
+outils/vpx/generateur/target/
+outils/vpx/sortie/
+outils/vpx/donnees/plateau.png

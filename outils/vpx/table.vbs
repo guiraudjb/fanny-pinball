@@ -1,0 +1,752 @@
+' Fanny Pinball — Pétanque World Tour : règles de la table Visual Pinball.
+' Portage de js/rules.js (même boucle de jeu, mêmes valeurs, mêmes numéros de sons que le DFPlayer de la réplique).
+' Table originale : aucun ROM, aucun contrôleur (pas de controller.vbs ni de core.vbs).
+'
+'   F-A-N-N-Y allume le Cercle ; bille dans le Cercle allumé = MULTIBALL (3 billes), puis F-A-N-N-Y ×2, ×3…
+'   Multiball : chaque rampe = JACKPOT (+5 000 à chaque fois) ; trois jackpots = SUPER JACKPOT au Cercle.
+'   T-O-U-R (couloirs du haut, décalés par les batteurs) : bonus ×2 … ×5, puis EXTRA BALL au Cercle.
+'   BOUCHON : CARREAU sur TIRER pendant 20 s ; POINTER (ou TRIPLETTE) puis BOUCHON = BIBERON.
+'   Rampe : escales du World Tour ; 7 escales = GRAND CHELEM + EXTRA BALL.
+'   TILT, partie gratuite (clac) à 150 000 / 300 000 / 500 000 et au record, MATCH en fin de partie.
+Option Explicit
+Randomize
+
+Const BALLS_PER_GAME = 3, BALL_SAVE_MS = 8000, MB_BALL_SAVE_MS = 10000, MAX_MULT = 5
+Const JACKPOT_START = 20000, JACKPOT_STEP = 5000, CARREAU_MS = 20000, CARREAU_PTS = 10000
+Const MAX_CREDITS = 9, EXTRA_MAX = 2, EXTRA_POINTS = 25000, SUPER_AFTER = 3
+Const TILT_WARNINGS = 2, TILT_SETTLE_MS = 1200, KICK_LANCEUR = 55
+
+' sons : assets/sons/00NN.mp3, rangés dans la table sous le nom sNNNN
+Const SND_START = 1, SND_BUMPER = 2, SND_SLING = 3, SND_FLIP = 4, SND_DROP = 5, SND_DROPS_DONE = 6, SND_RAMP = 7
+Const SND_LANE = 8, SND_LANES_DONE = 9, SND_STANDUP = 10, SND_SAUCER = 11, SND_MULTIBALL = 12, SND_JACKPOT = 13
+Const SND_CITY = 14, SND_GRAND_CHELEM = 15, SND_EXTRA = 16, SND_BALL_SAVE = 17, SND_DRAIN = 18, SND_BONUS = 19
+Const SND_GAME_OVER = 20, SND_LAUNCH = 21, SND_MUSIQUE_GENERIQUE = 22, SND_MUSIQUE_THEME = 23
+Const V_START = 24, V_MULTIBALL = 25, V_JACKPOT = 26, V_CARREAU = 27, V_BIBERON = 28, V_BOUCHON = 29, V_TRIPLETTE = 30
+Const V_GRAND_CHELEM = 31, V_EXTRA = 32, V_BALL_SAVE = 33, V_MB_LIT = 34, V_BONUS_MULT = 35, V_DRAIN = 36
+Const V_GAME_OVER = 37, V_RECORD = 38, V_CITY_1 = 39, SND_CLAC = 45, SND_MATCH = 46
+Const V_PARTIE_GRATUITE = 47, V_MATCH = 48, V_EXTRA_LIT = 49, V_SUPER_JACKPOT = 50, SND_NUDGE = 51, SND_TILT = 52
+Const V_ATTENTION = 53, V_TILT = 54
+
+Dim CITIES : CITIES = Array("MARSEILLE", "PARIS", "LONDRES", "NEW YORK", "TOKYO", "RIO", "SYDNEY")
+Dim NOMS_LAMPES : NOMS_LAMPES = Array("lane0", "lane1", "lane2", "lane3", "drop0", "drop1", "drop2", "drop3", "drop4", "multiball", _
+  "ramp", "jackpot", "city0", "city1", "city2", "city3", "city4", "city5", "city6", "mult2", "mult3", "mult4", "mult5", _
+  "extra", "save", "carreau", "bouchon", "point", "cible0", "cible1", "cible2", "extraLit")
+Dim lampEtat(31), lampObj(31)
+
+' ---------------------------------------------------------------- état (mêmes noms que rules.js)
+Dim maintenant, mode, credits, highScore, lastScore, matchNum, matchRolling
+Dim msgText, msgStart, msgUntil
+Dim score, bille, extraBalls, extrasGiven, extraLit, replayIdx, ballsInPlay, pendingServes
+Dim city, mbLit, multiball, mbCount, fannyDone, jackpot, jackpotsMb, superLit, carreaux
+Dim mult, bonus, pointLit, carreauUntil, ballSaveUntil, ballSaveArmed, shooterClosed, autoLaunchNext
+Dim saucerBusy, tiltWarnings, tiltIgnoreUntil, tilted, tiltPendule, voixEnCours, musiqueEnCours
+Dim letters(3), drops(4), targets(2)
+Dim REPLAY_LEVELS : REPLAY_LEVELS = Array(150000, 300000, 500000)
+
+' minuteries de rules.js (after) : action = nom d'une procédure sans argument (GetRef)
+Const NB_MIN = 48
+Dim minT(47), minA(47), minOn(47)
+
+Sub Apres(ms, action)
+  Dim i
+  For i = 0 To NB_MIN - 1
+    If Not minOn(i) Then minT(i) = maintenant + ms : Set minA(i) = GetRef(action) : minOn(i) = True : Exit Sub
+  Next
+End Sub
+
+Sub Say(texte, ms)
+  msgText = texte : msgStart = maintenant : msgUntil = maintenant + ms
+End Sub
+
+' ---------------------------------------------------------------- sons
+Function NomSon(n)
+  NomSon = "s" & Right("000" & n, 4)
+End Function
+
+Function EstVoix(n)
+  EstVoix = (n >= V_START And n <= V_CITY_1 + 5) Or (n >= V_PARTIE_GRATUITE And n <= V_SUPER_JACKPOT) Or n >= V_ATTENTION
+End Function
+
+Sub Son(n)
+  If EstVoix(n) Then                        ' voix de Fanny : une réplique coupe la précédente
+    If voixEnCours <> "" Then StopSound voixEnCours
+    voixEnCours = NomSon(n)
+  End If
+  PlaySound NomSon(n)
+End Sub
+
+Sub Musique(n)
+  If musiqueEnCours <> "" Then StopSound musiqueEnCours
+  musiqueEnCours = ""
+  If n > 0 Then musiqueEnCours = NomSon(n) : PlaySound musiqueEnCours, -1, 0.35
+End Sub
+
+' ---------------------------------------------------------------- démarrage de la table
+Sub Table1_Init()
+  Dim i
+  For i = 0 To 31
+    Set lampObj(i) = Eval("L_" & NOMS_LAMPES(i))
+    lampObj(i).BlinkInterval = 125
+    lampEtat(i) = -1
+  Next
+  For i = 0 To NB_MIN - 1 : minOn(i) = False : Next
+  highScore = 0 : lastScore = 0 : credits = 0 : matchNum = -1 : matchRolling = False
+  msgText = "" : voixEnCours = "" : musiqueEnCours = "" : mode = "attract" : maintenant = GameTime
+  Distributeur.Enabled = False
+  ResetGame
+  Dim hs : hs = LoadValue("FannyPinball", "HighScore")
+  If IsNumeric(hs) Then highScore = CLng(hs)
+  Musique SND_MUSIQUE_GENERIQUE
+End Sub
+
+Sub Table1_Exit()
+  SaveValue "FannyPinball", "HighScore", highScore
+End Sub
+
+' ---------------------------------------------------------------- état de partie et de bille
+Sub ResetGame()
+  score = 0 : bille = 0 : extraBalls = 0 : extrasGiven = 0 : extraLit = False : replayIdx = 0
+  ballsInPlay = 0 : pendingServes = 0 : city = 0 : mbLit = False : multiball = False : mbCount = 0
+  fannyDone = 0 : jackpot = JACKPOT_START : jackpotsMb = 0 : superLit = False : carreaux = 0
+  ResetBallState
+End Sub
+
+Sub ResetBallState()
+  Dim i
+  mult = 1 : bonus = 0 : pointLit = False : carreauUntil = 0
+  For i = 0 To 3 : letters(i) = False : Next
+  For i = 0 To 4 : drops(i) = False : Next
+  For i = 0 To 2 : targets(i) = False : Next
+  ballSaveUntil = 0 : ballSaveArmed = False : autoLaunchNext = False
+  saucerBusy = False : tiltWarnings = 0 : tiltIgnoreUntil = 0 : tilted = False : tiltPendule = 0
+  RemonterCibles
+End Sub
+
+Sub Ajouter(points, b)
+  If mode <> "play" Or tilted Then Exit Sub
+  score = score + points
+  bonus = bonus + b
+  CheckReplay
+End Sub
+
+' ---------------------------------------------------------------- le clac et les crédits
+Sub CheckReplay()
+  Do While replayIdx <= UBound(REPLAY_LEVELS)
+    If score < REPLAY_LEVELS(replayIdx) Then Exit Do
+    replayIdx = replayIdx + 1
+    FreeGame "PARTIE GRATUITE"
+  Loop
+End Sub
+
+Sub FreeGame(texte)
+  credits = credits + 1 : If credits > MAX_CREDITS Then credits = MAX_CREDITS
+  Son SND_CLAC
+  If texte = "MATCH" Then Son V_MATCH Else Son V_PARTIE_GRATUITE
+  Say texte, 2000
+End Sub
+
+Sub FreeGameRecord() : FreeGame "PARTIE GRATUITE" : End Sub
+
+Sub AddCredit()
+  credits = credits + 1 : If credits > MAX_CREDITS Then credits = MAX_CREDITS
+  Son SND_STANDUP
+End Sub
+
+' ---------------------------------------------------------------- partie
+Sub StartGame()
+  If mode <> "attract" And mode <> "over" Then Exit Sub
+  Dim gratuite : gratuite = credits > 0
+  If gratuite Then credits = credits - 1
+  ResetGame
+  matchNum = -1
+  mode = "play" : bille = 1
+  Son SND_START : Son V_START
+  If gratuite Then Say "PARTIE GRATUITE", 3000 Else Say "FANNY PETANQUE WORLD TOUR", 3000
+  Musique SND_MUSIQUE_THEME
+  PowerOn
+  ServeBall False
+End Sub
+
+' la bille arrive dans le couloir du lanceur (contact CapteurLanceur) ; auto = lancée par le distributeur
+Sub ServeBall(auto)
+  ballsInPlay = ballsInPlay + 1
+  pendingServes = pendingServes + 1
+  If auto Then autoLaunchNext = True
+  Distributeur.Enabled = True
+  Distributeur.CreateBall
+  If auto Then
+    Distributeur.Kick 0, KICK_LANCEUR
+  Else
+    Distributeur.Kick 180, 1
+  End If
+  Apres 400, "CouperDistributeur"
+End Sub
+Sub CouperDistributeur() : Distributeur.Enabled = False : End Sub
+
+Sub StartBall()
+  ResetBallState
+  PowerOn
+  ServeBall False
+End Sub
+
+Sub EndOfBall()
+  mode = "bonus"
+  If tilted Then
+    bonus = 0
+    Say "TILT", 1800
+    Apres 1800, "NextBall"
+    Exit Sub
+  End If
+  If mult > 1 Then Say "BONUS X" & mult, 1200 Else Say "BONUS", 1200
+  Son SND_BONUS
+  Apres 1200, "CountBonus"
+End Sub
+
+Sub CountBonus()
+  If bonus <= 0 Then Apres 600, "NextBall" : Exit Sub
+  Dim pas : pas = -Int(-bonus / 200) * 10
+  If pas < 1000 Then pas = 1000
+  If pas > bonus Then pas = bonus
+  bonus = bonus - pas
+  score = score + pas * mult
+  CheckReplay
+  Son SND_LANE
+  Apres 110, "CountBonus"
+End Sub
+
+Sub NextBall()
+  mode = "play"
+  If extraBalls > 0 Then
+    extraBalls = extraBalls - 1
+    Say "REJOUE", 1500
+    StartBall
+  ElseIf bille < BALLS_PER_GAME Then
+    bille = bille + 1
+    Say "BILLE " & bille, 1500
+    StartBall
+  Else
+    GameOver
+  End If
+End Sub
+
+Sub GameOver()
+  mode = "match"
+  tilted = False
+  PowerOn
+  lastScore = score
+  Dim record, ancien : record = score > highScore : ancien = highScore
+  If record Then highScore = score : SaveValue "FannyPinball", "HighScore", highScore
+  Son SND_GAME_OVER
+  If record Then Say "NOUVEAU RECORD", 2500 : Son V_RECORD Else Say "FIN DE PARTIE", 2500 : Son V_GAME_OVER
+  Musique SND_MUSIQUE_GENERIQUE
+  If record And ancien > 0 Then
+    Apres 2600, "FreeGameRecord"
+    Apres 5000, "StartMatch"
+  Else
+    Apres 2800, "StartMatch"
+  End If
+End Sub
+
+Sub StartMatch()
+  matchRolling = True : matchNum = 0
+  Son SND_MATCH
+  Apres 2600, "FinMatch"
+End Sub
+
+Sub FinMatch()
+  matchRolling = False
+  matchNum = 10 * Int(Rnd * 10)
+  If matchNum = ((score Mod 100) - (score Mod 10)) Then FreeGame "MATCH" Else Say "MATCH " & Right("0" & matchNum, 2), 1800
+  mode = "over"
+  Apres 5000, "RetourAttract"
+End Sub
+
+Sub RetourAttract()
+  If mode = "over" Then mode = "attract" : matchNum = -1
+End Sub
+
+' ---------------------------------------------------------------- alimentation des bobines (tilt)
+Sub PowerOn()
+  Bumper1.Force = 9 : Bumper2.Force = 9 : Bumper3.Force = 9
+  LanceG.SlingshotStrength = 80 : LanceD.SlingshotStrength = 80
+End Sub
+
+Sub PowerOff()
+  Bumper1.Force = 0 : Bumper2.Force = 0 : Bumper3.Force = 0
+  LanceG.SlingshotStrength = 0 : LanceD.SlingshotStrength = 0
+  LeftFlipper.RotateToStart : RightFlipper.RotateToStart
+End Sub
+
+' ---------------------------------------------------------------- clavier
+Sub Table1_KeyDown(ByVal keycode)
+  If keycode = StartGameKey Then StartGame : Exit Sub
+  If keycode = AddCreditKey Or keycode = AddCreditKey2 Then AddCredit : Exit Sub
+  If keycode = PlungerKey Then Plunger.PullBack : Exit Sub
+  If keycode = LeftTiltKey Then Nudge 90, 2 : Secousse : Exit Sub
+  If keycode = RightTiltKey Then Nudge 270, 2 : Secousse : Exit Sub
+  If keycode = CenterTiltKey Then Nudge 0, 2 : Secousse : Exit Sub
+  If keycode = MechanicalTilt Then HitTilt : Exit Sub
+  If keycode = LeftFlipperKey Then
+    If mode = "play" And Not tilted Then LeftFlipper.RotateToEnd : PlaySound NomSon(SND_FLIP), 0, 0.6, -0.3 : RotateLetters -1
+  End If
+  If keycode = RightFlipperKey Then
+    If mode = "play" And Not tilted Then RightFlipper.RotateToEnd : PlaySound NomSon(SND_FLIP), 0, 0.6, 0.3 : RotateLetters 1
+  End If
+End Sub
+
+Sub Table1_KeyUp(ByVal keycode)
+  If keycode = PlungerKey Then
+    Plunger.Fire
+    If shooterClosed Then Son SND_LAUNCH
+  End If
+  If keycode = LeftFlipperKey Then LeftFlipper.RotateToStart
+  If keycode = RightFlipperKey Then RightFlipper.RotateToStart
+End Sub
+
+' le pendule : chaque coup de caisse le fait osciller ; trop de coups rapprochés = contact TILT
+Sub Secousse()
+  PlaySound NomSon(SND_NUDGE)
+  If mode <> "play" Then Exit Sub
+  tiltPendule = tiltPendule + 1
+  If tiltPendule >= 3 Then tiltPendule = 0 : HitTilt
+End Sub
+
+Sub HitTilt()
+  If mode <> "play" Then Exit Sub
+  If tilted Or maintenant < tiltIgnoreUntil Then Exit Sub
+  tiltIgnoreUntil = maintenant + TILT_SETTLE_MS
+  tiltWarnings = tiltWarnings + 1
+  If tiltWarnings <= TILT_WARNINGS Then
+    Say "ATTENTION", 1500
+    Son SND_STANDUP : Son V_ATTENTION
+    Exit Sub
+  End If
+  tilted = True
+  ballSaveUntil = 0 : multiball = False : superLit = False : carreauUntil = 0
+  PowerOff
+  Son SND_TILT : Son V_TILT
+  msgText = ""
+End Sub
+
+' ---------------------------------------------------------------- contacts
+' tout contact du plateau (hors lanceur) : la bille est en jeu → le sauvetage de bille démarre
+Function Contact()
+  Contact = False
+  If mode = "attract" Or mode = "over" Then Exit Function
+  If tilted Then Exit Function
+  If Not ballSaveArmed And mode = "play" Then
+    ballSaveArmed = True
+    If ballSaveUntil < maintenant + BALL_SAVE_MS Then ballSaveUntil = maintenant + BALL_SAVE_MS
+  End If
+  Contact = True
+End Function
+
+Sub CapteurLanceur_Hit()
+  shooterClosed = True
+  If pendingServes > 0 Then
+    pendingServes = pendingServes - 1
+    If autoLaunchNext Then autoLaunchNext = False : Apres 500, "LancementAuto"
+  End If
+End Sub
+Sub CapteurLanceur_UnHit() : shooterClosed = False : End Sub
+
+Sub LancementAuto()
+  If Not shooterClosed Then Exit Sub
+  Son SND_LAUNCH
+  Plunger.AutoPlunger = True : Plunger.Fire : Plunger.AutoPlunger = False
+End Sub
+
+Sub Drain_Hit()
+  Drain.DestroyBall
+  ballsInPlay = ballsInPlay - 1 : If ballsInPlay < 0 Then ballsInPlay = 0
+  If mode <> "play" Then Exit Sub
+  If tilted Then
+    If ballsInPlay = 0 Then Son SND_DRAIN : EndOfBall
+    Exit Sub
+  End If
+  If Not ballSaveArmed And Not multiball Then
+    Say "BILLE RENDUE", 1200
+    ServeBall False
+    Exit Sub
+  End If
+  If maintenant < ballSaveUntil Then
+    Say "FANNY TE LA REND", 1500
+    Son SND_BALL_SAVE : Son V_BALL_SAVE
+    ServeBall True
+    Exit Sub
+  End If
+  If multiball And ballsInPlay <= 1 Then
+    multiball = False : superLit = False
+    Say "FIN DE LA MENE", 1500
+  End If
+  If ballsInPlay = 0 Then Son SND_DRAIN : Son V_DRAIN : EndOfBall
+End Sub
+
+' --- couloirs du haut : T O U R
+Sub CouloirT_Hit() : HitLane 0 : End Sub
+Sub CouloirO_Hit() : HitLane 1 : End Sub
+Sub CouloirU_Hit() : HitLane 2 : End Sub
+Sub CouloirR_Hit() : HitLane 3 : End Sub
+
+Sub HitLane(i)
+  If Not Contact() Then Exit Sub
+  Ajouter 300, 30
+  If LightLetter(i) Then Son SND_LANE
+End Sub
+
+Function LightLetter(i)
+  LightLetter = False
+  If letters(i) Then Exit Function
+  letters(i) = True
+  LightLetter = True
+  If Not (letters(0) And letters(1) And letters(2) And letters(3)) Then Exit Function
+  Dim k : For k = 0 To 3 : letters(k) = False : Next
+  If mult < MAX_MULT Then
+    mult = mult + 1
+    Say "BONUS X" & mult, 1800
+    Son V_BONUS_MULT
+    If mult = MAX_MULT Then LightExtra
+  Else
+    Ajouter 10000, 0
+    Say "10000", 1200
+  End If
+  Son SND_LANES_DONE
+End Function
+
+Sub RotateLetters(dir)
+  Dim t(3), i
+  For i = 0 To 3 : t(i) = letters((i - dir + 4) Mod 4) : Next
+  For i = 0 To 3 : letters(i) = t(i) : Next
+End Sub
+
+' --- couloirs du bas
+Sub Bas_outL_Hit() : CouloirBas True : End Sub
+Sub Bas_outR_Hit() : CouloirBas True : End Sub
+Sub Bas_inExtL_Hit() : CouloirBas False : End Sub
+Sub Bas_inIntL_Hit() : CouloirBas False : End Sub
+Sub Bas_inIntR_Hit() : CouloirBas False : End Sub
+Sub Bas_inExtR_Hit() : CouloirBas False : End Sub
+
+Sub CouloirBas(dehors)
+  If Not Contact() Then Exit Sub
+  If dehors Then Ajouter 1000, 200 Else Ajouter 500, 100
+  Son SND_LANE
+End Sub
+
+' --- bumpers et lance-pierres
+Sub Bumper1_Hit() : HitBumper : End Sub
+Sub Bumper2_Hit() : HitBumper : End Sub
+Sub Bumper3_Hit() : HitBumper : End Sub
+Sub HitBumper()
+  If Not Contact() Then Exit Sub
+  Ajouter 100, 10 : Son SND_BUMPER
+End Sub
+
+Sub LanceG_Slingshot() : HitSling : End Sub
+Sub LanceD_Slingshot() : HitSling : End Sub
+Sub HitSling()
+  If Not Contact() Then Exit Sub
+  Ajouter 10, 10 : Son SND_SLING
+End Sub
+
+Sub Tourniquet_Spin()
+  If Not Contact() Then Exit Sub
+  If multiball Then Ajouter 1000, 25 Else Ajouter 250, 25
+  PlaySound NomSon(SND_STANDUP), 0, 0.15
+End Sub
+
+' --- jeu de boules : trois cibles rondes du mur gauche = TRIPLETTE
+Sub Boule1_Hit() : HitTarget 0 : End Sub
+Sub Boule2_Hit() : HitTarget 1 : End Sub
+Sub Boule3_Hit() : HitTarget 2 : End Sub
+Sub HitTarget(i)
+  If Not Contact() Then Exit Sub
+  Ajouter 300, 30 : Son SND_STANDUP
+  If targets(i) Then Exit Sub
+  targets(i) = True
+  If Not (targets(0) And targets(1) And targets(2)) Then Exit Sub
+  targets(0) = False : targets(1) = False : targets(2) = False
+  Ajouter 3000, 300
+  Say "TRIPLETTE", 1500
+  Son V_TRIPLETTE : Son SND_LANES_DONE
+  pointLit = True
+End Sub
+
+Sub Pointer_Hit()
+  If Not Contact() Then Exit Sub
+  Ajouter 500, 50 : Son SND_STANDUP
+  pointLit = True
+End Sub
+
+Sub Bouchon_Hit()
+  If Not Contact() Then Exit Sub
+  Ajouter 1500, 150 : Son SND_STANDUP
+  If pointLit Then
+    pointLit = False
+    Ajouter 5000, 500
+    Say "BIBERON", 1500 : Son V_BIBERON
+  Else
+    Say "TIR AU BOUCHON", 1500 : Son V_BOUCHON
+  End If
+  carreauUntil = maintenant + CARREAU_MS
+End Sub
+
+Sub Tirer_Hit()
+  If Not Contact() Then Exit Sub
+  If maintenant < carreauUntil Then
+    carreauUntil = 0
+    carreaux = carreaux + 1
+    Dim pts : pts = CARREAU_PTS * carreaux
+    Ajouter pts, 1000
+    Say "CARREAU " & pts, 1800
+    Son SND_JACKPOT : Son V_CARREAU
+    Exit Sub
+  End If
+  Ajouter 500, 50 : Son SND_STANDUP
+End Sub
+
+' --- F A N N Y : cibles tombantes
+Sub DT_F_Hit() : HitDrop 0 : End Sub
+Sub DT_A_Hit() : HitDrop 1 : End Sub
+Sub DT_N1_Hit() : HitDrop 2 : End Sub
+Sub DT_N2_Hit() : HitDrop 3 : End Sub
+Sub DT_Y_Hit() : HitDrop 4 : End Sub
+
+Sub HitDrop(i)
+  If Not Contact() Then Exit Sub
+  If drops(i) Then Exit Sub
+  drops(i) = True
+  Ajouter 500, 50 : Son SND_DROP
+  If Not (drops(0) And drops(1) And drops(2) And drops(3) And drops(4)) Then Exit Sub
+  Son SND_DROPS_DONE
+  If multiball Then
+    jackpot = jackpot + 2 * JACKPOT_STEP
+    Say "JACKPOT " & jackpot, 1800
+  ElseIf Not mbLit Then
+    fannyDone = fannyDone + 1
+    Dim besoin : besoin = mbCount + 1
+    If fannyDone >= besoin Then
+      fannyDone = 0 : mbLit = True
+      Say "MULTIBALL AU CERCLE", 2200 : Son V_MB_LIT
+    Else
+      Ajouter 5000, 500
+      Say "FANNY " & fannyDone & "/" & besoin, 1500
+    End If
+  Else
+    Ajouter 5000, 500
+  End If
+  Apres 1000, "RemonterCibles"
+End Sub
+
+Sub RemonterCibles()
+  Dim i : For i = 0 To 4 : drops(i) = False : Next
+  DT_F.IsDropped = False : DT_A.IsDropped = False : DT_N1.IsDropped = False : DT_N2.IsDropped = False : DT_Y.IsDropped = False
+End Sub
+
+' --- le Cercle : la bille est toujours réexpulsée. Priorité : multiball, super jackpot, extra ball
+Sub Cercle_Hit()
+  If saucerBusy Then Exit Sub
+  saucerBusy = True
+  Dim hold : hold = 1000
+  If mode <> "play" Or tilted Then
+    hold = 600
+  ElseIf mbLit And Not multiball Then
+    Contact
+    Say "TRIPLETTE MULTIBALL", 2500
+    Son SND_MULTIBALL : Son V_MULTIBALL
+    hold = 2000
+    Apres hold, "StartMultiball"
+  ElseIf multiball And superLit Then
+    Contact
+    superLit = False : jackpotsMb = 0
+    Ajouter 3 * jackpot, 0
+    Say "SUPER JACKPOT " & (3 * jackpot), 2500
+    Son SND_JACKPOT : Son V_SUPER_JACKPOT
+    hold = 1800
+  ElseIf extraLit Then
+    Contact
+    extraLit = False
+    AwardExtra
+    hold = 1800
+  Else
+    Contact
+    Ajouter 1000, 100 : Son SND_SAUCER
+  End If
+  Apres hold, "EjecterCercle"
+End Sub
+
+Sub EjecterCercle()
+  Cercle.Kick 242 + Int(Rnd * 6), 12
+  PlaySound NomSon(SND_SLING)
+  saucerBusy = False
+End Sub
+
+Sub StartMultiball()
+  multiball = True : mbLit = False : mbCount = mbCount + 1
+  jackpotsMb = 0 : superLit = False
+  ballSaveUntil = maintenant + MB_BALL_SAVE_MS
+  ServeBall True
+  Apres 1500, "ServeAuto"
+End Sub
+Sub ServeAuto() : ServeBall True : End Sub
+
+' --- extra ball : allumée au Cercle (TOUR au ×5) ou donnée directement (Grand Chelem)
+Sub LightExtra()
+  If extraLit Then Exit Sub
+  If extrasGiven >= EXTRA_MAX Then Ajouter EXTRA_POINTS, 0 : Exit Sub
+  extraLit = True
+  Apres 1900, "AnnonceExtra"
+End Sub
+Sub AnnonceExtra() : Say "EXTRA BALL AU CERCLE", 2200 : Son V_EXTRA_LIT : End Sub
+
+Sub AwardExtra()
+  If extrasGiven >= EXTRA_MAX Then
+    Ajouter EXTRA_POINTS, 0
+    Say CStr(EXTRA_POINTS), 1500
+    Exit Sub
+  End If
+  extrasGiven = extrasGiven + 1
+  extraBalls = extraBalls + 1
+  Say "EXTRA BALL", 2000
+  Son SND_EXTRA : Son V_EXTRA
+End Sub
+
+' --- rampe : escales du World Tour, jackpot en multiball
+Sub CapteurRampe_Hit()
+  If Not Contact() Then Exit Sub
+  Ajouter 2000, 200
+  If multiball Then
+    Ajouter jackpot, 0
+    Say "JACKPOT " & jackpot, 1800
+    jackpot = jackpot + JACKPOT_STEP
+    Son SND_JACKPOT : Son V_JACKPOT
+    jackpotsMb = jackpotsMb + 1
+    If jackpotsMb >= SUPER_AFTER And Not superLit Then superLit = True : Apres 1900, "AnnonceSuper"
+  Else
+    Son SND_RAMP
+  End If
+  city = city + 1
+  If city > UBound(CITIES) Then
+    city = 0
+    Ajouter 50000, 5000
+    Say "GRAND CHELEM", 2500
+    Son SND_GRAND_CHELEM : Son V_GRAND_CHELEM
+    Apres 2500, "AwardExtra"
+  Else
+    If Not multiball Then Say CITIES(city), 1500
+    Son SND_CITY
+    If Not multiball Then Son V_CITY_1 + city - 1
+  End If
+End Sub
+Sub AnnonceSuper() : Say "SUPER JACKPOT AU CERCLE", 2200 : End Sub
+
+' ---------------------------------------------------------------- horloge (20 ms) : minuteries, lampes, afficheurs
+Dim dernierPendule : dernierPendule = 0
+Sub Horloge_Timer()
+  maintenant = GameTime
+  Dim i, a
+  For i = 0 To NB_MIN - 1
+    If minOn(i) Then
+      If minT(i) <= maintenant Then minOn(i) = False : Set a = minA(i) : Call a()
+    End If
+  Next
+  If msgText <> "" And maintenant > msgUntil Then msgText = ""
+  If maintenant - dernierPendule > 1000 Then dernierPendule = maintenant : If tiltPendule > 0 Then tiltPendule = tiltPendule - 1
+  MajLampes
+  Afficheurs
+End Sub
+
+Function B2E(b)
+  If b Then B2E = 1 Else B2E = 0
+End Function
+
+Sub MajLampes()
+  Dim i, k, e(31)
+  For i = 0 To 3 : e(i) = B2E(letters(i)) : Next
+  For i = 0 To 4 : e(4 + i) = B2E(drops(i)) : Next
+  If superLit Then
+    e(9) = 2
+  ElseIf multiball Then
+    e(9) = 1
+  ElseIf mbLit Then
+    e(9) = 2
+  Else
+    e(9) = 0
+  End If
+  e(10) = 1
+  If multiball Then e(11) = 2 Else e(11) = 0
+  For i = 0 To 6
+    If i < city Then
+      e(12 + i) = 1
+    ElseIf i = city Then
+      e(12 + i) = 2
+    Else
+      e(12 + i) = 0
+    End If
+  Next
+  For i = 2 To 5 : e(17 + i) = B2E(mult >= i) : Next
+  e(23) = B2E(extraBalls > 0)
+  If maintenant < ballSaveUntil Then e(24) = 2 Else e(24) = 0
+  If maintenant < carreauUntil Then e(25) = 2 Else e(25) = 0
+  If pointLit Then e(26) = 2 Else e(26) = 1
+  e(27) = B2E(pointLit)
+  For i = 0 To 2 : e(28 + i) = B2E(targets(i)) : Next
+  If extraLit Then e(31) = 2 Else e(31) = 0
+  If tilted Then
+    For i = 0 To 31 : e(i) = 0 : Next
+  End If
+  If mode = "attract" Or mode = "over" Or mode = "match" Then
+    k = Int(maintenant / 150)
+    For i = 0 To 31 : e(i) = B2E((i + k) Mod 6 = 0) : Next
+  End If
+  For i = 0 To 31
+    If lampEtat(i) <> e(i) Then lampEtat(i) = e(i) : lampObj(i).State = e(i)
+  Next
+End Sub
+
+Function Pad(s, n)
+  If Len(s) > n Then Pad = Right(s, n) Else Pad = Space(n - Len(s)) & s
+End Function
+
+Function ScrollText(texte, n, ecoule)
+  If Len(texte) <= n Then
+    Dim g : g = Int((n - Len(texte)) / 2)
+    ScrollText = Left(Space(g) & texte & Space(n), n)
+    Exit Function
+  End If
+  Dim p, pas : p = Space(n) & texte & Space(n)
+  pas = Int(ecoule / 200) Mod (Len(p) - n + 1)
+  ScrollText = Mid(p, pas + 1, n)
+End Function
+
+Sub Afficheurs()
+  Dim s, info, phase, nm
+  If tilted Then
+    s = "  TILT  " : info = "TILT"
+  Else
+    If msgText <> "" Then
+      s = ScrollText(msgText, 8, maintenant - msgStart)
+    ElseIf mode = "attract" Then
+      phase = Int(maintenant / 6000) Mod 3
+      If phase = 0 Then
+        s = ScrollText("FANNY PETANQUE WORLD TOUR", 8, maintenant Mod 6000)
+      ElseIf phase = 1 Then
+        s = Pad("HI " & highScore, 8)
+      Else
+        s = Pad(CStr(lastScore), 8)
+      End If
+    Else
+      s = Pad(CStr(score), 8)
+    End If
+    If matchNum >= 0 And (mode = "match" Or mode = "over") Then
+      If matchRolling Then nm = 10 * (Int(maintenant / 70) Mod 10) Else nm = matchNum
+      info = "  " & Right("0" & nm, 2)
+    ElseIf mode = "attract" Or mode = "over" Or mode = "match" Then
+      If credits > 0 And (Int(maintenant / 2000) Mod 2) = 1 Then info = "CR " & credits Else info = "PLAY"
+    Else
+      info = "b" & bille & " " & mult
+    End If
+  End If
+  If Afficheur.Text <> s Then Afficheur.Text = s
+  If AfficheurInfo.Text <> info Then AfficheurInfo.Text = info
+End Sub
