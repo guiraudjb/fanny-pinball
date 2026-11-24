@@ -16,6 +16,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
+use vpin::vpx::gamedata::{ViewLayoutMode, ViewSetupId};
 use vpin::vpx::{
     self, VPX,
     color::Color,
@@ -35,6 +36,10 @@ const MM: f32 = 1.0 / 0.54; // mm → unités VP
 // vitesse de tir du lanceur au clavier (vpinball : speed_fire / 100 × course tirée ; 80 par défaut, trop faible pour
 // les 1 263 mm du plateau : la bille doit monter tout le couloir et faire le tour du haut). Réglé à l'essai (TIR_LANCEUR=…).
 const TIR_LANCEUR: f32 = 200.0;
+/// place du fronton sur le fond de la vue bureau : gauche, haut, largeur (fractions de l'écran)
+const FRONTON_BUREAU: [f32; 3] = [0.64, 0.04, 0.34];
+/// caméra de la vue bureau (mode caméra) : visée, champ, recul, position x/y/z, échelle x, mode, décalage horizontal
+const VUE_BUREAU: [f32; 9] = [45.0, 45.0, 0.0, 0.0, 600.0, 1500.0, 1.0, 1.0, -15.0];
 
 fn f(v: &Value) -> f32 { v.as_f64().unwrap_or(0.0) as f32 }
 fn p2(x: f32, y: f32) -> Vertex2D { Vertex2D::new(x * MM, y * MM) }
@@ -100,7 +105,20 @@ fn main() {
         g.angle_tilt_min = f(&t["pente_deg"]);
         g.angle_tilt_max = f(&t["pente_deg"]);
         g.image = "plateau".into();
-        g.backglass_image_full_desktop = "fronton".into();
+        // vue « bureau » (écran unique paysage, comme les autres tables de la Batocera) : plateau en perspective depuis
+        // le joueur, décalé à gauche ; le fond (fond_bureau.jpg : salle sombre, fronton et afficheur à droite) remplit l'écran.
+        // VUE="inclinaison,champ,recul,x,y,z,échelle_x" pour essayer d'autres réglages sans recompiler.
+        let vue: Vec<f32> = std::env::var("VUE").ok().map(|s| s.split(',').filter_map(|x| x.trim().parse().ok()).collect())
+            .filter(|v: &Vec<f32>| v.len() >= 7).unwrap_or(VUE_BUREAU.to_vec());
+        let d = &mut g.view_setups[ViewSetupId::Desktop];
+        // 8e valeur : 1 = mode caméra (position depuis le bas du plateau, sans déformation) ; 9e : décalage horizontal du cadrage
+        d.mode = Some(if vue.get(7).copied().unwrap_or(0.0) > 0.5 { ViewLayoutMode::Camera } else { ViewLayoutMode::Legacy });
+        d.view_horizontal_offset = vue.get(8).copied();
+        d.viewport_rotation = Some(0.0);
+        d.look_at = Some(vue[0]); d.fov = Some(vue[1]); d.layback = Some(vue[2]);
+        d.view_x = Some(vue[3]); d.view_y = Some(vue[4]); d.view_z = Some(vue[5]);
+        d.scene_scale_x = Some(vue[6]); d.scene_scale_y = Some(1.0); d.scene_scale_z = Some(1.0);
+        g.backglass_image_full_desktop = "fond_bureau".into();
         g.display_backdrop = true;
         g.glass_top_height = 210.0;
         g.glass_bottom_height = Some(210.0);
@@ -148,6 +166,21 @@ fn main() {
         None => { v.add_or_replace_image(image("plateau", &ici.join("donnees/plateau.png"))); }
     }
     v.add_or_replace_image(image("fronton", &racine.join("assets/fronton.jpg")));
+    // fond de la vue bureau (16:10) : salle sombre, fronton en haut à droite ; l'afficheur se place dessous
+    {
+        let (lw, lh) = (1680u32, 1050u32);
+        let mut fond = image::RgbImage::from_fn(lw, lh, |_, y| { let k = 1.0 - 0.5 * y as f32 / lh as f32;
+            image::Rgb([(34.0 * k) as u8, (26.0 * k) as u8, (22.0 * k) as u8]) });
+        let fr = image::open(racine.join("assets/fronton.jpg")).unwrap().to_rgb8();
+        let fw = (lw as f32 * FRONTON_BUREAU[2]) as u32;
+        let fh = fw * fr.height() / fr.width();
+        let fr = image::imageops::resize(&fr, fw, fh, image::imageops::FilterType::Lanczos3);
+        image::imageops::overlay(&mut fond, &fr, (lw as f32 * FRONTON_BUREAU[0]) as i64, (lh as f32 * FRONTON_BUREAU[1]) as i64);
+        let chemin = sortie.join(".fond_bureau.jpg");
+        fond.save(&chemin).unwrap();
+        v.add_or_replace_image(image("fond_bureau", &chemin));
+        fs::remove_file(&chemin).ok();
+    }
 
     let mut items: Vec<GameItemEnum> = vec![];
 
@@ -356,14 +389,16 @@ fn main() {
     // Sans écran de fronton (Batocera, écran unique), les boîtes de texte se dessinent par-dessus le plateau :
     // fond transparent, en haut de l'écran, police lisible (taille OLE en 1/10 000 de point).
     let police = |pt: u32| Font::new(0, HashSet::new(), 700, pt * 10000, "Arial".into());
-    let mut score = TextBox { name: "Afficheur".into(), ver1: Vertex2D::new(12.0, 6.0), ver2: Vertex2D::new(430.0, 66.0),
-        text: "FANNY".into(), is_transparent: true, align: TextAlignment::Left, font: police(30), ..Default::default() };
-    score.back_color = Color::from_rgb(0x000000); score.font_color = Color::from_rgb(0xff3a1a);
-    let mut info = TextBox { name: "AfficheurInfo".into(), ver1: Vertex2D::new(740.0, 6.0), ver2: Vertex2D::new(988.0, 66.0),
-        text: "PLAY".into(), is_transparent: true, align: TextAlignment::Right, font: police(30), ..Default::default() };
-    info.back_color = Color::from_rgb(0x000000); info.font_color = Color::from_rgb(0xffb020);
+    let haut_aff = (FRONTON_BUREAU[1] + FRONTON_BUREAU[2] * 1680.0 / 1050.0 * 832.0 / 1216.0) * 750.0 + 14.0;
+    let (g_aff, d_aff) = (FRONTON_BUREAU[0] * 1000.0, (FRONTON_BUREAU[0] + FRONTON_BUREAU[2]) * 1000.0);
+    // Afficheur à points (DMD 128 x 32) sous le fronton : le VPX de la Batocera ne dessine pas le texte des boîtes de
+    // texte (pas de polices hors PinUP), le script fournit donc lui-même les points (DMDPixels, police 5 x 7 du script).
+    // Rapport 4:1 sur l'écran 16:10 : hauteur en unités du fond (1000 x 750).
+    let h_aff = (d_aff - g_aff) / 1000.0 * 1680.0 / 4.0 / 1050.0 * 750.0;
+    let mut score = TextBox { name: "Afficheur".into(), ver1: Vertex2D::new(g_aff, haut_aff), ver2: Vertex2D::new(d_aff, haut_aff + h_aff),
+        text: "".into(), is_transparent: false, is_dmd: Some(true), align: TextAlignment::Center, font: police(20), ..Default::default() };
+    score.back_color = Color::from_rgb(0x0a0604); score.font_color = Color::from_rgb(0xff6a1a);
     items.push(GameItemEnum::TextBox(score));
-    items.push(GameItemEnum::TextBox(info));
     let mut horloge = Timer { name: "Horloge".into(), center: Vertex2D::new(20.0, 20.0), ..Default::default() };
     horloge.timer.is_enabled = true; horloge.timer.interval = 20;
     items.push(GameItemEnum::Timer(horloge));

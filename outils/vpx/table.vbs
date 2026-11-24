@@ -913,9 +913,65 @@ Sub Afficheurs()
     ElseIf mode = "attract" Or mode = "over" Or mode = "match" Then
       If credits > 0 And (Int(maintenant / 2000) Mod 2) = 1 Then info = "CR " & credits Else info = "PLAY"
     Else
-      info = "b" & bille & " " & mult
+      info = "BILLE " & bille & "   BONUS X" & mult
     End If
   End If
-  If Afficheur.Text <> s Then Afficheur.Text = s
-  If AfficheurInfo.Text <> info Then AfficheurInfo.Text = info
+  DessinerAfficheur s, UCase(info)
+End Sub
+
+' ---------------------------------------------------------------- afficheur à points (DMD 128 x 32)
+' Le VPX de la Batocera ne dessine pas le texte des boîtes de texte : on calcule les points, police 5 x 7
+' (5 colonnes par caractère, bit 0 = rangée du haut) ; score en double taille, ligne d'info dessous.
+Const DMD_L = 128
+Const DMD_H = 32
+Const POLICE_CARS = " !'+-./0123456789:?ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+Dim POLICE : POLICE = Array( _
+  0,0,0,0,0, 0,0,95,0,0, 0,5,3,0,0, 8,8,62,8,8, 8,8,8,8,8, 0,96,96,0,0, 32,16,8,4,2, _
+  62,81,73,69,62, 0,66,127,64,0, 66,97,81,73,70, 33,65,69,75,49, 24,20,18,127,16, _
+  39,69,69,69,57, 60,74,73,73,48, 1,113,9,5,3, 54,73,73,73,54, 6,73,73,41,30, _
+  0,54,54,0,0, 2,1,81,9,6, _
+  126,17,17,17,126, 127,73,73,73,54, 62,65,65,65,34, 127,65,65,34,28, 127,73,73,73,65, _
+  127,9,9,1,1, 62,65,65,81,50, 127,8,8,8,127, 0,65,127,65,0, 32,64,65,63,1, _
+  127,8,20,34,65, 127,64,64,64,64, 127,2,4,2,127, 127,4,8,16,127, 62,65,65,65,62, _
+  127,9,9,9,6, 62,65,81,33,94, 127,9,25,41,70, 70,73,73,73,49, 1,1,127,1,1, _
+  63,64,64,64,63, 31,32,64,32,31, 127,32,24,32,127, 99,20,8,20,99, 3,4,120,4,3, 97,81,73,69,67)
+Dim dmdPoints(4095)
+Dim dmdAvant : dmdAvant = Chr(1)
+
+Sub DmdTexte(t, x0, y0, k, lum)
+  Dim i, c, n, col, bits, r, a, b
+  For i = 1 To Len(t)
+    c = Mid(t, i, 1)
+    If c = "x" Then c = "X"
+    n = InStr(POLICE_CARS, c) - 1
+    If n < 0 Then n = 0
+    For col = 0 To 4
+      bits = POLICE(n * 5 + col)
+      If bits <> 0 Then
+        For r = 0 To 6
+          If (bits And (2 ^ r)) <> 0 Then
+            For a = 0 To k - 1
+              For b = 0 To k - 1
+                If x0 + col * k + a < DMD_L And y0 + r * k + b < DMD_H Then dmdPoints((y0 + r * k + b) * DMD_L + x0 + col * k + a) = lum
+              Next
+            Next
+          End If
+        Next
+      End If
+    Next
+    x0 = x0 + 6 * k
+  Next
+End Sub
+
+Sub DessinerAfficheur(s, info)
+  Dim i, t
+  If s & "|" & info = dmdAvant Then Exit Sub
+  dmdAvant = s & "|" & info
+  For i = 0 To 4095 : dmdPoints(i) = 0 : Next
+  t = RTrim(s)
+  DmdTexte s, Int((DMD_L - Len(s) * 12) / 2) + 1, 2, 2, 100
+  t = Trim(info)
+  DmdTexte t, Int((DMD_L - Len(t) * 6) / 2) + 1, 23, 1, 90
+  DMDWidth = DMD_L : DMDHeight = DMD_H
+  DMDPixels = dmdPoints
 End Sub

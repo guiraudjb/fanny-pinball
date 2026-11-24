@@ -46,3 +46,8 @@ Encore à régler en jeu : force des lance-pierres (80), éjection du Cercle (`E
 - `test` : partie, tir du lanceur, trajectoire de la bille (`ESSAI …`).
 - `balayage` : billes posées sans vitesse sur une grille de 20 mm de tout le plateau (751 points) ; une bille immobile après 4,5 s est signalée `BLOQUE x= y=`, une bille sortie du plateau `PERDUE`.
 - `rampe` : tirs dans la rampe à trois vitesses, billes posées sous la rampe et lâchées du haut du plateau au-dessus de l'entrée (`RAMPE …`).
+
+## Vue et afficheur
+
+- Vue « bureau » (écran unique paysage, réglage des autres tables de la Batocera) : mode caméra, plateau à gauche vu de face, fond `fond_bureau` composé par le générateur (salle sombre, fronton en haut à droite). Réglage : `VUE_BUREAU` dans `generateur/src/main.rs`, ou `VUE="visée,champ,recul,x,y,z,échelle,mode,décalage"` pour essayer sans recompiler.
+- Afficheur à points 128 × 32 sous le fronton : le VPX de la Batocera ne dessine pas le texte des boîtes de texte, le script calcule les points (police 5 × 7, `DessinerAfficheur`) et les envoie par `DMDPixels` à la boîte `Afficheur` marquée DMD.
