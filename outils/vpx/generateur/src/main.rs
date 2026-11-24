@@ -36,6 +36,10 @@ const MM: f32 = 1.0 / 0.54; // mm → unités VP
 // vitesse de tir du lanceur au clavier (vpinball : speed_fire / 100 × course tirée ; 80 par défaut, trop faible pour
 // les 1 263 mm du plateau : la bille doit monter tout le couloir et faire le tour du haut). Réglé à l'essai (TIR_LANCEUR=…).
 const TIR_LANCEUR: f32 = 200.0;
+/// luminosité de l'afficheur à points (1 = vpinball par défaut)
+const LUMINOSITE_AFFICHEUR: f32 = 1.0;
+/// force des reflets sur le plateau (0 à 1 ; la table minimale de vpin met 1, trop fort : effet miroir)
+const REFLET_PLATEAU: f32 = 0.12;
 /// place du fronton sur le fond de la vue bureau : gauche, haut, largeur (fractions de l'écran)
 const FRONTON_BUREAU: [f32; 3] = [0.64, 0.04, 0.34];
 /// caméra de la vue bureau (mode caméra) : visée, champ, recul, position x/y/z, échelle x, mode, décalage horizontal
@@ -47,6 +51,12 @@ fn dp(x: f32, y: f32, z: f32) -> DragPoint { DragPoint { x: x * MM, y: y * MM, z
 fn couleur(hex: &str) -> Color { Color::from_rgb(u32::from_str_radix(hex.trim_start_matches('#'), 16).unwrap_or(0xffffff)) }
 /// angle vpinball (degrés, 0 = vers le haut de l'écran, sens horaire) d'un vecteur du plateau (y vers le joueur)
 fn angle_vp(x: f32, y: f32) -> f32 { x.atan2(-y).to_degrees() }
+
+/// rectangle de détection d'un capteur (demi-largeur, demi-hauteur en mm), sens attendu par vpinball
+fn rect_capteur(x: f32, y: f32, dx: f32, dy: f32) -> Vec<DragPoint> {
+    [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].iter()
+        .map(|(a, b): &(f32, f32)| DragPoint { x: (x + a * dx) * MM, y: (y + b * dy) * MM, ..Default::default() }).collect()
+}
 
 fn image(nom: &str, chemin: &Path) -> ImageData { image_a(nom, chemin, false) }
 
@@ -137,7 +147,7 @@ fn main() {
         opacity_active_edge_alpha: if opacite < 1.0 { 255 } else { 254 },
     };
     let mats = vec![
-        matiere("Bois", 0x7a4a26, 0x2a2a2a, false, 1.0, 0.45),
+        matiere("Bois", 0x7a4a26, 0x101010, false, 1.0, 0.45),
         matiere("Plastique", 0xfff4dc, 0x5a5a5a, false, 0.55, 0.9),
         matiere("Metal", 0xb8bcc4, 0x9a9aa0, true, 1.0, 0.8),
         matiere("Palette", 0xf6f1e6, 0x404040, false, 1.0, 0.7),
@@ -160,6 +170,9 @@ fn main() {
     v.gamedata.materials_size = mats.len() as u32;
     v.gamedata.materials_old = mats;
     v.gamedata.playfield_material = "Bois".into();
+    // reflets du plateau : discrets (le plateau peint d'origine est mat, sous une vitre)
+    v.gamedata.playfield_reflection_strength = REFLET_PLATEAU;
+    v.gamedata.ball_playfield_reflection_strength = Some(0.5);
 
     match &mut decor {
         Some(d) => { v.add_or_replace_image(image("plateau", &d.plateau)); for im in std::mem::take(&mut d.images) { v.add_or_replace_image(im); } }
@@ -248,10 +261,11 @@ fn main() {
     }
 
     // ---------------------------------------------------------------- cibles
-    let cible = |nom: String, x: f32, y: f32, nx: f32, ny: f32, genre: TargetType| {
+    let cible = |nom: String, x: f32, y: f32, nx: f32, ny: f32, genre: TargetType, r: f32| {
         let mut c = HitTarget { name: nom, position: Vertex3D::new(x * MM, y * MM, 0.0), target_type: genre,
             rot_z: angle_vp(nx, ny) - 180.0, use_hit_event: true, material: "Cible".into(), is_visible: vu, ..Default::default() };
-        if matches!(c.target_type, TargetType::HitTargetRound) { c.size = Vertex3D::new(22.0, 22.0, 22.0); }
+        // cible ronde au diamètre d'origine : plus petite, la bille touchait le bord du logement sans l'atteindre
+        if matches!(c.target_type, TargetType::HitTargetRound) { let d = 2.0 * r * MM; c.size = Vertex3D::new(d, d, d); }
         GameItemEnum::HitTarget(c)
     };
     let dn = &t["cibles_tombantes"];
@@ -262,21 +276,25 @@ fn main() {
         // face tournée vers le plateau : normale perpendiculaire à la banque (angle = direction de la banque)
         let (nx, ny) = (-a.sin(), a.cos());
         let nom = ["DT_F", "DT_A", "DT_N1", "DT_N2", "DT_Y"][i];
-        items.push(cible(nom.into(), f(&d["x"]), f(&d["y"]), -nx.abs(), ny, TargetType::DropTargetSimple));
+        items.push(cible(nom.into(), f(&d["x"]), f(&d["y"]), -nx.abs(), ny, TargetType::DropTargetSimple, 0.0));
     }
     for s in t["cibles_fixes"].as_array().unwrap() {
         let id = s["id"].as_str().unwrap();
-        let (nx, ny) = match id { "pointer" => (f(&s["n"]["x"]), f(&s["n"]["y"])), "tirer" => (1.0, 0.0), _ => (0.35, 0.94) };
+        // TIRER est tourné comme POINTER (son logement s'ouvre vers le bas à droite)
+        let pointer = &t["cibles_fixes"][0]["n"];
+        let (nx, ny) = match id { "pointer" | "tirer" => (f(&pointer["x"]), f(&pointer["y"])), _ => (0.35, 0.94) };
         let nom = match id { "pointer" => "Pointer", "tirer" => "Tirer", _ => "Bouchon" };
-        items.push(cible(nom.into(), f(&s["x"]), f(&s["y"]), nx, ny, TargetType::HitTargetRound));
+        items.push(cible(nom.into(), f(&s["x"]), f(&s["y"]), nx, ny, TargetType::HitTargetRound, f(&s["r"])));
     }
     for (i, c) in t["cibles_gauche"].as_array().unwrap().iter().enumerate() {
-        items.push(cible(format!("Boule{}", i + 1), f(&c["x"]) + 4.0, f(&c["y"]), 1.0, 0.0, TargetType::HitTargetRound));
+        items.push(cible(format!("Boule{}", i + 1), f(&c["x"]) + 4.0, f(&c["y"]), 1.0, 0.0, TargetType::HitTargetRound, f(&c["r"])));
     }
 
     // ---------------------------------------------------------------- couloirs (fils de détection)
+    // Un capteur VPX détecte la bille dans le polygone de ses points : sans points, le fil se déclenchait en boucle
+    // (des dizaines de fois par passage) ; points dans le sens horaire mathématique, comme les murs.
     let fil = |nom: String, x: f32, y: f32| GameItemEnum::Trigger(Trigger { name: nom, center: p2(x, y), radius: 25.0,
-        shape: TriggerShape::WireA, drag_points: vec![], is_visible: vu, ..Default::default() });
+        shape: TriggerShape::WireA, drag_points: rect_capteur(x, y, 7.0, 12.0), is_visible: vu, ..Default::default() });
     for (i, c) in t["couloirs"].as_array().unwrap().iter().enumerate() {
         items.push(fil(format!("Couloir{}", ["T", "O", "U", "R"][i]), f(&c["x"]), f(&c["y"])));
     }
@@ -320,7 +338,7 @@ fn main() {
     let mut capt = Trigger { name: "CapteurLanceur".into(), center: p2(f(&l["x"]), f(&l["ballY"])), radius: 25.0,
         shape: TriggerShape::None, is_visible: false, ..Default::default() };
     let rr = 9.0 * MM;
-    capt.drag_points = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].iter()
+    capt.drag_points = [(-1.0, -1.0), (-1.0, 1.0), (1.0, 1.0), (1.0, -1.0)].iter()
         .map(|(a, b)| DragPoint { x: capt.center.x + a * rr, y: capt.center.y + b * rr, ..Default::default() }).collect();
     items.push(GameItemEnum::Trigger(capt));
     // portillon du haut du couloir : il s'ouvre vers le plateau, la bille ne redescend pas dans le couloir
@@ -366,9 +384,16 @@ fn main() {
         let mut tr = Trigger { name: "CapteurRampe".into(), center: p2(x, y), radius: 25.0, shape: TriggerShape::None,
             hit_height: (zf + 30.0) * MM, is_visible: false, ..Default::default() };
         let rr = 12.0 * MM;
-        tr.drag_points = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].iter()
+        tr.drag_points = [(-1.0, -1.0), (-1.0, 1.0), (1.0, 1.0), (1.0, -1.0)].iter()
             .map(|(a, b)| DragPoint { x: x * MM + a * rr, y: y * MM + b * rr, ..Default::default() }).collect();
         items.push(GameItemEnum::Trigger(tr));
+    }
+
+    // capteurs : réglages par défaut de vpinball (vpin met 0 à l'échelle et à la vitesse d'animation des fils)
+    for it in items.iter_mut() {
+        if let GameItemEnum::Trigger(tr) = it {
+            tr.scale_x = 1.0; tr.scale_y = 1.0; tr.anim_speed = 1.0; tr.wire_thickness = Some(0.0);
+        }
     }
 
     // ---------------------------------------------------------------- lampes (inserts peints sur le plateau)
@@ -397,7 +422,8 @@ fn main() {
     let h_aff = (d_aff - g_aff) / 1000.0 * 1680.0 / 4.0 / 1050.0 * 750.0;
     let mut score = TextBox { name: "Afficheur".into(), ver1: Vertex2D::new(g_aff, haut_aff), ver2: Vertex2D::new(d_aff, haut_aff + h_aff),
         text: "".into(), is_transparent: false, is_dmd: Some(true), align: TextAlignment::Center, font: police(20), ..Default::default() };
-    score.back_color = Color::from_rgb(0x0a0604); score.font_color = Color::from_rgb(0xff6a1a);
+    score.back_color = Color::from_rgb(0x0a0604); score.font_color = Color::from_rgb(0xffffff);
+    score.intensity_scale = LUMINOSITE_AFFICHEUR;
     items.push(GameItemEnum::TextBox(score));
     let mut horloge = Timer { name: "Horloge".into(), center: Vertex2D::new(20.0, 20.0), ..Default::default() };
     horloge.timer.is_enabled = true; horloge.timer.interval = 20;

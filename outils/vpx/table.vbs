@@ -100,6 +100,7 @@ Sub Table1_Init()
   If GetCustomParam(1) = "test" Then Apres 1500, "TestDepart"
   If GetCustomParam(1) = "balayage" Then Apres 1500, "BalayageLot"
   If GetCustomParam(1) = "rampe" Then Apres 1500, "EssaiRampe"
+  If GetCustomParam(1) = "logique" Then essaiLogique = True : Apres 1500, "LogiqueDepart"
 End Sub
 
 ' ---------------------------------------------------------------- décor d'origine : pièces animées à chaque image
@@ -261,6 +262,180 @@ Sub EssaiRampeSuivi()
   End If
 End Sub
 
+' ---------------------------------------------------------------- essai de la logique de jeu (VPinballX -c1 logique)
+' Une partie jouée par le script : la bille est lancée sur chaque élément du plateau (position et direction en mm,
+' vitesse en unités VP / 10 ms), le journal donne les points gagnés et les messages ; puis le scénario complet :
+' F-A-N-N-Y, multiball au Cercle, trois jackpots à la rampe, super jackpot, fin de mène, bonus, tilt, fin de partie, match.
+'   étape : Array(genre, nom, x, y, dx, dy, vitesse, attente ms, attendu)
+Dim LOGIQUE : LOGIQUE = Array( _
+  Array("tir", "bumper 1", 185, 322, 0, -1, 15, 1500, "100 par coup"), _
+  Array("tir", "bumper 2", 293, 322, 0, -1, 15, 1500, "100 par coup"), _
+  Array("tir", "bumper 3", 239, 404, 0, -1, 15, 1500, "100 par coup"), _
+  Array("tir", "lance-pierres G", 182.1, 945, -0.927, 0.375, 12, 1200, "10"), _
+  Array("tir", "lance-pierres D", 295.9, 945, 0.927, 0.375, 12, 1200, "10"), _
+  Array("tir", "couloir T", 176, 135, 0, 1, 4, 1500, "300, lettre T"), _
+  Array("tir", "couloir O", 218, 135, 0, 1, 4, 1500, "300, lettre O"), _
+  Array("tir", "couloir U", 260, 135, 0, 1, 4, 1500, "300, lettre U"), _
+  Array("tir", "couloir R", 302, 135, 0, 1, 4, 1500, "300 + BONUS X2"), _
+  Array("tir", "couloir bas outL", 18, 912, 0, 1, 5, 1200, "1000"), _
+  Array("tir", "couloir bas inExtL", 61, 912, 0, 1, 5, 1200, "500"), _
+  Array("etat", "", 0, 0, 0, 0, 0, 0, "après évacuation"), _
+  Array("tir", "couloir bas inIntR", 375, 912, 0, 1, 5, 1200, "500"), _
+  Array("tir", "couloir bas outR", 460, 912, 0, 1, 5, 1200, "1000"), _
+  Array("tir", "tourniquet", 185.2, 517.5, -0.2, -0.98, 20, 1500, "250 par tour"), _
+  Array("tir", "boule 1", 70, 736, -1, 0, 15, 1200, "300"), _
+  Array("tir", "boule 2", 70, 776, -1, 0, 15, 1200, "300"), _
+  Array("tir", "boule 3", 70, 816, -1, 0, 15, 1200, "300 + 3000 TRIPLETTE"), _
+  Array("tir", "tirer (sans carreau)", 49.8, 653.8, -0.445, -0.895, 15, 1200, "500"), _
+  Array("tir", "pointer", 51.3, 533.7, -0.445, -0.895, 15, 1200, "500"), _
+  Array("tir", "bouchon", 64, 447.6, -0.35, -0.94, 15, 1500, "1500 + 5000 BIBERON"), _
+  Array("tir", "tirer (carreau)", 49.8, 653.8, -0.445, -0.895, 15, 1500, "CARREAU 10000"), _
+  Array("tir", "cible F", 346.66, 619.11, 0.966, -0.259, 15, 1200, "500"), _
+  Array("tir", "cible A", 354.88, 649.78, 0.966, -0.259, 15, 1200, "500"), _
+  Array("tir", "cible N", 363.1, 680.45, 0.966, -0.259, 15, 1200, "500"), _
+  Array("tir", "cible N", 371.31, 711.12, 0.966, -0.259, 15, 1200, "500"), _
+  Array("tir", "cible Y", 379.53, 741.79, 0.966, -0.259, 15, 2000, "500 + MULTIBALL AU CERCLE"), _
+  Array("etat", "", 0, 0, 0, 0, 0, 0, "mbLit"), _
+  Array("tir", "rampe", 196, 570, -0.2, -0.98, 45, 8000, "2000 + escale PARIS"), _
+  Array("tir", "Cercle (multiball)", 400, 360, 0, 0, 0, 7000, "TRIPLETTE MULTIBALL, 3 billes"), _
+  Array("etat", "", 0, 0, 0, 0, 0, 0, "multiball, 3 billes"), _
+  Array("tir", "rampe (jackpot 1)", 196, 570, -0.2, -0.98, 45, 8000, "2000 + JACKPOT 20000"), _
+  Array("tir", "rampe (jackpot 2)", 196, 570, -0.2, -0.98, 45, 8000, "2000 + JACKPOT 25000"), _
+  Array("tir", "rampe (jackpot 3)", 196, 570, -0.2, -0.98, 45, 8000, "2000 + JACKPOT 30000, super allumé"), _
+  Array("etat", "", 0, 0, 0, 0, 0, 0, "superLit"), _
+  Array("tir", "Cercle (super jackpot)", 400, 360, 0, 0, 0, 3000, "SUPER JACKPOT 105000"), _
+  Array("sauvetage", "", 0, 0, 0, 0, 0, 0, "fin du sauvetage de bille"), _
+  Array("vidange", "", 0, 0, 0, 0, 0, 9000, "FIN DE LA MENE, bonus, BILLE 2"), _
+  Array("etat", "", 0, 0, 0, 0, 0, 0, "bille 2, mult 1"), _
+  Array("tir", "bumper (arme le sauvetage)", 185, 322, 0, -1, 15, 1500, ""), _
+  Array("tilt", "", 0, 0, 0, 0, 0, 1500, "ATTENTION"), _
+  Array("tilt", "", 0, 0, 0, 0, 0, 1500, "ATTENTION"), _
+  Array("tilt", "", 0, 0, 0, 0, 0, 1500, "TILT"), _
+  Array("tir", "bumper sous tilt", 185, 322, 0, -1, 15, 1500, "0 point"), _
+  Array("vidange", "", 0, 0, 0, 0, 0, 6000, "TILT, pas de bonus, BILLE 3"), _
+  Array("etat", "", 0, 0, 0, 0, 0, 0, "bille 3, plus de tilt"), _
+  Array("tir", "bumper", 185, 322, 0, -1, 15, 1500, ""), _
+  Array("sauvetage", "", 0, 0, 0, 0, 0, 0, ""), _
+  Array("vidange", "", 0, 0, 0, 0, 0, 14000, "fin de partie, record, MATCH"), _
+  Array("etat", "", 0, 0, 0, 0, 0, 0, "over ou attract"))
+Dim logiqueI : logiqueI = 0
+Dim logiqueScore, logiqueMsg, logiqueDetail
+Dim logiqueProtege : logiqueProtege = False
+
+Function BillesEnJeu()
+  Dim b, n : n = 0
+  For Each b In GetBalls : n = n + 1 : Next
+  BillesEnJeu = n
+End Function
+
+Sub LogiqueEtat()
+  Debug.Print "LOGIQUE   etat : mode=" & mode & " bille=" & bille & " billes=" & BillesEnJeu() & " enJeu=" & ballsInPlay & _
+    " score=" & score & " mult=" & mult & " bonus=" & bonus & " mbLit=" & mbLit & " multiball=" & multiball & _
+    " jackpot=" & jackpot & " jackpotsMb=" & jackpotsMb & " superLit=" & superLit & " escale=" & city & _
+    " extraLit=" & extraLit & " tilt=" & tilted & " credits=" & credits & " record=" & highScore
+End Sub
+
+Sub LogiqueDepart()
+  Debug.Print "LOGIQUE depart"
+  StartGame
+  Apres 2500, "LogiqueEtape"
+End Sub
+
+' la bille de l'essai : la première de la table (les autres, en multiball, roulent librement)
+Function BilleEssai()
+  Dim lot : lot = GetBalls
+  Set BilleEssai = Nothing
+  If UBound(lot) >= 0 Then Set BilleEssai = lot(0)
+End Function
+
+Sub LogiqueEtape()
+  Dim e, b, i
+  If logiqueI > UBound(LOGIQUE) Then Debug.Print "LOGIQUE fin" : Exit Sub
+  ' bille neuve encore tenue par le distributeur : la déplacer la laisserait bloquée dedans
+  If maintenant - logiqueNouvelleT < 1200 Or Distributeur.Enabled Then Apres 300, "LogiqueEtape" : Exit Sub
+  e = LOGIQUE(logiqueI)
+  logiqueI = logiqueI + 1
+  logiqueScore = score : logiqueDetail = "" : logiqueNbContacts = 0
+  logiqueProtege = (e(0) = "tir" Or e(0) = "tilt")
+  Select Case e(0)
+    Case "tir"
+      Set b = BilleEssai()
+      If b Is Nothing Then Debug.Print "LOGIQUE " & e(1) & " : pas de bille" : Apres 200, "LogiqueEtape" : Exit Sub
+      b.X = e(2) / 0.54 : b.Y = e(3) / 0.54 : b.Z = 25
+      b.VelX = e(4) * e(6) : b.VelY = e(5) * e(6) : b.VelZ = 0
+      b.AngMomX = 0 : b.AngMomY = 0 : b.AngMomZ = 0
+      Debug.Print "LOGIQUE tir " & e(1) & " (attendu : " & e(8) & ")"
+      Apres e(7), "LogiqueBilan"
+    Case "etat"
+      Debug.Print "LOGIQUE etat attendu : " & e(8)
+      LogiqueEtat
+      Apres 100, "LogiqueEtape"
+    Case "tilt"
+      Debug.Print "LOGIQUE secousse (attendu : " & e(8) & ")"
+      HitTilt
+      Apres e(7), "LogiqueBilan"
+    Case "sauvetage"
+      Debug.Print "LOGIQUE attente de la fin du sauvetage de bille"
+      LogiqueSauvetage
+    Case "vidange"
+      Debug.Print "LOGIQUE vidange de toutes les billes (attendu : " & e(8) & ")"
+      LogiqueVidange
+      Apres e(7), "LogiqueBilan"
+  End Select
+End Sub
+
+Dim logiqueNbContacts
+Sub JournalContact(nom)
+  If Not essaiLogique Then Exit Sub
+  logiqueNbContacts = logiqueNbContacts + 1
+  If logiqueNbContacts <= 4 Then Debug.Print "LOGIQUE     contact " & nom & " t=" & (maintenant Mod 100000) & " x=" & Int(ActiveBall.X * 0.54) & _
+    " y=" & Int(ActiveBall.Y * 0.54) & " z=" & Int(ActiveBall.Z) & " vx=" & Round(ActiveBall.VelX, 1) & " vy=" & Round(ActiveBall.VelY, 1)
+End Sub
+
+' une bille à la fois posée au-dessus de l'ouverture centrale : elle tombe dans l'évacuation (vrai Drain_Hit)
+' (DestroyBall appelé par le script sur une bille autre que la bille active ne la retire pas)
+Sub LogiqueVidange()
+  Dim lot : lot = GetBalls
+  If UBound(lot) < 0 Then Exit Sub
+  Debug.Print "LOGIQUE     vidange de la bille x=" & Int(lot(0).X * 0.54) & " y=" & Int(lot(0).Y * 0.54) & " z=" & Int(lot(0).Z) & " vy=" & Round(lot(0).VelY, 1) & " (saucerBusy=" & saucerBusy & ", distributeur=" & Distributeur.Enabled & ")"
+  lot(0).X = 240 / 0.54 : lot(0).Y = 1095 / 0.54 : lot(0).Z = 25 : lot(0).VelX = 0 : lot(0).VelY = 3 : lot(0).VelZ = 0
+  If UBound(lot) > 0 Then Apres 900, "LogiqueVidange"
+End Sub
+
+Dim logiqueNouvelleT : logiqueNouvelleT = -10000
+Sub LogiqueNouvelleBille()
+  logiqueNouvelleT = maintenant
+  Distributeur.Enabled = True : Distributeur.CreateBall : Distributeur.Kick 180, 1
+  Apres 400, "CouperDistributeur"
+End Sub
+
+Sub LogiqueSauvetage()
+  If maintenant < ballSaveUntil Then Apres 500, "LogiqueSauvetage" : Exit Sub
+  Apres 100, "LogiqueEtape"
+End Sub
+
+' bilan d'une étape, puis la bille d'essai attend dans le couloir du lanceur (immobile, hors jeu)
+Sub LogiqueBilan()
+  Dim b
+  Debug.Print "LOGIQUE   points : " & (score - logiqueScore) & "  [" & Left(logiqueDetail, 240) & " ]  (score " & score & ", mode " & mode & ", billes " & BillesEnJeu() & ")"
+  For Each b In GetBalls
+    Debug.Print "LOGIQUE     bille x=" & Int(b.X * 0.54) & " y=" & Int(b.Y * 0.54) & " z=" & Int(b.Z) & " vy=" & Round(b.VelY, 1)
+  Next
+  Set b = BilleEssai()
+  If Not b Is Nothing And mode = "play" And Not multiball Then
+    b.X = 498 / 0.54 : b.Y = 1050 / 0.54 : b.Z = 25 : b.VelX = 0 : b.VelY = 0 : b.VelZ = 0   ' au-dessus du distributeur
+  End If
+  Apres 600, "LogiqueEtape"
+End Sub
+
+' messages des afficheurs pendant l'essai
+Sub LogiqueMessages()
+  If msgText <> logiqueMsg Then
+    logiqueMsg = msgText
+    If msgText <> "" Then Debug.Print "LOGIQUE   message : " & msgText
+  End If
+End Sub
+
 Function IIf(c, a, b)
   If c Then IIf = a Else IIf = b
 End Function
@@ -290,6 +465,7 @@ End Sub
 
 Sub Ajouter(points, b)
   If mode <> "play" Or tilted Then Exit Sub
+  If essaiLogique Then logiqueDetail = logiqueDetail & " +" & points
   score = score + points
   bonus = bonus + b
   CheckReplay
@@ -523,7 +699,23 @@ Sub LancementAuto()
 End Sub
 
 Sub Drain_Hit()
+  If essaiLogique Then Debug.Print "LOGIQUE     Drain_Hit x=" & Int(ActiveBall.X * 0.54) & " y=" & Int(ActiveBall.Y * 0.54) & " protege=" & logiqueProtege & " billes=" & BillesEnJeu()
+  If logiqueProtege Then                    ' essai de la logique : une bille neuve au lanceur au lieu de la bille perdue
+    ActiveBall.DestroyBall                  ' (déplacée sans être retirée, vpinball la croirait encore dans l'évacuation)
+    Debug.Print "LOGIQUE   (bille évacuée, remplacée au lanceur)"
+    If multiball And ballsInPlay > 1 Then     ' en multiball : une bille de moins, sans rien servir
+      ballsInPlay = ballsInPlay - 1
+    Else
+      Apres 100, "LogiqueNouvelleBille"       ' hors de l'évènement de collision
+    End If
+    Exit Sub
+  End If
   ActiveBall.DestroyBall
+  If essaiLogique Then Debug.Print "LOGIQUE     apres DestroyBall billes=" & BillesEnJeu()
+  BilleEvacuee
+End Sub
+
+Sub BilleEvacuee()
   ballsInPlay = ballsInPlay - 1 : If ballsInPlay < 0 Then ballsInPlay = 0
   If mode <> "play" Then Exit Sub
   If tilted Then
@@ -549,12 +741,26 @@ Sub Drain_Hit()
 End Sub
 
 ' --- couloirs du haut : T O U R
-Sub CouloirT_Hit() : HitLane 0 : End Sub
-Sub CouloirO_Hit() : HitLane 1 : End Sub
-Sub CouloirU_Hit() : HitLane 2 : End Sub
-Sub CouloirR_Hit() : HitLane 3 : End Sub
+' anti-rebond des contacts : vpinball peut signaler le même passage d'une bille des dizaines de fois dans le même pas
+' de physique (essai -c1 logique : un couloir comptait 300 x 47) ; un contact ne compte qu'une fois par 150 ms, comme
+' l'anti-rebond des contacts de la réplique.
+Dim dernierCoup(16)
+Function Doublon(k)
+  Doublon = (GameTime - dernierCoup(k) < 150)
+  If Not Doublon Then dernierCoup(k) = GameTime
+End Function
+
+Sub CouloirT_Hit() : If Not Doublon(0) Then HitLane 0
+End Sub
+Sub CouloirO_Hit() : If Not Doublon(1) Then HitLane 1
+End Sub
+Sub CouloirU_Hit() : If Not Doublon(2) Then HitLane 2
+End Sub
+Sub CouloirR_Hit() : If Not Doublon(3) Then HitLane 3
+End Sub
 
 Sub HitLane(i)
+  JournalContact "couloir " & i
   If Not Contact() Then Exit Sub
   Ajouter 300, 30
   If LightLetter(i) Then Son SND_LANE
@@ -586,14 +792,21 @@ Sub RotateLetters(dir)
 End Sub
 
 ' --- couloirs du bas
-Sub Bas_outL_Hit() : CouloirBas True : End Sub
-Sub Bas_outR_Hit() : CouloirBas True : End Sub
-Sub Bas_inExtL_Hit() : CouloirBas False : End Sub
-Sub Bas_inIntL_Hit() : CouloirBas False : End Sub
-Sub Bas_inIntR_Hit() : CouloirBas False : End Sub
-Sub Bas_inExtR_Hit() : CouloirBas False : End Sub
+Sub Bas_outL_Hit() : If Not Doublon(4) Then CouloirBas True
+End Sub
+Sub Bas_outR_Hit() : If Not Doublon(5) Then CouloirBas True
+End Sub
+Sub Bas_inExtL_Hit() : If Not Doublon(6) Then CouloirBas False
+End Sub
+Sub Bas_inIntL_Hit() : If Not Doublon(7) Then CouloirBas False
+End Sub
+Sub Bas_inIntR_Hit() : If Not Doublon(8) Then CouloirBas False
+End Sub
+Sub Bas_inExtR_Hit() : If Not Doublon(9) Then CouloirBas False
+End Sub
 
 Sub CouloirBas(dehors)
+  JournalContact "couloir bas"
   If Not Contact() Then Exit Sub
   If dehors Then Ajouter 1000, 200 Else Ajouter 500, 100
   Son SND_LANE
@@ -622,9 +835,12 @@ Sub Tourniquet_Spin()
 End Sub
 
 ' --- jeu de boules : trois cibles rondes du mur gauche = TRIPLETTE
-Sub Boule1_Hit() : HitTarget 0 : End Sub
-Sub Boule2_Hit() : HitTarget 1 : End Sub
-Sub Boule3_Hit() : HitTarget 2 : End Sub
+Sub Boule1_Hit() : If Not Doublon(11) Then HitTarget 0
+End Sub
+Sub Boule2_Hit() : If Not Doublon(12) Then HitTarget 1
+End Sub
+Sub Boule3_Hit() : If Not Doublon(13) Then HitTarget 2
+End Sub
 Sub HitTarget(i)
   If Not Contact() Then Exit Sub
   Ajouter 300, 30 : Son SND_STANDUP
@@ -639,12 +855,14 @@ Sub HitTarget(i)
 End Sub
 
 Sub Pointer_Hit()
+  If Doublon(14) Then Exit Sub
   If Not Contact() Then Exit Sub
   Ajouter 500, 50 : Son SND_STANDUP
   pointLit = True
 End Sub
 
 Sub Bouchon_Hit()
+  If Doublon(16) Then Exit Sub
   If Not Contact() Then Exit Sub
   Ajouter 1500, 150 : Son SND_STANDUP
   If pointLit Then
@@ -658,6 +876,7 @@ Sub Bouchon_Hit()
 End Sub
 
 Sub Tirer_Hit()
+  If Doublon(15) Then Exit Sub
   If Not Contact() Then Exit Sub
   If maintenant < carreauUntil Then
     carreauUntil = 0
@@ -781,6 +1000,7 @@ End Sub
 Sub CapteurRampe_Hit()
   ' le capteur est un volume posé sur le plateau : une bille qui passe dessous, sur le plateau, ne compte pas
   If ActiveBall.Z < 55 Then Exit Sub
+  If Doublon(10) Then Exit Sub
   If GetCustomParam(1) = "rampe" Then Debug.Print "RAMPE   capteur de rampe : passage réussi"
   If Not Contact() Then Exit Sub
   Ajouter 2000, 200
@@ -811,6 +1031,7 @@ Sub AnnonceSuper() : Say "SUPER JACKPOT AU CERCLE", 2200 : End Sub
 
 ' ---------------------------------------------------------------- horloge (20 ms) : minuteries, lampes, afficheurs
 Dim dernierPendule : dernierPendule = 0
+Dim essaiLogique : essaiLogique = False
 Sub Horloge_Timer()
   maintenant = GameTime
   Dim i, a
@@ -823,6 +1044,7 @@ Sub Horloge_Timer()
   If maintenant - dernierPendule > 1000 Then dernierPendule = maintenant : If tiltPendule > 0 Then tiltPendule = tiltPendule - 1
   MajLampes
   Afficheurs
+  If essaiLogique Then LogiqueMessages
 End Sub
 
 Function B2E(b)
@@ -936,6 +1158,9 @@ Dim POLICE : POLICE = Array( _
   127,9,9,9,6, 62,65,81,33,94, 127,9,25,41,70, 70,73,73,73,49, 1,1,127,1,1, _
   63,64,64,64,63, 31,32,64,32,31, 127,32,24,32,127, 99,20,8,20,99, 3,4,120,4,3, 97,81,73,69,67)
 Dim dmdPoints(4095)
+' couleurs des points allumés (afficheur en couleurs : DMDColoredPixels, pleine luminosité)
+Dim DMD_SCORE : DMD_SCORE = RGB(255, 150, 40)
+Dim DMD_INFO : DMD_INFO = RGB(255, 200, 90)
 Dim dmdAvant : dmdAvant = Chr(1)
 
 Sub DmdTexte(t, x0, y0, k, lum)
@@ -969,9 +1194,9 @@ Sub DessinerAfficheur(s, info)
   dmdAvant = s & "|" & info
   For i = 0 To 4095 : dmdPoints(i) = 0 : Next
   t = RTrim(s)
-  DmdTexte s, Int((DMD_L - Len(s) * 12) / 2) + 1, 2, 2, 100
+  DmdTexte s, Int((DMD_L - Len(s) * 12) / 2) + 1, 2, 2, DMD_SCORE
   t = Trim(info)
-  DmdTexte t, Int((DMD_L - Len(t) * 6) / 2) + 1, 23, 1, 90
+  DmdTexte t, Int((DMD_L - Len(t) * 6) / 2) + 1, 23, 1, DMD_INFO
   DMDWidth = DMD_L : DMDHeight = DMD_H
-  DMDPixels = dmdPoints
+  DMDColoredPixels = dmdPoints
 End Sub
