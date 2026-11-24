@@ -2,6 +2,7 @@
 # Fabrique la table Visual Pinball : outils/vpx/sortie/FannyPinball.vpx
 #   1. exporter_vpx.mjs : géométrie (donnees/table.json) et plateau peint (donnees/plateau.png) depuis la version web
 #   2. decor_glb.py : décor 3D de la version d'origine (natif/donnees/scene.glb) → donnees/decor
+#      inserts.py : plateau aux inserts allumés (image des lampes) → donnees/decor/plateau_allume.jpg
 #      collisions.py : colliders 3D du jeu (natif/donnees/monde.json) → donnees/collisions
 #   3. generateur (Rust, bibliothèque vpin) : éléments, décor, matières, images, sons, script table.vbs
 #   4. vpxtool verify + audit (structure du fichier et analyse du VBScript)
@@ -11,6 +12,7 @@ cd "$(dirname "$(readlink -f "$0")")"
 export PATH="$HOME/.cargo/bin:$HOME/aitools/node/bin:$PATH"
 node exporter_vpx.mjs
 python3 decor_glb.py
+python3 inserts.py
 python3 collisions.py
 (cd generateur && cargo run --release --quiet)
 vpxtool verify sortie/FannyPinball.vpx

@@ -1188,6 +1188,9 @@ Sub MajLampes()
     k = Int(maintenant / 150)
     For i = 0 To 31 : e(i) = B2E((i + k) Mod 6 = 0) : Next
   End If
+  If GetCustomParam(1) = "lampes" Then                    ' essai : une lampe sur deux allumée
+    For i = 0 To 31 : e(i) = B2E(i Mod 2 = 0) : Next
+  End If
   For i = 0 To 31
     If lampEtat(i) <> e(i) Then lampEtat(i) = e(i) : lampObj(i).State = e(i)
   Next

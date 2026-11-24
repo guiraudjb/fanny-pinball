@@ -16,7 +16,7 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use vpin::vpx::gamedata::{ViewLayoutMode, ViewSetupId};
+use vpin::vpx::gamedata::{ToneMapper, ViewLayoutMode, ViewSetupId};
 use vpin::vpx::{
     self, VPX,
     color::Color,
@@ -44,6 +44,8 @@ const TIRAGE_LANCEUR: f32 = 0.1;
 const LUMINOSITE_AFFICHEUR: f32 = 1.0;
 /// force des reflets sur le plateau (0 à 1 ; la table minimale de vpin met 1, trop fort : effet miroir)
 const REFLET_PLATEAU: f32 = 0.12;
+/// intensité des inserts allumés (lampes en mode image sur le plateau peint) ; INSERT=… pour essayer
+static INTENSITE_INSERT: std::sync::LazyLock<f32> = std::sync::LazyLock::new(|| std::env::var("INSERT").ok().and_then(|s| s.parse().ok()).unwrap_or(1.0));
 /// Panneaux animés du fond (vue bureau) : GIF, flasher, centre x, y, hauteur et côté en mm (repère du plateau), tournés
 /// de 45° vers la caméra ; ils recouvrent les cadres dessinés par fond.py sous l'afficheur (réglés à l'écran).
 /// Dernières valeurs : largeur et hauteur (dans le plan du panneau, mm).
@@ -160,6 +162,9 @@ fn main() {
     };
     let mats = vec![
         matiere("Bois", 0x7a4a26, 0x101010, false, 1.0, 0.45),
+        // plateau peint : gris très clair (vpinball multiplie l'image par la couleur de la matière ; « Bois » le rendait
+        // brun et terne, le blanc pur brûle les clairs) ; MATPLATEAU=rrggbb pour essayer
+        matiere("Plateau", std::env::var("MATPLATEAU").ok().and_then(|s| u32::from_str_radix(&s, 16).ok()).unwrap_or(0xe6e6e6), 0x202020, false, 1.0, 0.35),
         matiere("Plastique", 0xfff4dc, 0x5a5a5a, false, 0.55, 0.9),
         matiere("Metal", 0xb8bcc4, 0x9a9aa0, true, 1.0, 0.8),
         matiere("Palette", 0xf6f1e6, 0x404040, false, 1.0, 0.7),
@@ -181,7 +186,12 @@ fn main() {
         elasticity_falloff: 0.0, friction: 0.3, scatter_angle: 0.0 }).chain(physiques_decor).collect());
     v.gamedata.materials_size = mats.len() as u32;
     v.gamedata.materials_old = mats;
-    v.gamedata.playfield_material = "Bois".into();
+    v.gamedata.playfield_material = "Plateau".into();
+    // rendu des couleurs : Reinhard, le plus fidèle au plateau peint à l'essai (Neutral et AgX voilent les couleurs) ;
+    // TONE=agx|punchy|filmic|neutral pour essayer
+    v.gamedata.tone_mapper = Some(match std::env::var("TONE").as_deref() {
+        Ok("agx") => ToneMapper::AgX, Ok("punchy") => ToneMapper::AgXPunchy, Ok("filmic") => ToneMapper::Filmic,
+        Ok("neutral") => ToneMapper::Neutral, _ => ToneMapper::Reinhard });
     // reflets du plateau : discrets (le plateau peint d'origine est mat, sous une vitre)
     v.gamedata.playfield_reflection_strength = REFLET_PLATEAU;
     v.gamedata.ball_playfield_reflection_strength = Some(0.5);
@@ -414,14 +424,20 @@ fn main() {
     }
 
     // ---------------------------------------------------------------- lampes (inserts peints sur le plateau)
+    let allume = ici.join("donnees/decor/plateau_allume.jpg");
+    let image_inserts: String = if allume.exists() { v.add_or_replace_image(image("plateau_allume", &allume)); "plateau_allume".into() } else { "plateau".into() };
     for lp in t["lampes"].as_array().unwrap() {
         let nom = format!("L_{}", lp["nom"].as_str().unwrap());
-        let mut li = Light { name: nom, center: p2(f(&lp["x"]), f(&lp["y"])), falloff_radius: f(&lp["r"]) * 2.3 * MM,
-            color: couleur(lp["couleur"].as_str().unwrap_or("#ffffff")), intensity: 6.0, state_u32: 0, state: Some(0.0), ..Default::default() };
+        // insert : lampe en mode image ; allumée, elle montre sur le cercle de l'insert et son halo le plateau aux inserts
+        // allumés (inserts.py : plastique coloré éclairé, lettre), éteinte, le plateau peint (insert sombre et sa lettre).
+        // Avant : polygone de couleur à 8 côtés posé par-dessus, qui cachait les lettres.
+        let mut li = Light { name: nom, center: p2(f(&lp["x"]), f(&lp["y"])), falloff_radius: f(&lp["r"]) * 1.6 * MM,
+            color: couleur(lp["couleur"].as_str().unwrap_or("#ffffff")), intensity: *INTENSITE_INSERT, state_u32: 0, state: Some(0.0),
+            is_image_mode: true, image: image_inserts.clone(), falloff_power: 2.0, ..Default::default() };
         li.color2 = li.color;
-        let (cx, cy, rr) = (li.center.x, li.center.y, f(&lp["r"]) * MM);
-        li.drag_points = (0..8).map(|k| {
-            let a = k as f32 * std::f32::consts::TAU / 8.0;
+        let (cx, cy, rr) = (li.center.x, li.center.y, f(&lp["r"]) * MM * 1.35);   // insert et halo (HALO de inserts.py)
+        li.drag_points = (0..32).map(|k| {
+            let a = -(k as f32) * std::f32::consts::TAU / 32.0;
             DragPoint { x: cx + rr * a.cos(), y: cy + rr * a.sin(), ..Default::default() }
         }).collect();
         items.push(GameItemEnum::Light(li));

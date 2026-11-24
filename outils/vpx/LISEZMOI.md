@@ -58,6 +58,11 @@ Encore à régler en jeu : force des lance-pierres (80), éjection du Cercle (`E
 - Afficheur à points 128 × 32 sous le fronton : le VPX de la Batocera ne dessine pas le texte des boîtes de texte, le script calcule les points (police 5 × 7, `DessinerAfficheur`) et les envoie par `DMDPixels` à la boîte `Afficheur` marquée DMD.
 - Décor du fond (`fond.py`, clin d'œil au jeu Arducible « Fanny Pétanque World Tour ») : carte des escales en aplats ocre avec l'itinéraire de la rampe en pointillés, titre, flipper complet en robe à pois qui tourne sur lui-même (`tourniquet.mjs` : vues de la scène 3D du jeu web exportée avec l'habillage `pois`, posées par `fond.py --tourniquet`) et médaillon de Fanny à gauche ; sous l'afficheur, deux GIF tirés des vidéos du projet (le châssis en action, la boule sur son articulation) et la signature #arducible, the DIY pétanque game. Les sorties (`donnees/fond/` : `fond.jpg`, `chassis.gif`, `articulation.gif`, `tourniquet.gif`) sont versées au dépôt ; `python3 fond.py --source <dépôt Arducible_Fanny_Petanque_World_Tour>` les refait. VPX n'anime pas une image de fond : chaque vue des GIF devient une image de la table, jouée par le script (`AnimerGifs`) sur deux flashers placés dans la scène devant les cadres et tournés vers la caméra (`PANNEAUX` dans `generateur/src/main.rs`).
 
+## Plateau et inserts
+
+- Plateau peint sur une matière gris très clair (`Plateau`) : vpinball multiplie l'image par la couleur de la matière (l'ancienne matière « Bois », brune, ternissait tout) ; rendu Reinhard, le plus fidèle aux couleurs à l'essai (`TONE=…`, `MATPLATEAU=…` pour comparer).
+- Inserts : lampes en mode image, rondes (32 côtés). Éteintes, on voit l'insert peint du plateau (pastille sombre et sa lettre) ; allumées, `donnees/decor/plateau_allume.jpg` (`inserts.py` : chaque insert redessiné allumé comme `drawLampInsert` du jeu web, avec halo). Essai `-c1 lampes` : une lampe sur deux allumée.
+
 ## Publication
 
 `./paquet.sh [version]` : `sortie/Fanny Pinball (Arducible 2026) v<version>.zip` avec la table nommée selon l'usage (« Nom (Fabricant Année) vX.Y.vpx »), `README.txt` (VPX 10.8 ou plus, aucune ROM, touches, règles, crédits) et les images de `sortie/captures/`. Jeu original : pas de ROM ni de .directb2s, sons et musiques dans le .vpx.
