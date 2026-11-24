@@ -92,7 +92,7 @@ function viewLabel() {
   skinBtn.hidden = !mode3d || !(renderer3d.enMachine || renderer3d.enTour);
   if (!skinBtn.hidden) skinBtn.textContent = `Habillage : ${renderer3d.habillageNom}`;
   transportBtn.hidden = skinBtn.hidden;
-  transportBtn.textContent = `Fronton : ${renderer3d.frontonPlie ? 'rabattu (transport)' : 'assemblé'}`;
+  if (!transportBtn.hidden) transportBtn.textContent = `Fronton : ${renderer3d.frontonPlie ? 'rabattu (transport)' : 'assemblé'}`;
   if (!lockBtn.hidden) {
     const v = renderer3d.vueMachine?.verrou;
     lockBtn.textContent = v ? 'Déverrouiller la vue' : 'Verrouiller la vue';
@@ -515,10 +515,12 @@ function frame(t) {
     }
   }
   const geste = autoplay ? robot.gesteActif() : null;
-  cityEl.textContent = rules.mode === 'play' || rules.mode === 'bonus'
+  const bandeau = rules.mode === 'play' || rules.mode === 'bonus'
     ? `${autoplay ? `Autoplay${geste ? ` · ${geste}` : ''} — ` : ''}Escale : ${CITIES[rules.city].charAt(0) + CITIES[rules.city].slice(1).toLowerCase()} · bille ${rules.ball} · bonus ×${rules.mult}${rules.multiball ? ' · MULTIBALL' : ''}`
     : `${autoplay ? 'Autoplay · ' : ''}Record : ${rules.highScore.toLocaleString('fr-FR')}${rules.credits ? ` · parties gratuites : ${rules.credits}` : ''}`;
-  startBtn.hidden = !rules.canStart();
+  if (bandeau !== cityEl.textContent) cityEl.textContent = bandeau;      // écriture DOM seulement si le texte change
+  const cacheStart = !rules.canStart();
+  if (startBtn.hidden !== cacheStart) startBtn.hidden = cacheStart;
 
   // musique : générique hors partie (une fois le son déverrouillé), thème en partie
   if (audioReady) playMusic(rules.mode === 'play' || rules.mode === 'bonus' ? 'theme' : 'generique');

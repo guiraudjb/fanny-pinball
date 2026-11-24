@@ -182,6 +182,10 @@ function canvasTexture(cv) {
 }
 
 export class Renderer3D {
+  // niveaux de qualité adaptative : définition de rendu (× pixels de l'écran) et période de mise à jour des ombres
+  static NIVEAUX = [{ res: 1, ombres: 1 }, { res: 0.85, ombres: 1 }, { res: 0.85, ombres: 2 }, { res: 0.75, ombres: 2 },
+    { res: 0.68, ombres: 3 }];
+
   constructor(canvas, overlay, sim) {
     this.canvas = canvas;
     this.overlay = overlay;
@@ -249,6 +253,7 @@ export class Renderer3D {
     sun.shadow.bias = -0.0004;
     sun.shadow.normalBias = 0.6;
     this.scene.add(sun, sun.target);
+    this.sun = sun;
     const fill = new THREE.DirectionalLight(0xcfe0ff, 0.4);
     fill.position.set(400, 500, 800);
     this.scene.add(fill);
@@ -1679,10 +1684,33 @@ export class Renderer3D {
     return this.cameraNom;
   }
 
+  // Qualité adaptative : si les images ne suivent plus l'écran, on baisse la définition de rendu puis la cadence de
+  // mise à jour des ombres ; on remonte quand la marge revient. ?qualite=max dans l'adresse la fige au plus haut.
+  adapterQualite(t) {
+    const Q = Renderer3D.NIVEAUX;
+    if (this.qualiteFigee ??= new URLSearchParams(location.search).get('qualite') === 'max') return;
+    if (!this.mesure || t - this.mesure.t0 > 5000) { this.mesure = { t0: t, n: 0 }; return; }   // reprise après une pause
+    this.mesure.n++;
+    const duree = t - this.mesure.t0;
+    if (duree < 1500) return;
+    const ips = (this.mesure.n * 1000) / duree;
+    this.mesure = { t0: t, n: 0 };
+    this.ipsMesure = ips;
+    const n = this.niveau || 0;
+    if (ips < 48 && n < Q.length - 1) { this.bons = 0; this.appliquerNiveau(n + 1); }
+    else if (ips > 58 && n > 0 && ++this.bons >= 4) { this.bons = 0; this.appliquerNiveau(n - 1); }
+    else if (ips <= 58) this.bons = 0;
+  }
+
+  appliquerNiveau(n) {
+    this.niveau = n;
+    if (this.cssW) this.resize(this.cssW, this.cssH);
+  }
+
   resize(cssW, cssH) {
-    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);     // interface (points, Fanny) : toujours nette
     this.cssW = cssW; this.cssH = cssH;
-    this.gl.setPixelRatio(dpr);
+    this.gl.setPixelRatio(dpr * Renderer3D.NIVEAUX[this.niveau || 0].res);
     this.gl.setSize(cssW, cssH, true);
     this.overlay.width = Math.round(cssW * dpr);
     this.overlay.height = Math.round(cssH * dpr);
@@ -2136,17 +2164,39 @@ export class Renderer3D {
       }
     }
     while (this.balls.length < views.length) {
+      // la bille ne projette pas d'ombre dans la carte (recalculer la carte à chaque image coûtait ≈ 25 % du rendu) :
+      // une tache douce, projetée selon la direction du soleil, la remplace
       const m = new THREE.Mesh(this.ballGeo, this.mat.steel);
-      m.castShadow = true;
+      m.castShadow = false;
       this.table.add(m);
       this.balls.push(m);
+      const o = new THREE.Mesh(this.ombreGeo ||= new THREE.PlaneGeometry(1, 1), this.ombreMat ||= this.matOmbreBille());
+      o.renderOrder = 1;
+      this.table.add(o);
+      (this.ombresBilles ||= []).push(o);
     }
+    // direction du soleil dans le repère de la table (vers le sol)
+    const dirSol = this.dirSol ||= new THREE.Vector3();
+    this.table.updateWorldMatrix(true, false);
+    dirSol.copy(this.sun.target.position).sub(this.sun.position).normalize()
+      .applyMatrix3(new THREE.Matrix3().setFromMatrix4(this.table.matrixWorld).invert()).normalize();
     this.balls.forEach((m, i) => {
-      const v = views[i];
+      const v = views[i], o = this.ombresBilles[i];
       m.visible = !!v;
+      o.visible = !!v && v[2] < 60;            // sur la rampe, l'ombre tomberait sur la rampe elle-même : pas de tache
       if (v) m.position.set(v[0], v[1], -(BALL_R + v[2]));
       if (v && v[3]) m.quaternion.set(v[3].x, v[3].y, v[3].z, v[3].w);   // la bille roule (reflets qui tournent)
+      if (o.visible && dirSol.z > 0.05) {
+        // le plateau est le plan z = 0, la bille est en z = −(R + h) : on suit le rayon du soleil jusqu'au plateau
+        const zc = -(BALL_R + v[2]), t = -zc / dirSol.z;
+        o.position.set(v[0] + dirSol.x * t, v[1] + dirSol.y * t, -0.4);
+        const k = 1 + v[2] / 40;                 // plus haute, l'ombre s'étale et pâlit
+        o.scale.set(BALL_R * 2.6 * k / Math.max(0.35, dirSol.z) ** 0.25, BALL_R * 2.6 * k, 1);
+        o.rotation.z = Math.atan2(dirSol.y, dirSol.x) - Math.PI / 2;
+        o.material.opacity = 0.62 / k;
+      }
     });
+    this.ombresAJour();
 
     // matériaux transparents à double face : three.js les dessine en deux passes (dos puis face) en les marquant
     // « à recompiler » à chaque image (getParameters pour chaque objet) ; une seule passe suffit ici (plastiques,
@@ -2169,10 +2219,50 @@ export class Renderer3D {
     if (this.tour) this.updateTour();
     else if (this.enLilliputien) this.updateLilliputien();
     this.gl.render(this.scene, this.camera);
+    this.adapterQualite(performance.now());
     this.drawOverlay();
   }
 
   // points flottants et Fanny, dessinés à plat par-dessus la scène
+  matOmbreBille() {
+    const cv = document.createElement('canvas'); cv.width = cv.height = 64;
+    const c = cv.getContext('2d'), g = c.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(0.45, 'rgba(0,0,0,0.75)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = g; c.fillRect(0, 0, 64, 64);
+    return new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(cv), transparent: true, depthWrite: false, opacity: 0.6,
+      polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2, toneMapped: false });
+  }
+
+  // Carte d'ombre recalculée seulement quand une pièce qui projette une ombre a bougé (palettes, cibles, bumpers,
+  // lance-pierres, tourniquet, lanceur…), et au plus une image sur `ombres` selon le niveau de qualité.
+  ombresAJour() {
+    let h = this.scene.children.length * 7919;
+    const ajoute = (o) => {
+      if (!o) return;
+      const p = o.position, q = o.quaternion;
+      h += p.x * 1.3 + p.y * 2.7 + p.z * 5.1 + q.x * 11 + q.y * 13 + q.z * 17 + (o.visible ? 0 : 19) + (o.geometry ? o.geometry.id * 23 : 0);
+    };
+    for (const f of this.flippers) ajoute(f.mesh);
+    this.drops.forEach(ajoute);
+    for (const b of this.bumpers) { ajoute(b.ringGroup); ajoute(b.capGroup); ajoute(b.skirtPivot); }
+    this.slings.forEach(ajoute);
+    if (this.spinner3d) { ajoute(this.spinner3d.bladePivot); ajoute(this.spinner3d.rodMesh); }
+    ajoute(this.plunger); this.lanceur.forEach(ajoute);
+    if (this.rollovers) for (const r of this.rollovers) ajoute(r.pivot);
+    if (this.faces) for (const f of this.faces) ajoute(f.pivot);
+    if (this.fronton) ajoute(this.fronton.pivot);
+    const maintenant = performance.now();
+    if (h !== this.hOmbres || maintenant - (this.tOmbres || 0) > 2000) this.ombresSales = true;   // filet : 1 fois / 2 s
+    this.hOmbres = h;
+    const periode = Renderer3D.NIVEAUX[this.niveau || 0].ombres;
+    this.gl.shadowMap.autoUpdate = false;
+    if (this.ombresSales && (this.nImage = (this.nImage || 0) + 1) % periode === 0) {
+      this.gl.shadowMap.needsUpdate = true;
+      this.ombresSales = false;
+      this.tOmbres = maintenant;
+    }
+  }
+
   drawOverlay() {
     const g = this.octx, cw = this.overlay.width, ch = this.overlay.height, k = this.dpr;
     g.clearRect(0, 0, cw, ch);

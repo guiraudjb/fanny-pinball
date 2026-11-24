@@ -207,6 +207,30 @@ export class Renderer {
     this.scale = (cw / W) * dpr;
   }
 
+  // couche fixe de draw() : plateau peint et lampes, pièce du bouchon, plastiques, murs, plastrons des lance-pierres
+  dessinerFixe(lamps, blinkOn) {
+    const ctx = this.ctx, T = this.sim.T;
+    this.drawFloor(lamps, blinkOn);
+    // pièce du bouchon : une seule pièce en U aux coins arrondis
+    if (GEO.bouchonPiece) this.plastic(GEO.bouchonPiece, 9);
+    if (GEO.tirerPlastic) this.plastic(GEO.tirerPlastic, 6);
+    // murs et poteaux
+    for (const b of T.walls) {
+      if (b.plugin && b.plugin.hidden) continue;
+      if (b.plugin && b.plugin.housing) this.plastic(b.vertices.map((v) => [v.x, v.y]), 6);
+      else this.poly(b.vertices, C.chrome, C.chromeDark);
+    }
+    for (const b of T.slings) {
+      const { posts, rPlast } = b.plugin;
+      this.slingPlastic(posts, rPlast);
+      // têtes de vis M3 des 3 poteaux du plastron
+      for (const p of posts) {
+        ctx.beginPath(); ctx.arc(p[0], p[1], 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = '#e6e9ee'; ctx.fill(); ctx.strokeStyle = '#4c535e'; ctx.lineWidth = 0.9; ctx.stroke();
+      }
+    }
+  }
+
   // ------------------------------------------------------------ fond statique
   buildBackground() {
     const S = 2;
@@ -386,25 +410,28 @@ export class Renderer {
     const now = sim.time;
     const lamps = rules.lamps();
     const blinkOn = Math.floor(performance.now() / 220) % 2 === 0;
-    this.drawFloor(lamps, blinkOn);
-
-    // pièce du bouchon : une seule pièce en U aux coins arrondis
-    if (GEO.bouchonPiece) this.plastic(GEO.bouchonPiece, 9);
-    if (GEO.tirerPlastic) this.plastic(GEO.tirerPlastic, 6);
-    // murs et poteaux
-    for (const b of T.walls) {
-      if (b.plugin && b.plugin.hidden) continue;
-      if (b.plugin && b.plugin.housing) this.plastic(b.vertices.map((v) => [v.x, v.y]), 6);
-      else this.poly(b.vertices, C.chrome, C.chromeDark);
+    // couche fixe (illustration, lampes, plastiques, murs, plastrons des lance-pierres) : dessinée dans une image à
+    // part, refaite seulement quand une lampe change ; chaque image n'en fait qu'une copie
+    const cle = `${this.canvas.width}x${this.canvas.height}|${this.bg?.width}|` +
+      Object.entries(lamps).map(([k, v]) => ((v === 2 ? (blinkOn ? 1 : 0) : v) ? k : '')).join(',');
+    if (cle !== this.cleFixe) {
+      this.cleFixe = cle;
+      const cv = this.fixe ||= document.createElement('canvas');
+      if (cv.width !== this.canvas.width || cv.height !== this.canvas.height) { cv.width = this.canvas.width; cv.height = this.canvas.height; }
+      const ecran = this.ctx;
+      this.ctx = cv.getContext('2d');
+      try { this.dessinerFixe(lamps, blinkOn); } finally { this.ctx = ecran; }
     }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.fixe, 0, 0);
+    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     // portillon
     this.poly(T.gate.vertices, '#9aa0aa', '#555');
 
     // lance-pierres
     T.slings.forEach((b, i) => {
       const hit = now - (sim.flash[`sling${i}`] ?? -1e9) < 90;
-      const { A, C: Cc, posts, rPlast } = b.plugin;
-      this.slingPlastic(posts, rPlast);
+      const { A, C: Cc, posts } = b.plugin;
       if (hit) { this.offsetPath(posts, rPlast); ctx.fillStyle = 'rgba(255,246,190,0.55)'; ctx.fill(); }
       // élastique blanc et butoir rouge au milieu (la face qui frappe)
       ctx.lineCap = 'round';
@@ -415,11 +442,6 @@ export class Renderer {
       const mx = (A[0] + Cc[0]) / 2, my = (A[1] + Cc[1]) / 2, dx = Cc[0] - A[0], dy = Cc[1] - A[1], l = Math.hypot(dx, dy);
       ctx.strokeStyle = hit ? '#ffd23f' : '#e8392c'; ctx.lineWidth = 4.5;
       ctx.beginPath(); ctx.moveTo(mx - dx / l * 9, my - dy / l * 9); ctx.lineTo(mx + dx / l * 9, my + dy / l * 9); ctx.stroke();
-      // têtes de vis M3 des 3 poteaux du plastron
-      for (const p of posts) {
-        ctx.beginPath(); ctx.arc(p[0], p[1], 2.2, 0, Math.PI * 2);
-        ctx.fillStyle = '#e6e9ee'; ctx.fill(); ctx.strokeStyle = '#4c535e'; ctx.lineWidth = 0.9; ctx.stroke();
-      }
     });
 
     // cibles tombantes
@@ -533,10 +555,25 @@ export class Renderer {
     const views = sim.ballViews();
     for (const v of views) if (!v.onRamp) this.ball(v.x, v.y, v.inSaucer ? 0.85 : 1);
 
-    this.apron(lamps, blinkOn);
-
-    // rampes (au-dessus du plateau)
-    for (const side of Object.keys(sim.ramps)) this.ramp(sim.ramps[side], now - (sim.flash[`ramp${side}`] ?? -1e9) < 300);
+    // couche du dessus (tablier et rampes), elle aussi en cache : refaite quand une lampe change ou qu'une rampe s'allume
+    const rampes = Object.keys(sim.ramps).map((side) => now - (sim.flash[`ramp${side}`] ?? -1e9) < 300);
+    const cleDessus = this.cleFixe + '|' + rampes.join(',');
+    if (cleDessus !== this.cleDessus) {
+      this.cleDessus = cleDessus;
+      const cv = this.dessus ||= document.createElement('canvas');
+      if (cv.width !== this.canvas.width || cv.height !== this.canvas.height) { cv.width = this.canvas.width; cv.height = this.canvas.height; }
+      const ecran = this.ctx, g = cv.getContext('2d');
+      g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height);
+      g.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+      this.ctx = g;
+      try {
+        this.apron(lamps, blinkOn);
+        Object.keys(sim.ramps).forEach((side, i) => this.ramp(sim.ramps[side], rampes[i]));
+      } finally { this.ctx = ecran; }
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(this.dessus, 0, 0);
+    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     // tourniquet métallique (spinner) à l'entrée de la rampe
     if (GEO.spinner) {
       const sp = GEO.spinner, ang = sim.spinner?.angle ?? 0;

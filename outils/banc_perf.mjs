@@ -37,7 +37,7 @@ const serveur = createServer((req, res) => {
   res.end(corps);
 }).listen(0, '127.0.0.1');
 await new Promise((r) => serveur.on('listening', r));
-const url = `http://127.0.0.1:${serveur.address().port}/index.html`;
+const url = `http://127.0.0.1:${serveur.address().port}/index.html${arg('params', '') ? '?' + arg('params') : ''}`;
 
 const dir = mkdtempSync(path.join(tmpdir(), 'fanny-banc-'));
 const PORT = 9300 + Math.floor(Math.random() * 500);
@@ -76,6 +76,7 @@ const prep = await evaluer(`
   for (let i = 0; i < 240 && !(window.fanny && window.fanny.sim); i++) await att(250);
   const pret = performance.now() - window.__t0;
   const f = window.fanny;
+  await att(2500);                 // la vue par défaut (3D) se charge peut-être encore : on attend avant d'imposer
   await f.setView(${JSON.stringify(VUE !== '2d')});
   if (${JSON.stringify(VUE === 'leger')} && f.view.setLeger) f.view.setLeger(true);
   for (let i = 0; i < 80 && ${JSON.stringify(VUE !== '2d')} && !f.view.pret && !f.view.machine; i++) await att(250);
@@ -104,7 +105,7 @@ const res = await evaluer(`
   try { const c = document.createElement('canvas').getContext('webgl2'); const e = c.getExtension('WEBGL_debug_renderer_info'); gpu = c.getParameter(e.UNMASKED_RENDERER_WEBGL); } catch {}
   const mem = performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : 0;
   return { gpu, mem, ips: 1000 / stats(mes.dt).moy, step: stats(mes.step), tick: stats(mes.tick), draw: stats(mes.draw), dt: stats(mes.dt),
-    billes: f.sim.ballViews().length, score: f.rules.score };
+    billes: f.sim.ballViews().length, score: f.rules.score, niveau: f.view.niveau, ipsVue: f.view.ipsMesure };
 `);
 Object.assign(res, prep);
 if (PROFIL) {
@@ -141,9 +142,15 @@ if (PROFIL) {
 const r1 = (x) => x.toFixed(2).padStart(7);
 console.log(`vue ${VUE} · ${TAILLE} · ${res.gpu}`);
 console.log(`chargement : moteur prêt ${(res.pret / 1000).toFixed(1)} s, vue prête ${(res.premiere / 1000).toFixed(1)} s, ${(octets / 1e6).toFixed(1)} Mo servis${GZIP ? ' (gzip)' : ''}, tas JS ${res.mem} Mo`);
-console.log(`images : ${res.ips.toFixed(1)} i/s`);
+console.log(`images : ${res.ips.toFixed(1)} i/s${res.niveau !== undefined ? ` (niveau de qualité ${res.niveau})` : ''}`);
 console.log(`              moy     p50     p95     p99     max   (ms)`);
 for (const k of ['dt', 'step', 'tick', 'draw']) { const s = res[k]; console.log(`${k.padEnd(6)} ${r1(s.moy)} ${r1(s.p50)} ${r1(s.p95)} ${r1(s.p99)} ${r1(s.max)}`); }
 console.log(`(score ${res.score}, billes ${res.billes}, durée ${DUREE} s, total ${((Date.now() - t0) / 1000).toFixed(0)} s)`);
+if (arg('capture', null)) {
+  const { writeFileSync } = await import('fs');
+  const c = await cmd('Page.captureScreenshot', { format: 'png' });
+  writeFileSync(arg('capture'), Buffer.from(c.result.data, 'base64'));
+  console.log('capture', arg('capture'));
+}
 if (profil) console.log('\nprofil (temps propre) :\n' + profil.join('\n'));
 ch.kill(); serveur.close(); process.exit(0);
