@@ -17,3 +17,4 @@ outils/_*.mjs
 outils/vpx/generateur/target/
 outils/vpx/sortie/
 outils/vpx/donnees/plateau.png
+outils/vpx/donnees/decor/

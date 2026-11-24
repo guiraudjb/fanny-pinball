@@ -97,7 +97,49 @@ Sub Table1_Init()
   Dim hs : hs = LoadValue("FannyPinball", "HighScore")
   If IsNumeric(hs) Then highScore = CLng(hs)
   Musique SND_MUSIQUE_GENERIQUE
+  If GetCustomParam(1) = "test" Then Apres 1500, "TestDepart"
 End Sub
+
+' ---------------------------------------------------------------- décor d'origine : pièces animées à chaque image
+Sub Anim_Timer()
+  Dim p, a
+  a = LeftFlipper.CurrentAngle - LeftFlipper.StartAngle
+  For Each p In PrimPaletteG : p.RotZ = a : Next
+  a = RightFlipper.CurrentAngle - RightFlipper.StartAngle
+  For Each p In PrimPaletteD : p.RotZ = a : Next
+  AnimCible PrimCible0, DT_F : AnimCible PrimCible1, DT_A : AnimCible PrimCible2, DT_N1
+  AnimCible PrimCible3, DT_N2 : AnimCible PrimCible4, DT_Y
+  a = Plunger.Position * 3.2
+  For Each p In PrimLanceur : p.TransY = a : Next
+End Sub
+
+Sub AnimCible(prims, cible)
+  Dim p, z
+  If cible.IsDropped Then z = -62 Else z = 0
+  For Each p In prims
+    If p.TransZ <> z Then p.TransZ = z
+  Next
+End Sub
+
+' ---------------------------------------------------------------- essai automatique (VPinballX -c1 test) : journal
+' départ, tir du lanceur à pleine course, positions de la bille dans le journal de vpinball (Debug.Print)
+Dim testT0 : testT0 = 0
+Sub TestDepart() : Debug.Print "ESSAI depart" : StartGame : Apres 2500, "TestTire" : End Sub
+Sub TestTire() : Debug.Print "ESSAI tire" : Plunger.PullBack : Apres 1500, "TestLache" : End Sub
+Sub TestLache()
+  Debug.Print "ESSAI lache"
+  Plunger.Fire
+  testT0 = maintenant
+  Apres 100, "TestJournal"
+End Sub
+Sub TestJournal()
+  Dim b
+  For Each b In GetBalls
+    Debug.Print "ESSAI t=" & (maintenant - testT0) & " x=" & Int(b.X) & " y=" & Int(b.Y) & " z=" & Int(b.Z) & " vy=" & Int(b.VelY)
+  Next
+  If maintenant - testT0 < 4000 Then Apres 100, "TestJournal" Else TestPalettes
+End Sub
+Sub TestPalettes() : Debug.Print "ESSAI palettes" : LeftFlipper.RotateToEnd : RightFlipper.RotateToEnd : End Sub
 
 Sub Table1_Exit()
   SaveValue "FannyPinball", "HighScore", highScore

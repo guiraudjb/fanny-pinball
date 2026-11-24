@@ -510,6 +510,7 @@ dependencies = [
 name = "generateur-vpx"
 version = "1.0.0"
 dependencies = [
+ "flate2",
  "image",
  "serde_json",
  "vpin",

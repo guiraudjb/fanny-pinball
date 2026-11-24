@@ -10,6 +10,8 @@
 //
 // Les éléments partent des valeurs par défaut de vpinball (bibliothèque vpin, celle de vpxtool) : on ne fixe que
 // la position, les dimensions et les noms utilisés par le script. 1 unité VP = 0,54 mm (bille de 27 mm = 50 u).
+mod decor;
+
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
@@ -30,6 +32,9 @@ use vpin::vpx::{
 };
 
 const MM: f32 = 1.0 / 0.54; // mm → unités VP
+// vitesse de tir du lanceur au clavier (vpinball : speed_fire / 100 × course tirée ; 80 par défaut, trop faible pour
+// les 1 263 mm du plateau : la bille doit monter tout le couloir et faire le tour du haut). Réglé à l'essai (TIR_LANCEUR=…).
+const TIR_LANCEUR: f32 = 200.0;
 
 fn f(v: &Value) -> f32 { v.as_f64().unwrap_or(0.0) as f32 }
 fn p2(x: f32, y: f32) -> Vertex2D { Vertex2D::new(x * MM, y * MM) }
@@ -38,13 +43,16 @@ fn couleur(hex: &str) -> Color { Color::from_rgb(u32::from_str_radix(hex.trim_st
 /// angle vpinball (degrés, 0 = vers le haut de l'écran, sens horaire) d'un vecteur du plateau (y vers le joueur)
 fn angle_vp(x: f32, y: f32) -> f32 { x.atan2(-y).to_degrees() }
 
-fn image(nom: &str, chemin: &Path) -> ImageData {
+fn image(nom: &str, chemin: &Path) -> ImageData { image_a(nom, chemin, false) }
+
+/// masque : les pixels presque transparents sont jetés (feuillages, découpes) au lieu d'être mélangés
+fn image_a(nom: &str, chemin: &Path, masque: bool) -> ImageData {
     let data = fs::read(chemin).unwrap_or_else(|e| panic!("{} : {e}", chemin.display()));
     let (w, h) = image::image_dimensions(chemin).expect("dimensions de l'image");
     let fichier = chemin.file_name().unwrap().to_string_lossy().to_string();
     ImageData {
         name: nom.into(), internal_name: None, path: fichier.clone(), width: w, height: h, link: None,
-        alpha_test_value: -1.0, is_opaque: None, is_signed: None,
+        alpha_test_value: if masque { 128.0 } else { -1.0 }, is_opaque: None, is_signed: None,
         jpeg: Some(PinBinary { name: nom.into(), internal_name: None, path: fichier, data }), bits: None, md5_hash: None,
     }
 }
@@ -114,13 +122,26 @@ fn main() {
         matiere("Chapeau", 0xd8261e, 0x606060, false, 0.85, 0.9),
         matiere("Cible", 0xf0c030, 0x404040, false, 1.0, 0.7),
     ];
-    v.gamedata.materials_physics_old = Some(mats.iter().map(|m| SavePhysicsMaterial { name: m.name.clone(), elasticity: 0.3,
-        elasticity_falloff: 0.0, friction: 0.3, scatter_angle: 0.0 }).collect());
+    // décor 3D de la version d'origine (python3 decor_glb.py) : s'il est là, les éléments VPX ne servent qu'à la physique
+    let pal = &t["palettes"];
+    let pivots = [("PrimPaletteG", f(&pal[0]["px"]) * MM, f(&pal[0]["py"]) * MM), ("PrimPaletteD", f(&pal[1]["px"]) * MM, f(&pal[1]["py"]) * MM)];
+    let mut decor = ici.join("donnees/decor").join("decor.json").exists()
+        .then(|| decor::charger(&ici.join("donnees/decor"), &pivots, image_a));
+    let vu = decor.is_none();
+    let mut mats = mats;
+    let mut physiques_decor: Vec<SavePhysicsMaterial> = vec![];
+    if let Some(d) = &mut decor { mats.append(&mut d.materiaux); physiques_decor.append(&mut d.physiques); }
+    let n_decor = physiques_decor.len();
+    v.gamedata.materials_physics_old = Some(mats.iter().take(mats.len() - n_decor).map(|m| SavePhysicsMaterial { name: m.name.clone(), elasticity: 0.3,
+        elasticity_falloff: 0.0, friction: 0.3, scatter_angle: 0.0 }).chain(physiques_decor).collect());
     v.gamedata.materials_size = mats.len() as u32;
     v.gamedata.materials_old = mats;
     v.gamedata.playfield_material = "Bois".into();
 
-    v.add_or_replace_image(image("plateau", &ici.join("donnees/plateau.png")));
+    match &mut decor {
+        Some(d) => { v.add_or_replace_image(image("plateau", &d.plateau)); for im in std::mem::take(&mut d.images) { v.add_or_replace_image(im); } }
+        None => { v.add_or_replace_image(image("plateau", &ici.join("donnees/plateau.png"))); }
+    }
     v.add_or_replace_image(image("fronton", &racine.join("assets/fronton.jpg")));
 
     let mut items: Vec<GameItemEnum> = vec![];
@@ -129,7 +150,7 @@ fn main() {
     for (i, m) in t["murs"].as_array().unwrap().iter().enumerate() {
         let pts: Vec<(f32, f32)> = m["pts"].as_array().unwrap().iter().map(|p| (f(&p[0]), f(&p[1]))).collect();
         let genre = m["genre"].as_str().unwrap_or("mur");
-        let visible = m["visible"].as_bool().unwrap_or(true) && genre != "apron";
+        let visible = vu && m["visible"].as_bool().unwrap_or(true) && genre != "apron";
         let haut = match genre { "plastique" => 38.0, "flanc" => 60.0, _ => 32.0 };
         let mut wl = mur(&format!("Mur{i:03}"), &pts, haut, visible);
         wl.image = "plateau".into();          // le dessus reprend le plateau peint (projection monde)
@@ -145,7 +166,7 @@ fn main() {
         let (dx, dy) = (cx - ax, cy - ay);
         let l = (dx * dx + dy * dy).sqrt();
         let dist = |x: f32, y: f32| ((x - ax) * dy - (y - ay) * dx).abs() / l;
-        let mut wl = mur(if i == 0 { "LanceG" } else { "LanceD" }, &pts, 32.0, true);
+        let mut wl = mur(if i == 0 { "LanceG" } else { "LanceD" }, &pts, 32.0, vu);
         wl.image = "plateau".into(); wl.side_material = "Caoutchouc".into(); wl.top_material = "Bois".into();
         let n = wl.drag_points.len();
         for k in 0..n {
@@ -169,7 +190,7 @@ fn main() {
             name: if gauche { "LeftFlipper" } else { "RightFlipper" }.into(),
             center: p2(f(&p["px"]), f(&p["py"])),
             base_radius: f(&p["r1"]) * MM, end_radius: f(&p["r2"]) * MM, flipper_radius_max: f(&p["len"]) * MM,
-            start_angle: a0, end_angle: a1, material: "Palette".into(), rubber_material: "Caoutchouc".into(), ..Default::default()
+            start_angle: a0, end_angle: a1, is_visible: vu, material: "Palette".into(), rubber_material: "Caoutchouc".into(), ..Default::default()
         }));
     }
 
@@ -177,13 +198,14 @@ fn main() {
     for (i, b) in t["bumpers"].as_array().unwrap().iter().enumerate() {
         items.push(GameItemEnum::Bumper(Bumper { name: format!("Bumper{}", i + 1), center: p2(f(&b["x"]), f(&b["y"])),
             radius: f(&b["r"]) * MM, hit_event: Some(true), cap_material: "Chapeau".into(), base_material: "Metal".into(),
-            socket_material: "Metal".into(), ring_material: Some("Metal".into()), ..Default::default() }));
+            socket_material: "Metal".into(), ring_material: Some("Metal".into()), is_cap_visible: vu, is_base_visible: vu,
+            is_ring_visible: Some(vu), is_socket_visible: Some(vu), ..Default::default() }));
     }
 
     // ---------------------------------------------------------------- cibles
     let cible = |nom: String, x: f32, y: f32, nx: f32, ny: f32, genre: TargetType| {
         let mut c = HitTarget { name: nom, position: Vertex3D::new(x * MM, y * MM, 0.0), target_type: genre,
-            rot_z: angle_vp(nx, ny) - 180.0, use_hit_event: true, material: "Cible".into(), ..Default::default() };
+            rot_z: angle_vp(nx, ny) - 180.0, use_hit_event: true, material: "Cible".into(), is_visible: vu, ..Default::default() };
         if matches!(c.target_type, TargetType::HitTargetRound) { c.size = Vertex3D::new(22.0, 22.0, 22.0); }
         GameItemEnum::HitTarget(c)
     };
@@ -209,7 +231,7 @@ fn main() {
 
     // ---------------------------------------------------------------- couloirs (fils de détection)
     let fil = |nom: String, x: f32, y: f32| GameItemEnum::Trigger(Trigger { name: nom, center: p2(x, y), radius: 25.0,
-        shape: TriggerShape::WireA, drag_points: vec![], ..Default::default() });
+        shape: TriggerShape::WireA, drag_points: vec![], is_visible: vu, ..Default::default() });
     for (i, c) in t["couloirs"].as_array().unwrap().iter().enumerate() {
         items.push(fil(format!("Couloir{}", ["T", "O", "U", "R"][i]), f(&c["x"]), f(&c["y"])));
     }
@@ -236,8 +258,12 @@ fn main() {
     let l = &t["lanceur"];
     items.push(GameItemEnum::Kicker(Kicker { name: "Distributeur".into(), center: p2(f(&l["x"]), f(&l["ballY"]) - 30.0), radius: 25.0,
         kicker_type: KickerType::Invisible, ..Default::default() }));
-    items.push(GameItemEnum::Plunger(Plunger { name: "Plunger".into(), center: p2(f(&l["x"]), f(&l["top"]) + 6.0),
-        width: 22.0 * MM * 0.5, ..Default::default() }));
+    // pointe au repos (center.y − course) sous la bille posée à ballY, comme dans le jeu d'origine
+    let course = 80.0;
+    let tir: f32 = std::env::var("TIR_LANCEUR").ok().and_then(|s| s.parse().ok()).unwrap_or(TIR_LANCEUR);
+    items.push(GameItemEnum::Plunger(Plunger { name: "Plunger".into(),
+        center: Vertex2D::new(f(&l["x"]) * MM, (f(&l["ballY"]) + f(&t["BALL_R"])) * MM + course),
+        width: 22.0 * MM * 0.5, stroke: course, speed_fire: tir, mech_strength: tir, is_visible: vu, ..Default::default() }));
     // contact SHOOTER : bille posée sur le lanceur
     let mut capt = Trigger { name: "CapteurLanceur".into(), center: p2(f(&l["x"]), f(&l["ballY"])), radius: 25.0,
         shape: TriggerShape::None, is_visible: false, ..Default::default() };
@@ -245,10 +271,11 @@ fn main() {
     capt.drag_points = [(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)].iter()
         .map(|(a, b)| DragPoint { x: capt.center.x + a * rr, y: capt.center.y + b * rr, ..Default::default() }).collect();
     items.push(GameItemEnum::Trigger(capt));
+    // portillon du haut du couloir : il s'ouvre vers le plateau, la bille ne redescend pas dans le couloir
     let pg = &t["portillon"];
     let (gx1, gx2, gy, gd) = (f(&pg["x1"]), f(&pg["x2"]), f(&pg["y"]), f(&pg["drop"]));
     items.push(GameItemEnum::Gate(Gate { name: "Portillon".into(), center: p2((gx1 + gx2) / 2.0, gy - gd / 2.0),
-        length: ((gx2 - gx1).powi(2) + gd * gd).sqrt() * MM, rotation: angle_vp(gx2 - gx1, -gd) + 90.0, two_way: false, ..Default::default() }));
+        length: ((gx2 - gx1).powi(2) + gd * gd).sqrt() * MM, rotation: angle_vp(gx2 - gx1, -gd) - 90.0, two_way: false, ..Default::default() }));
 
     // ---------------------------------------------------------------- tourniquet
     let sp = &t["tourniquet"];
@@ -278,7 +305,7 @@ fn main() {
             name: nom.into(), ramp_type: RampType::Flat, height_bottom: z0 * MM, height_top: z1 * MM, width_bottom: largeur, width_top: largeur,
             left_wall_height: f(&r["flanc"]) * MM, right_wall_height: f(&r["flanc"]) * MM,
             left_wall_height_visible: f(&r["flanc"]) * MM, right_wall_height_visible: f(&r["flanc"]) * MM,
-            drag_points: dpts, material: "Plastique".into(), ..Default::default()
+            drag_points: dpts, material: "Plastique".into(), is_visible: vu, ..Default::default()
         }));
     }
     // passage réussi : capteur en bout de rampe, assez haut pour voir la bille sur la rampe
@@ -320,7 +347,21 @@ fn main() {
     let mut horloge = Timer { name: "Horloge".into(), center: Vertex2D::new(20.0, 20.0), ..Default::default() };
     horloge.timer.is_enabled = true; horloge.timer.interval = 20;
     items.push(GameItemEnum::Timer(horloge));
+    let mut anim = Timer { name: "Anim".into(), center: Vertex2D::new(60.0, 20.0), ..Default::default() };
+    anim.timer.is_enabled = true; anim.timer.interval = -1;   // à chaque image
+    items.push(GameItemEnum::Timer(anim));
 
+    // pièces du décor animées par le script (palettes, cibles tombantes, lanceur) : tableaux VBScript générés
+    let mut entete = String::from("' ---- généré par outils/vpx/generateur : pièces du décor d'origine animées par le script\n");
+    let mut noms: std::collections::BTreeMap<String, Vec<String>> = ["PrimPaletteG", "PrimPaletteD", "PrimCible0", "PrimCible1",
+        "PrimCible2", "PrimCible3", "PrimCible4", "PrimLanceur"].iter().map(|n| (n.to_string(), vec![])).collect();
+    if let Some(d) = decor {
+        for it in &d.items {
+            if let GameItemEnum::Primitive(p) = it { if let Some((base, _)) = p.name.rsplit_once('_') { if base.starts_with("Prim") { noms.entry(base.to_string()).or_default().push(p.name.clone()); } } }
+        }
+        items.extend(d.items);
+    }
+    for (base, liste) in &noms { entete += &format!("Dim {base} : {base} = Array({})\n", liste.join(", ")); }
     for it in items { v.add_game_item(it); }
 
     // ---------------------------------------------------------------- sons (pistes du DFPlayer, mêmes numéros)
@@ -338,6 +379,8 @@ fn main() {
 
     // ---------------------------------------------------------------- script
     let script = fs::read_to_string(ici.join("table.vbs")).expect("table.vbs");
+    // l'en-tête généré se place après Option Explicit (qui doit rester la première instruction)
+    let script = script.replacen("Randomize\n", &format!("Randomize\n{entete}"), 1);
     v.gamedata.code = StringWithEncoding::from(script.as_str());
 
     let cible = sortie.join("FannyPinball.vpx");
