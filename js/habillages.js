@@ -39,7 +39,7 @@ export function chargerImages() {
     im.onerror = () => ok(null);
     im.src = src;
   });
-  images = Promise.all(['assets/fanny_lancer.png', 'assets/fanny_victoire.png', 'assets/plateau.jpg'].map(charge))
+  images = Promise.all(['assets/fanny_lancer.webp', 'assets/fanny_victoire.webp', 'assets/plateau.jpg'].map(charge))
     .then(([lancer, victoire, plateau]) => ({ lancer, victoire, plateau }));
   return images;
 }

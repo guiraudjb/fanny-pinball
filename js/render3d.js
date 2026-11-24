@@ -197,7 +197,7 @@ export class Renderer3D {
     for (const k of ['victoire', 'lancer']) {
       const img = new Image();
       img.onload = () => { this.art[k] = img; };
-      img.src = `assets/fanny_${k}.png`;
+      img.src = `assets/fanny_${k}.webp`;
     }
 
     this.gl = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });

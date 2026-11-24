@@ -19,8 +19,8 @@ RACINE = Path(__file__).resolve().parent.parent
 ICONES = RACINE / "icons"
 
 # fichiers servis au joueur (hors docs, outils, CAO)
-MOTIFS = ["index.html", "manifest.webmanifest", "css/*.css", "js/*.js", "vendor/*.js",
-          "assets/*.jpg", "assets/*.png", "assets/sons/*.mp3", "assets/cao/*.glb", "icons/*.png"]
+MOTIFS = ["index.html", "manifest.webmanifest", "css/*.css", "js/*.js", "vendor/*.js", "vendor/*.wasm",
+          "assets/*.jpg", "assets/*.webp", "assets/sons/*.mp3", "assets/cao/*.glb", "icons/*.png"]
 
 
 def soleil(taille):

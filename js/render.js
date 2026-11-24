@@ -190,8 +190,8 @@ export class Renderer {
       img.src = src;
     };
     load('plateau', 'assets/plateau.jpg', true);
-    load('victoire', 'assets/fanny_victoire.png');
-    load('lancer', 'assets/fanny_lancer.png');
+    load('victoire', 'assets/fanny_victoire.webp');
+    load('lancer', 'assets/fanny_lancer.webp');
   }
 
   // Fanny surgit en bas à gauche du plateau (jackpot, multiball…)
