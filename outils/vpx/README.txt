@@ -2,7 +2,7 @@ FANNY PINBALL - PETANQUE WORLD TOUR (Arducible 2026) v1.0
 =========================================================
 Original table for Visual Pinball X / Table originale pour Visual Pinball X
 
-#arducible, the DIY petanque game - https://guiraudjb.github.io/fanny-pinball/
+#arducible, the DIY petanque game
 Source: https://github.com/guiraudjb/fanny-pinball (outils/vpx)
 
 
