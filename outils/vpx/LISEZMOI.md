@@ -61,7 +61,8 @@ Encore à régler en jeu : force des lance-pierres (80), éjection du Cercle (`E
 ## Plateau et inserts
 
 - Plateau peint sur une matière gris très clair (`Plateau`) : vpinball multiplie l'image par la couleur de la matière (l'ancienne matière « Bois », brune, ternissait tout) ; rendu Reinhard, le plus fidèle aux couleurs à l'essai (`TONE=…`, `MATPLATEAU=…` pour comparer).
-- Inserts : lampes en mode image, rondes (32 côtés). Éteintes, on voit l'insert peint du plateau (pastille sombre et sa lettre) ; allumées, `donnees/decor/plateau_allume.jpg` (`inserts.py` : chaque insert redessiné allumé comme `drawLampInsert` du jeu web, avec halo). Essai `-c1 lampes` : une lampe sur deux allumée.
+- Inserts : éteints, ceux du plateau peint assombris (`inserts.py` → `donnees/decor/plateau_eteint.jpg`, la texture du plateau) ; allumés, un flasher plat `F_<nom>` par insert montre l'insert allumé (`donnees/decor/inserts/<nom>.png` : plastique éclairé, lettre, halo, dessiné comme `drawLampInsert` du jeu web). Le script le rend visible selon l'état de la lampe `L_<nom>` (invisible), clignotement compris (`MajLampes`). Les lampes en mode image montraient la même image allumées ou éteintes. Essai `-c1 lampes` : une lampe sur deux allumée.
+- Tablier : les cartes d'instructions (en bas, hors de l'écran en vue bureau) sont effacées et leur texte réécrit en diagonale dans les triangles noirs au-dessus, parallèle au bord en V (`tablier.py`, après `decor_glb.py`).
 
 ## Publication
 

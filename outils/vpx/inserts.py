@@ -6,7 +6,9 @@ sombres avec leur lettre (T-O-U-R, F-A-N-N-Y, ×2…). Les lampes VPX sont en «
 sur le cercle de l'insert (et son halo) cette image-ci, où chaque insert est redessiné allumé comme dans le jeu web
 (js/render.js drawLampInsert, lit = true) : plastique coloré éclairé de l'intérieur, anneau moulé, reflet, lettre.
 
-  python3 outils/vpx/inserts.py   → donnees/decor/plateau_allume.jpg
+  python3 outils/vpx/inserts.py   → donnees/decor/inserts/<lampe>.png (un insert allumé, RGBA, halo compris)
+                                     donnees/decor/plateau_allume.jpg (tous allumés, pour comparer)
+                                     donnees/decor/plateau_eteint.jpg (plateau de la table, inserts éteints assombris)
 """
 import json, os
 import numpy as np
@@ -44,13 +46,13 @@ def insert_allume(r_mm, coul, texte):
     # halo : lumière qui déborde autour de l'insert
     halo = np.clip(1 - (d - r) / ((HALO - 1) * r), 0, 1) ** 2 * (d >= r)
     im[..., :3] = teinte(col, 1.0, 40)
-    im[..., 3] = halo * 0.55
+    im[..., 3] = halo * 0.8
     # cerclage sombre
     bague = d <= r + 1.1 * K * SS                    # 1,1 mm
     im[bague, :3] = [24, 17, 12]; im[bague, 3] = 1
     # plastique éclairé : dégradé radial (centre presque blanc, couleur à 58 %, bord plus sombre)
     t = np.clip(d / r, 0, 1)[..., None]
-    c0, c1, c2 = teinte(col, 0.35, 166), col, teinte(col, 0.72, 0)
+    c0, c1, c2 = teinte(col, 0.25, 200), teinte(col, 1.0, 50), teinte(col, 0.9, 10)
     grad = np.where(t < 0.58, c0 + (c1 - c0) * (t / 0.58), c1 + (c2 - c1) * ((t - 0.58) / 0.42))
     dedans = d <= r
     im[dedans, :3] = grad[dedans]; im[dedans, 3] = 1
@@ -74,8 +76,22 @@ def insert_allume(r_mm, coul, texte):
 
 
 allume = plateau.convert('RGBA')
+os.makedirs(os.path.join(D, 'inserts'), exist_ok=True)
 for lp in table['lampes']:
     ins = insert_allume(lp['r'], lp['couleur'], lp.get('texte') or '')
+    ins.save(os.path.join(D, 'inserts', lp['nom'] + '.png'))       # flasher F_<nom> de la table (allumé = visible)
     allume.alpha_composite(ins, (int(round(lp['x'] * K - ins.width / 2)), int(round(lp['y'] * K - ins.height / 2))))
 allume.convert('RGB').save(os.path.join(D, 'plateau_allume.jpg'), quality=92)
+
+# plateau de la table : inserts éteints assombris (plastique non éclairé), pour que l'insert allumé tranche ; la
+# lettre et le cerclage restent (on n'assombrit que le disque, la lettre noire reste noire)
+eteint = np.asarray(plateau, float)
+yy, xx = np.mgrid[0:eteint.shape[0], 0:eteint.shape[1]]
+for lp in table['lampes']:
+    cx, cy, r = lp['x'] * K, lp['y'] * K, lp['r'] * K
+    x0, x1, y0, y1 = int(cx - r - 2), int(cx + r + 3), int(cy - r - 2), int(cy + r + 3)
+    d = np.hypot(xx[y0:y1, x0:x1] - cx, yy[y0:y1, x0:x1] - cy)
+    f = np.clip((r - d) / 1.5, 0, 1)[..., None]                 # bord adouci
+    eteint[y0:y1, x0:x1] *= 1 - 0.5 * f
+Image.fromarray(eteint.astype(np.uint8)).save(os.path.join(D, 'plateau_eteint.jpg'), quality=92)
 print(f"{len(table['lampes'])} inserts allumés → {os.path.join(D, 'plateau_allume.jpg')}")

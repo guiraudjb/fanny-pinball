@@ -44,8 +44,8 @@ const TIRAGE_LANCEUR: f32 = 0.1;
 const LUMINOSITE_AFFICHEUR: f32 = 1.0;
 /// force des reflets sur le plateau (0 à 1 ; la table minimale de vpin met 1, trop fort : effet miroir)
 const REFLET_PLATEAU: f32 = 0.12;
-/// intensité des inserts allumés (lampes en mode image sur le plateau peint) ; INSERT=… pour essayer
-static INTENSITE_INSERT: std::sync::LazyLock<f32> = std::sync::LazyLock::new(|| std::env::var("INSERT").ok().and_then(|s| s.parse().ok()).unwrap_or(1.0));
+/// opacité des inserts allumés (flashers F_<nom>, 0–100) ; INSERT=… pour essayer
+static INTENSITE_INSERT: std::sync::LazyLock<f32> = std::sync::LazyLock::new(|| std::env::var("INSERT").ok().and_then(|s| s.parse().ok()).unwrap_or(100.0));
 /// Panneaux animés du fond (vue bureau) : GIF, flasher, centre x, y, hauteur et côté en mm (repère du plateau), tournés
 /// de 45° vers la caméra ; ils recouvrent les cadres dessinés par fond.py sous l'afficheur (réglés à l'écran).
 /// Dernières valeurs : largeur et hauteur (dans le plan du panneau, mm).
@@ -197,7 +197,10 @@ fn main() {
     v.gamedata.ball_playfield_reflection_strength = Some(0.5);
 
     match &mut decor {
-        Some(d) => { v.add_or_replace_image(image("plateau", &d.plateau)); for im in std::mem::take(&mut d.images) { v.add_or_replace_image(im); } }
+        Some(d) => {
+            // plateau aux inserts éteints assombris (inserts.py), sinon celui du décor
+            let eteint = ici.join("donnees/decor/plateau_eteint.jpg");
+            v.add_or_replace_image(image("plateau", if eteint.exists() { &eteint } else { &d.plateau })); for im in std::mem::take(&mut d.images) { v.add_or_replace_image(im); } }
         None => { v.add_or_replace_image(image("plateau", &ici.join("donnees/plateau.png"))); }
     }
     v.add_or_replace_image(image("fronton", &racine.join("assets/fronton.jpg")));
@@ -424,23 +427,31 @@ fn main() {
     }
 
     // ---------------------------------------------------------------- lampes (inserts peints sur le plateau)
-    let allume = ici.join("donnees/decor/plateau_allume.jpg");
-    let image_inserts: String = if allume.exists() { v.add_or_replace_image(image("plateau_allume", &allume)); "plateau_allume".into() } else { "plateau".into() };
+    // Éteint, l'insert est celui du plateau peint (pastille sombre et sa lettre). Allumé, un flasher plat F_<nom>
+    // posé dessus montre l'insert allumé (inserts.py : plastique coloré éclairé, lettre, halo) ; le script le rend
+    // visible selon l'état de la lampe (MajLampes, clignotement compris). La lampe L_<nom>, invisible, garde l'état.
+    // (Les lampes en mode image montraient la même image allumées ou éteintes : on ne voyait plus les cibles touchées.)
     for lp in t["lampes"].as_array().unwrap() {
-        let nom = format!("L_{}", lp["nom"].as_str().unwrap());
-        // insert : lampe en mode image ; allumée, elle montre sur le cercle de l'insert et son halo le plateau aux inserts
-        // allumés (inserts.py : plastique coloré éclairé, lettre), éteinte, le plateau peint (insert sombre et sa lettre).
-        // Avant : polygone de couleur à 8 côtés posé par-dessus, qui cachait les lettres.
-        let mut li = Light { name: nom, center: p2(f(&lp["x"]), f(&lp["y"])), falloff_radius: f(&lp["r"]) * 1.6 * MM,
-            color: couleur(lp["couleur"].as_str().unwrap_or("#ffffff")), intensity: *INTENSITE_INSERT, state_u32: 0, state: Some(0.0),
-            is_image_mode: true, image: image_inserts.clone(), falloff_power: 2.0, ..Default::default() };
+        let n = lp["nom"].as_str().unwrap();
+        let (x, y, r) = (f(&lp["x"]), f(&lp["y"]), f(&lp["r"]));
+        let mut li = Light { name: format!("L_{n}"), center: p2(x, y), falloff_radius: r * MM,
+            color: couleur(lp["couleur"].as_str().unwrap_or("#ffffff")), intensity: 0.0, state_u32: 0, state: Some(0.0),
+            visible: Some(false), ..Default::default() };
         li.color2 = li.color;
-        let (cx, cy, rr) = (li.center.x, li.center.y, f(&lp["r"]) * MM * 1.35);   // insert et halo (HALO de inserts.py)
-        li.drag_points = (0..32).map(|k| {
-            let a = -(k as f32) * std::f32::consts::TAU / 32.0;
-            DragPoint { x: cx + rr * a.cos(), y: cy + rr * a.sin(), ..Default::default() }
+        li.drag_points = (0..8).map(|k| {
+            let a = -(k as f32) * std::f32::consts::TAU / 8.0;
+            DragPoint { x: li.center.x + r * MM * a.cos(), y: li.center.y + r * MM * a.sin(), ..Default::default() }
         }).collect();
         items.push(GameItemEnum::Light(li));
+        let png = ici.join(format!("donnees/decor/inserts/{n}.png"));
+        if !png.exists() { continue; }
+        v.add_or_replace_image(image(&format!("insert_{n}"), &png));
+        let demi = r * 1.35 * 1.0 + 0.6;          // HALO de inserts.py (+ la marge de l'image)
+        let mut fl = Flasher { name: format!("F_{n}"), image_a: format!("insert_{n}"), height: std::env::var("HINSERT").ok().and_then(|s| s.parse().ok()).unwrap_or(1.5) * MM, pos_x: Some(x * MM), pos_y: Some(y * MM),
+            display_texture: true, alpha: *INTENSITE_INSERT as i32, is_visible: false, filter: Filter::None,
+            image_alignment: RampImageAlignment::Wrap, color: Color::from_rgb(0xffffff), modulate_vs_add: 1.0, ..Default::default() };
+        fl.drag_points = [(-1.0, 1.0), (1.0, 1.0), (1.0, -1.0), (-1.0, -1.0)].iter().map(|&(a, b)| dp(x + a * demi, y + b * demi, 0.0)).collect();
+        items.push(GameItemEnum::Flasher(fl));
     }
 
     // ---------------------------------------------------------------- afficheurs (fronton) et horloge du script

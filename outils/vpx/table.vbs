@@ -31,7 +31,7 @@ Dim CITIES : CITIES = Array("MARSEILLE", "PARIS", "LONDRES", "NEW YORK", "TOKYO"
 Dim NOMS_LAMPES : NOMS_LAMPES = Array("lane0", "lane1", "lane2", "lane3", "drop0", "drop1", "drop2", "drop3", "drop4", "multiball", _
   "ramp", "jackpot", "city0", "city1", "city2", "city3", "city4", "city5", "city6", "mult2", "mult3", "mult4", "mult5", _
   "extra", "save", "carreau", "bouchon", "point", "cible0", "cible1", "cible2", "extraLit")
-Dim lampEtat(31), lampObj(31)
+Dim lampEtat(31), lampObj(31), lampFl(31), lampVu(31)
 
 ' ---------------------------------------------------------------- état (mêmes noms que rules.js)
 Dim maintenant, mode, credits, highScore, lastScore, matchNum, matchRolling
@@ -86,8 +86,9 @@ Sub Table1_Init()
   Dim i
   For i = 0 To 31
     Set lampObj(i) = Eval("L_" & NOMS_LAMPES(i))
+    Set lampFl(i) = Eval("F_" & NOMS_LAMPES(i))           ' insert allumé (flasher posé sur le plateau)
     lampObj(i).BlinkInterval = 125
-    lampEtat(i) = -1
+    lampEtat(i) = -1 : lampVu(i) = -1
   Next
   For i = 0 To NB_MIN - 1 : minOn(i) = False : Next
   highScore = 0 : lastScore = 0 : credits = 0 : matchNum = -1 : matchRolling = False
@@ -1150,7 +1151,7 @@ Function B2E(b)
 End Function
 
 Sub MajLampes()
-  Dim i, k, e(31)
+  Dim i, k, v, e(31)
   For i = 0 To 3 : e(i) = B2E(letters(i)) : Next
   For i = 0 To 4 : e(4 + i) = B2E(drops(i)) : Next
   If superLit Then
@@ -1191,8 +1192,13 @@ Sub MajLampes()
   If GetCustomParam(1) = "lampes" Then                    ' essai : une lampe sur deux allumée
     For i = 0 To 31 : e(i) = B2E(i Mod 2 = 0) : Next
   End If
+  k = Int(maintenant / 125) Mod 2                         ' clignotement (état 2), au rythme de BlinkInterval
   For i = 0 To 31
     If lampEtat(i) <> e(i) Then lampEtat(i) = e(i) : lampObj(i).State = e(i)
+    v = 0
+    If e(i) = 1 Then v = 1
+    If e(i) = 2 And k = 0 Then v = 1
+    If lampVu(i) <> v Then lampVu(i) = v : lampFl(i).Visible = (v = 1)
   Next
 End Sub
 
