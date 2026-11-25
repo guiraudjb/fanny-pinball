@@ -1121,8 +1121,22 @@ Dim essaiLogique : essaiLogique = False
 '  --- décor de la vue bureau : GIF animés (châssis, articulation de la boule) joués sur leurs flashers
 '  GIFS (généré) : Array(flasher, préfixe des images, nombre de vues, durée d'une vue en ms)
 Dim gifVue(7)
+'  Option du menu de la table (F12, « Table Options ») : animations de la vue bureau
+'  0 = animées, 1 = figées (première vue), 2 = masquées. Le choix est enregistré par Visual Pinball pour la table.
+Dim optAnimations : optAnimations = 0
+Sub Table1_OptionEvent(ByVal eventId)
+  optAnimations = Table1.Option("Desktop animations", 0, 2, 1, 0, 0, Array("Animated", "Still", "Hidden"))
+  Dim i, g
+  For i = 0 To UBound(GIFS)
+    g = GIFS(i)
+    g(0).Visible = (optAnimations < 2)
+    If optAnimations = 1 Then g(0).ImageA = g(1) & "00" : gifVue(i) = 0
+  Next
+End Sub
+
 Sub AnimerGifs()
   Dim i, g, n
+  If optAnimations <> 0 Then Exit Sub
   For i = 0 To UBound(GIFS)
     g = GIFS(i)
     n = Int(maintenant / g(3)) Mod g(2)

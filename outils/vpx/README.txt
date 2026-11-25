@@ -22,6 +22,9 @@ Keys (standard VPX keys)
   5                  : insert coin     1          : start game
   Z / / / Space      : nudge left / right / centre (three quick nudges = TILT)
 
+Table options (F12 in game)
+  - Desktop animations: Animated (default), Still (first frame only) or Hidden. Saved with the table.
+
 Rules
   - F-A-N-N-Y targets light LE CERCLE; ball in the lit Cercle = TRIPLETTE MULTIBALL (3 balls).
   - During multiball every ramp is a JACKPOT (20,000, +5,000 each time); three jackpots light the
@@ -54,6 +57,9 @@ Touches (celles de VPX)
   5                   : credit         1      : depart
   Z / / / Espace      : coups de caisse (trois coups rapproches = TILT)
 
+Options de la table (F12 en jeu)
+  - Desktop animations : animees (par defaut), figees (premiere image) ou masquees. Choix enregistre.
+
 Regles
   - Les cibles F-A-N-N-Y allument LE CERCLE ; bille dans le Cercle allume = TRIPLETTE MULTIBALL (3 billes).
   - En multiball, chaque rampe = JACKPOT (20 000, +5 000 a chaque fois) ; trois jackpots allument le
@@ -64,4 +70,6 @@ Regles
   - Sauvetage de bille, partie gratuite a 150 000 / 300 000 / 500 000 et au record, MATCH, TILT.
 
 Historique / Changelog
-  v1.0 (2026-11) : premiere version publique / first public release.
+  1.0.1 (2026-11-25) : option F12 "Desktop animations" pour figer ou masquer les animations de la vue bureau /
+                       F12 table option to freeze or hide the desktop view animations.
+  1.0   (2026-11-24) : premiere version publique / first public release.
