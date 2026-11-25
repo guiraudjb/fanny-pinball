@@ -303,7 +303,7 @@ class Table:
                  murs=self.murs, lance_pierres=self.lance_pierres, palettes=self.palettes, bumpers=self.bumpers,
                  fils=self.fils, cibles=self.cibles, couloirs=self.couloirs, trous=self.trous, tourniquets=self.tourniquets,
                  portes=self.portes, rampes=self.rampes, lampes=self.lampes, lanceur=self.lanceur, drain=self.drain,
-                 blurb=getattr(self, 'blurb', None), bas_fanny=getattr(self, 'bas_fanny', False), couleur_elastique=(getattr(self, 'deco', None) or {}).get('elastique', '#c01c28'), musiques=list(self.musiques.values()), panneaux=self.preparer_panneaux(os.path.join(sortie, 'images')))
+                 blurb=getattr(self, 'blurb', None), studio=getattr(self, 'studio', False), bas_fanny=getattr(self, 'bas_fanny', False), couleur_elastique=(getattr(self, 'deco', None) or {}).get('elastique', '#c01c28'), musiques=list(self.musiques.values()), panneaux=self.preparer_panneaux(os.path.join(sortie, 'images')))
         json.dump(d, open(os.path.join(sortie, 'table.json'), 'w'), ensure_ascii=False, indent=1)
         import decor
         decor.construire(self, sortie)               # finition : chapeaux de bumpers, plastrons, chapeaux d'axe
@@ -674,3 +674,63 @@ def cadre_fanny(t):
     # arche : murs cachés dans le châssis, bord du plateau souligné par un guide en fil le long de l'arc
     t.fils.append(dict(nom='FilArche', pts=[[W / 2 - (W / 2 - 3) * math.cos(math.radians(a)), 205.0 - 190.0 * math.sin(math.radians(a))]
                                             for a in range(8, 173, 6)]))
+
+
+# ---------------------------------------------------------------- tables du studio : toujours la table universelle
+# Une table du studio = <dossier>/fiche.json (titre, textes, couleurs, habillage) + <dossier>/composition.json (éléments
+# du haut du plateau). Elle part TOUJOURS de la base universelle (cadre_fanny : châssis, planche et bas de Fanny) avec
+# l'écran de Fanny et le cadrage validé (VUE_BUREAU du générateur, la variable VUE y est ignorée) : seul le haut change.
+TYPES_COMPOSITION = ('bumper', 'cible', 'banque', 'couloir', 'trou', 'tourniquet', 'lampe', 'fleche', 'rampe',
+                     'poteau', 'porte', 'rail', 'etiquette')
+HAUT_LIBRE = 860.0          # le haut composable s'arrête au-dessus du bas de Fanny (guides et lance-pierres dès y 878)
+
+
+def charger_composition(t, chemin):
+    """ajoute à t les éléments de composition.json : {"elements": [{"type": "bumper", "nom": "B1", "x": .., "y": ..}, ..]}
+    (les clés sont les paramètres des méthodes de Table du même nom) ; rend la liste des éléments"""
+    import json
+    if not os.path.exists(chemin):
+        return []
+    elements = json.load(open(chemin)).get('elements', [])
+    for e in elements:
+        p = {k: v for k, v in e.items() if k not in ('type', 'id')}
+        if e['type'] not in TYPES_COMPOSITION:
+            raise ValueError(f"composition : type inconnu {e['type']!r}")
+        for k in ('pts', 'profil', 'capteurs'):
+            if k in p:
+                p[k] = [tuple(q) for q in p[k]]
+        for k in ('ejection', 'p1', 'p2'):
+            if k in p:
+                p[k] = tuple(p[k])
+        getattr(t, e['type'])(**p)
+    return elements
+
+
+def table_studio(dossier):
+    """construit la Table d'un dossier du studio (sans écrire) : rend (t, fiche, éléments, état de la base)"""
+    import json
+    global XD, CX
+    XD, CX = 478.0, 239.0                     # géométrie de Fanny : paroi du lanceur à 478 mm, axe des palettes à 239 mm
+    F = json.load(open(os.path.join(dossier, 'fiche.json')))
+    t = Table(F['nom'], F['titre'], F.get('sous_titre', ''), F.get('regles', []))
+    cadre_fanny(t)
+    base = {k: len(v) for k, v in vars(t).items() if isinstance(v, list)}
+    elements = charger_composition(t, os.path.join(dossier, 'composition.json'))
+    t.studio = True
+    t.ecran_fanny = True                      # écran : disposition de Fanny (fronton assemblé, signature)
+    t.vitesse_lanceur = 30.3                  # LANCEUR_V de Fanny
+    t.deco = F.get('deco') or dict(c1='#d0d4da', c2='#2b2f36', c3='#5e6672', titre=F['titre'].upper(), elastique='#c01c28')
+    t.blurb = F.get('blurb')
+    art = F.get('art', {})
+    for k in ('plateau', 'fond', 'fronton'):
+        if art.get(k):
+            setattr(t, f'art_{k}', os.path.join(dossier, art[k]))
+    t.musiques = F.get('musiques', {})
+    assert getattr(t, 'bas_fanny', False), 'une table du studio part toujours de la base universelle'
+    return t, F, elements, base
+
+
+def ecrire_studio(dossier):
+    t = table_studio(dossier)[0]
+    t.ecrire(dossier)
+    return t

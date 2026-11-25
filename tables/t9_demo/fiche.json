@@ -1,0 +1,24 @@
+{
+ "nom": "DemoStudio",
+ "titre": "Démo studio",
+ "sous_titre": "table de démonstration",
+ "regles": [
+  "Lance-pierres : 10 ; couloirs de retour : 500 ; sorties : 1 000"
+ ],
+ "deco": {
+  "c1": "#d0d4da",
+  "c2": "#2b2f36",
+  "c3": "#5e6672",
+  "titre": "DÉMO STUDIO",
+  "elastique": "#c01c28"
+ },
+ "blurb": "Démo studio : table du studio sur la base Fanny Pinball.",
+ "theme": {
+  "univers": "",
+  "style": "",
+  "palette": [],
+  "vocabulaire": {}
+ },
+ "art": {},
+ "musiques": {}
+}

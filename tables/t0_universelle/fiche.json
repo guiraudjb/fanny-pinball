@@ -1,0 +1,15 @@
+{
+ "nom": "Universelle",
+ "titre": "Universelle",
+ "sous_titre": "base Fanny Pinball",
+ "regles": [
+  "Base universelle : planche et bas de table de Fanny Pinball",
+  "Haut du plateau vierge, à composer",
+  "Lance-pierres : 10 ; couloirs de retour : 500 ; sorties : 1 000"
+ ],
+ "deco": {"c1": "#d0d4da", "c2": "#2b2f36", "c3": "#5e6672", "titre": "UNIVERSELLE", "elastique": "#c01c28"},
+ "blurb": "Base universelle : châssis, planche et bas de table de Fanny Pinball, haut vierge.",
+ "theme": {"univers": "", "style": "", "palette": [], "vocabulaire": {}},
+ "art": {},
+ "musiques": {}
+}

@@ -1,0 +1,273 @@
+{
+ "elements": [
+  {
+   "type": "bumper",
+   "nom": "Bumper1",
+   "x": 182,
+   "y": 170
+  },
+  {
+   "type": "bumper",
+   "nom": "Bumper2",
+   "x": 270,
+   "y": 152
+  },
+  {
+   "type": "bumper",
+   "nom": "Bumper3",
+   "x": 226,
+   "y": 244
+  },
+  {
+   "type": "banque",
+   "prefixe": "Cible",
+   "x0": 50,
+   "y0": 330,
+   "x1": 80,
+   "y1": 470,
+   "n": 3,
+   "genre": "tombante"
+  },
+  {
+   "type": "fleche",
+   "nom": "rampe",
+   "x": 239,
+   "y": 670,
+   "angle": 0,
+   "couleur": "#ffffff"
+  },
+  {
+   "type": "trou",
+   "nom": "Trou",
+   "x": 120,
+   "y": 560,
+   "ejection": [
+    45,
+    12
+   ]
+  },
+  {
+   "type": "lampe",
+   "nom": "trou",
+   "x": 120,
+   "y": 610,
+   "r": 9,
+   "couleur": "#f6d32d",
+   "texte": "T"
+  },
+  {
+   "type": "rampe",
+   "nom": "Rampe1",
+   "pts": [
+    [
+     86.6,
+     340.8
+    ],
+    [
+     64.7,
+     248.1
+    ],
+    [
+     86.6,
+     179
+    ],
+    [
+     154.1,
+     126.7
+    ],
+    [
+     256.9,
+     114.9
+    ],
+    [
+     324.3,
+     116.6
+    ],
+    [
+     378.3,
+     150.3
+    ],
+    [
+     415.4,
+     206
+    ],
+    [
+     413.7,
+     271.7
+    ],
+    [
+     391.8,
+     394.8
+    ],
+    [
+     386.7,
+     509.4
+    ],
+    [
+     380,
+     652.7
+    ],
+    [
+     390.1,
+     769.1
+    ],
+    [
+     408.6,
+     858.4
+    ],
+    [
+     413.7,
+     873.6
+    ]
+   ],
+   "profil": [
+    [
+     0,
+     0
+    ],
+    [
+     40,
+     7
+    ],
+    [
+     180,
+     42
+    ],
+    [
+     0.85,
+     42
+    ],
+    [
+     1,
+     34
+    ]
+   ],
+   "capteurs": [
+    [
+     "CapteurRampe1",
+     0.6
+    ]
+   ]
+  },
+  {
+   "type": "tourniquet",
+   "nom": "Tourniquet1",
+   "sens": -15,
+   "long": 34,
+   "x": 96.7,
+   "y": 356.1
+  },
+  {
+   "type": "cible",
+   "nom": "Cible1",
+   "genre": "debout",
+   "x": 238.4,
+   "y": 351
+  },
+  {
+   "type": "cible",
+   "nom": "Cible2",
+   "genre": "debout",
+   "x": 275.5,
+   "y": 345.9
+  },
+  {
+   "type": "cible",
+   "nom": "Cible3",
+   "genre": "debout",
+   "x": 322.7,
+   "y": 345.9
+  },
+  {
+   "type": "banque",
+   "n": 3,
+   "genre": "tombante",
+   "prefixe": "Banque1",
+   "x0": 253.89999999999998,
+   "y0": 469,
+   "x1": 313.9,
+   "y1": 469
+  },
+  {
+   "type": "trou",
+   "nom": "Trou1",
+   "r": 20,
+   "ejection": [
+    0,
+    10
+   ],
+   "x": 160.8,
+   "y": 403.2
+  },
+  {
+   "type": "lampe",
+   "nom": "lampe1",
+   "r": 10,
+   "couleur": "#ffcc33",
+   "texte": "",
+   "x": 253.5,
+   "y": 541.5
+  },
+  {
+   "type": "lampe",
+   "nom": "lampe2",
+   "r": 10,
+   "couleur": "#ffcc33",
+   "texte": "",
+   "x": 191.2,
+   "y": 634.2
+  },
+  {
+   "type": "lampe",
+   "nom": "lampe3",
+   "r": 10,
+   "couleur": "#ffcc33",
+   "texte": "",
+   "x": 83.3,
+   "y": 681.4
+  },
+  {
+   "type": "fleche",
+   "nom": "fleche1",
+   "angle": 0,
+   "couleur": "#ffffff",
+   "x": 268.7,
+   "y": 619
+  },
+  {
+   "type": "fleche",
+   "nom": "fleche2",
+   "angle": 0,
+   "couleur": "#ffffff",
+   "x": 288.9,
+   "y": 536.4
+  },
+  {
+   "type": "couloir",
+   "nom": "Couloir1",
+   "forme": "invisible",
+   "dx": 16,
+   "dy": 10,
+   "x": 52.9,
+   "y": 571.8
+  },
+  {
+   "type": "couloir",
+   "nom": "Couloir3",
+   "forme": "invisible",
+   "dx": 16,
+   "dy": 10,
+   "x": 54.6,
+   "y": 615.6
+  },
+  {
+   "type": "couloir",
+   "nom": "Couloir4",
+   "forme": "invisible",
+   "dx": 16,
+   "dy": 10,
+   "x": 49.5,
+   "y": 681.4
+  }
+ ]
+}

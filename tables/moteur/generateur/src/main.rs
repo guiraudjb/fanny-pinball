@@ -115,7 +115,10 @@ fn main() {
         g.left = 0.0; g.top = 0.0; g.right = w * MM; g.bottom = h * MM;
         g.angle_tilt_min = f(&t["pente_deg"]); g.angle_tilt_max = f(&t["pente_deg"]);
         g.image = "plateau".into();
-        let vue: Vec<f32> = std::env::var("VUE").ok().map(|s| s.split(',').filter_map(|x| x.trim().parse().ok()).collect())
+        // tables du studio : cadrage validé imposé (VUE ignorée, réservée aux essais de cadrage du moteur)
+        let studio = t["studio"].as_bool().unwrap_or(false);
+        if studio && !t["bas_fanny"].as_bool().unwrap_or(false) { panic!("table du studio sans la base universelle"); }
+        let vue: Vec<f32> = std::env::var("VUE").ok().filter(|_| !studio).map(|s| s.split(',').filter_map(|x| x.trim().parse().ok()).collect())
             .filter(|v: &Vec<f32>| v.len() >= 9).unwrap_or(VUE_BUREAU.to_vec());
         let d = &mut g.view_setups[ViewSetupId::Desktop];
         d.mode = Some(if vue[7] > 0.5 { ViewLayoutMode::Camera } else { ViewLayoutMode::Legacy });
