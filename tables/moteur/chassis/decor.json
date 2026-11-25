@@ -1,0 +1,575 @@
+{
+ "groupes": [
+  {
+   "fichier": "g000.bin",
+   "mobile": null,
+   "matiere_gltf": 97,
+   "sommets": 6591,
+   "triangles": 13162,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    -51.2,
+    865.0,
+    -187.9
+   ],
+   "max": [
+    1003.0,
+    2480.4,
+    71.9
+   ],
+   "couleur": 14278115,
+   "opacite": 1.0,
+   "metal": true,
+   "rugosite": 0.22,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g001.bin",
+   "mobile": null,
+   "matiere_gltf": 100,
+   "sommets": 316,
+   "triangles": 620,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    -44.3,
+    261.3,
+    115.8
+   ],
+   "max": [
+    996.1,
+    2381.1,
+    287.4
+   ],
+   "couleur": 14278115,
+   "opacite": 1.0,
+   "metal": true,
+   "rugosite": 0.22,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g002.bin",
+   "mobile": null,
+   "matiere_gltf": 101,
+   "sommets": 2420,
+   "triangles": 4864,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    -6.3,
+    -65.5,
+    -874.9
+   ],
+   "max": [
+    958.1,
+    93.2,
+    215.7
+   ],
+   "couleur": 16777215,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.55,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": "t091.jpg",
+   "alpha": null
+  },
+  {
+   "fichier": "g003.bin",
+   "mobile": null,
+   "matiere_gltf": 102,
+   "sommets": 16,
+   "triangles": 32,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    -6.3,
+    -34.6,
+    215.7
+   ],
+   "max": [
+    958.1,
+    267.5,
+    284.7
+   ],
+   "couleur": 4860952,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.7,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g004.bin",
+   "mobile": null,
+   "matiere_gltf": 103,
+   "sommets": 1400,
+   "triangles": 2808,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    -6.3,
+    2345.9,
+    -604.7
+   ],
+   "max": [
+    958.1,
+    2465.1,
+    138.7
+   ],
+   "couleur": 16777215,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.55,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": "t092.jpg",
+   "alpha": null
+  },
+  {
+   "fichier": "g005.bin",
+   "mobile": null,
+   "matiere_gltf": 104,
+   "sommets": 2326,
+   "triangles": 4680,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    958.1,
+    -69.5,
+    -874.9
+   ],
+   "max": [
+    993.3,
+    2465.1,
+    284.7
+   ],
+   "couleur": 16777215,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.55,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": "t093.png",
+   "alpha": "masque"
+  },
+  {
+   "fichier": "g006.bin",
+   "mobile": null,
+   "matiere_gltf": 105,
+   "sommets": 2326,
+   "triangles": 4680,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    -41.5,
+    -69.5,
+    -874.9
+   ],
+   "max": [
+    -6.3,
+    2465.1,
+    284.7
+   ],
+   "couleur": 16777215,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.55,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": "t094.png",
+   "alpha": "masque"
+  },
+  {
+   "fichier": "g007.bin",
+   "mobile": null,
+   "matiere_gltf": 106,
+   "sommets": 200,
+   "triangles": 396,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    -48.8,
+    2266.9,
+    108.2
+   ],
+   "max": [
+    1000.6,
+    2401.4,
+    178.7
+   ],
+   "couleur": 14278115,
+   "opacite": 1.0,
+   "metal": true,
+   "rugosite": 0.32,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g008.bin",
+   "mobile": null,
+   "matiere_gltf": 109,
+   "sommets": 780,
+   "triangles": 1488,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    140.0,
+    -24.5,
+    -318.8
+   ],
+   "max": [
+    811.9,
+    13.3,
+    -196.7
+   ],
+   "couleur": 1315862,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.6,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g009.bin",
+   "mobile": null,
+   "matiere_gltf": 110,
+   "sommets": 72,
+   "triangles": 36,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    210.0,
+    2391.5,
+    -452.8
+   ],
+   "max": [
+    812.3,
+    2455.6,
+    46.3
+   ],
+   "couleur": 2105382,
+   "opacite": 1.0,
+   "metal": true,
+   "rugosite": 0.35,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g010.bin",
+   "mobile": null,
+   "matiere_gltf": 111,
+   "sommets": 24,
+   "triangles": 12,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    250.7,
+    2402.5,
+    -411.6
+   ],
+   "max": [
+    771.5,
+    2455.6,
+    6.3
+   ],
+   "couleur": 3881796,
+   "opacite": 1.0,
+   "metal": true,
+   "rugosite": 0.3,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g011.bin",
+   "mobile": null,
+   "matiere_gltf": 112,
+   "sommets": 48,
+   "triangles": 24,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    404.7,
+    2425.4,
+    -159.4
+   ],
+   "max": [
+    617.6,
+    2436.2,
+    -96.4
+   ],
+   "couleur": 16726560,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.9,
+   "emissif": true,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g012.bin",
+   "mobile": null,
+   "matiere_gltf": 113,
+   "sommets": 1384,
+   "triangles": 1328,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    29.8,
+    2397.9,
+    -77.3
+   ],
+   "max": [
+    98.9,
+    2421.0,
+    -7.4
+   ],
+   "couleur": 1118484,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.55,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g013.bin",
+   "mobile": null,
+   "matiere_gltf": 114,
+   "sommets": 245,
+   "triangles": 384,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    40.6,
+    2406.3,
+    -65.9
+   ],
+   "max": [
+    88.1,
+    2416.7,
+    -18.3
+   ],
+   "couleur": 16777215,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.18,
+   "emissif": true,
+   "deux_faces": false,
+   "texture": "t095.jpg",
+   "alpha": null
+  },
+  {
+   "fichier": "g014.bin",
+   "mobile": null,
+   "matiere_gltf": 115,
+   "sommets": 931,
+   "triangles": 1632,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    -74.1,
+    2240.5,
+    25.4
+   ],
+   "max": [
+    -41.5,
+    2319.0,
+    103.9
+   ],
+   "couleur": 13703717,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.12,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g015.bin",
+   "mobile": null,
+   "matiere_gltf": 116,
+   "sommets": 931,
+   "triangles": 1632,
+   "pivot": [
+    0.0,
+    0.0,
+    0.0
+   ],
+   "min": [
+    993.3,
+    2240.5,
+    25.4
+   ],
+   "max": [
+    1025.9,
+    2319.0,
+    103.9
+   ],
+   "couleur": 13703717,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.12,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g016.bin",
+   "mobile": "PrimLanceur",
+   "matiere_gltf": 97,
+   "sommets": 216,
+   "triangles": 428,
+   "pivot": [
+    922.2222297574267,
+    2301.439021593899,
+    0.0
+   ],
+   "min": [
+    907.4,
+    2235.2,
+    10.2
+   ],
+   "max": [
+    937.0,
+    2501.2,
+    39.8
+   ],
+   "couleur": 14278115,
+   "opacite": 1.0,
+   "metal": true,
+   "rugosite": 0.22,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g017.bin",
+   "mobile": "PrimLanceur",
+   "matiere_gltf": 107,
+   "sommets": 731,
+   "triangles": 1458,
+   "pivot": [
+    922.3855619115985,
+    2508.1856981928963,
+    0.0
+   ],
+   "min": [
+    892.6,
+    2482.7,
+    -4.6
+   ],
+   "max": [
+    951.9,
+    2517.5,
+    54.6
+   ],
+   "couleur": 789518,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.25,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  },
+  {
+   "fichier": "g018.bin",
+   "mobile": "PrimLanceur",
+   "matiere_gltf": 108,
+   "sommets": 72,
+   "triangles": 140,
+   "pivot": [
+    922.2222297574267,
+    2225.925925595587,
+    0.0
+   ],
+   "min": [
+    909.3,
+    2214.8,
+    12.0
+   ],
+   "max": [
+    935.2,
+    2237.0,
+    38.0
+   ],
+   "couleur": 1579034,
+   "opacite": 1.0,
+   "metal": false,
+   "rugosite": 0.8,
+   "emissif": false,
+   "deux_faces": false,
+   "texture": null,
+   "alpha": null
+  }
+ ],
+ "plateau": "plateau.jpg"
+}

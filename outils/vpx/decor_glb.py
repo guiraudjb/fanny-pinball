@@ -14,6 +14,9 @@ On laisse de côté le café (salle_*), les pieds, le fronton (VPX a son propre 
 lampes VPX les remplacent) et le tourniquet (celui de VPX tourne).
 
   python3 outils/vpx/decor_glb.py [--scene natif/donnees/scene.glb]
+  python3 outils/vpx/decor_glb.py --chassis --sortie tables/moteur/chassis
+      châssis seul (caisse, baguettes, barre de verrouillage, boîtier du lanceur, boutons, quincaillerie ; sans le
+      fronton, les pieds ni la tige du lanceur) : il habille les tables vierges de tables/, aux mêmes dimensions
 """
 import argparse, io, json, os, shutil, sys
 import numpy as np
@@ -26,8 +29,12 @@ RACINE = os.path.abspath(os.path.join(ICI, '../..'))
 MM = 1 / 0.54
 ap = argparse.ArgumentParser()
 ap.add_argument('--scene', default=os.path.join(RACINE, 'natif/donnees/scene.glb'))
+ap.add_argument('--chassis', action='store_true', help='seulement le châssis (nœud parent de flanc_G)')
+ap.add_argument('--bas', action='store_true', help="seulement le bas de table (y > 850 mm : tablier, guides, poteaux, "
+                "plastiques des lance-pierres), sans pièces mobiles ni inserts : base des tables universelles")
+ap.add_argument('--sortie', default=os.path.join(ICI, 'donnees/decor'))
 a = ap.parse_args()
-SORTIE = os.path.join(ICI, 'donnees/decor')
+SORTIE = os.path.abspath(a.sortie)
 shutil.rmtree(SORTIE, ignore_errors=True)
 os.makedirs(SORTIE)
 
@@ -35,7 +42,8 @@ g, binr = charger(a.scene)
 noeuds = g['nodes']
 table = next(i for i, n in enumerate(noeuds) if n.get('name') == 'table')
 
-EXCLURE_NOEUD = ('dyn_pied', 'dyn_fronton', 'dyn_tourniquet', 'pied', 'salle')
+EXCLURE_NOEUD = ('dyn_pied', 'dyn_fronton', 'dyn_tourniquet', 'pied', 'salle') \
+    + (('dyn_palette', 'dyn_cible', 'dyn_lanceur', 'dyn_tige', 'dyn_bumper') if a.bas else ())   # élastiques ronds des lance-pierres (dyn_sling) gardés
 # pièces mobiles animées par le script : nom du groupe VPX → préfixe du nœud
 MOBILES = {'dyn_palette_L': 'PrimPaletteG', 'dyn_palette_R': 'PrimPaletteD',
            **{f'dyn_cible_{i}': f'PrimCible{i}' for i in range(5)},
@@ -107,6 +115,8 @@ def rec(i, M, mobile, exclu):
                 continue                                   # plateau peint : c'est la texture du plateau VPX
             P = acc(g, binr, p['attributes']['POSITION']).astype(np.float64)
             W = np.c_[P, np.ones(len(P))] @ M.T
+            if a.bas and (W[:, 1].min() < 850 or np.ptp(W[:, 2]) < 0.5):
+                continue                                   # haut de table, ou insert à plat
             N = acc(g, binr, p['attributes']['NORMAL']).astype(np.float64) if 'NORMAL' in p['attributes'] else np.zeros_like(P)
             R = np.linalg.inv(M[:3, :3]).T
             N = N @ R.T
@@ -146,16 +156,31 @@ def rec(i, M, mobile, exclu):
 
 
 # on part des enfants de « table » : coordonnées en mm de plateau (sa matrice mène au repère three.js)
-for c in noeuds[table].get('children', []):
-    rec(c, np.eye(4), None, False)
+def contient(i, nom):
+    return noeuds[i].get('name') == nom or any(contient(c, nom) for c in noeuds[i].get('children', []))
+
+
+if a.bas:
+    MOBILES = {}
+    for c in noeuds[table].get('children', []):
+        if not contient(c, 'flanc_G'):
+            rec(c, np.eye(4), None, False)
+elif a.chassis:
+    # seul le lanceur (pommeau, tige, ressorts mobiles) reste mobile : PrimLanceur, poussé par le script
+    MOBILES = {k: v for k, v in MOBILES.items() if v == 'PrimLanceur'}
+    rec(next(c for c in noeuds[table]['children'] if contient(c, 'flanc_G')), np.eye(4), None, False)
+else:
+    for c in noeuds[table].get('children', []):
+        rec(c, np.eye(4), None, False)
 if 'mesh' in noeuds[table]:
     raise SystemExit('nœud table avec maillage : inattendu')
 
 # plateau peint en haute définition
-src0 = g['images'][0]
-bv = g['bufferViews'][src0['bufferView']]
-img = Image.open(io.BytesIO(binr[bv.get('byteOffset', 0): bv.get('byteOffset', 0) + bv['byteLength']])).convert('RGB')
-img.transpose(Image.FLIP_TOP_BOTTOM).save(os.path.join(SORTIE, 'plateau.jpg'), quality=92)   # rangée du haut = haut du plateau
+src0 = None if (a.chassis or a.bas) else g['images'][0]
+if src0 is not None:
+    bv = g['bufferViews'][src0['bufferView']]
+    img = Image.open(io.BytesIO(binr[bv.get('byteOffset', 0): bv.get('byteOffset', 0) + bv['byteLength']])).convert('RGB')
+    img.transpose(Image.FLIP_TOP_BOTTOM).save(os.path.join(SORTIE, 'plateau.jpg'), quality=92)   # rangée du haut = haut du plateau
 
 liste = []
 total = 0

@@ -1,0 +1,15 @@
+[package]
+name = "generateur-tables"
+version = "1.0.0"
+edition = "2024"
+description = "Fabrique une table Visual Pinball vierge à partir de son plan (tables/<table>/sortie/table.json)"
+publish = false
+
+[dependencies]
+vpin = "=0.41.1"
+serde_json = "1"
+flate2 = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[profile.release]
+opt-level = 2

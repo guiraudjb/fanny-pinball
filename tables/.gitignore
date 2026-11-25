@@ -1,0 +1,5 @@
+# fichiers générés (reconstruits par construire.sh) et sources brutes lourdes
+*/sortie/
+*/brut/
+moteur/generateur/target/
+__pycache__/

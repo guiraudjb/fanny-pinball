@@ -13,7 +13,12 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 ICI = os.path.dirname(os.path.abspath(__file__))
-D = os.path.join(ICI, 'donnees/decor')
+import argparse
+_ap = argparse.ArgumentParser()
+_ap.add_argument('--dossier', default=os.path.join(ICI, 'donnees/decor'))
+_ap.add_argument('--cartes', help='JSON [[titre, [lignes…]], [titre, [lignes…]]] : cartes d\'une autre table')
+_a = _ap.parse_args()
+D = _a.dossier
 POLICE = next(p for p in ['/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
                           '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'] if os.path.exists(p))
 CREME, ROUGE, BLANC = (243, 230, 200, 255), (200, 52, 43, 255), (255, 246, 224, 255)
@@ -24,6 +29,9 @@ CARTES = [   # texte de js/render.js APRON_CARDS, les deux dernières lignes rac
     ('BONUS · EXTRA BALL', ['T-O-U-R : bonus ×2, ×3 … ×5', '×5 : EXTRA BALL au Cercle',
                             'RAMPE : escale World Tour', '7 escales : GRAND CHELEM']),
 ]
+
+if _a.cartes:
+    CARTES = [(t, l) for t, l in json.load(open(_a.cartes))]
 
 # texture du tablier : la seule texturée posée en bas de la table, à plat
 decor = json.load(open(os.path.join(D, 'decor.json')))
